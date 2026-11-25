@@ -9,7 +9,7 @@ interface OpenSharedModalProps {
   onOpened: (projectName: string) => void;
 }
 
-/** Paste a collaborator link, pick where to put the files, and download the project. */
+/** Paste a share link, pick where to put the project, and download it (previews only for a listener link). */
 export const OpenSharedModal = ({ isOpen, onClose, onOpened }: OpenSharedModalProps) => {
   const [link, setLink] = useState('');
   const [folder, setFolder] = useState('');
@@ -52,7 +52,7 @@ export const OpenSharedModal = ({ isOpen, onClose, onOpened }: OpenSharedModalPr
         <h3>Open shared project</h3>
         <form className="modal-form" onSubmit={submit}>
           <div className="form-field">
-            <label>Collaborator link <span className="required">*</span></label>
+            <label>Share link <span className="required">*</span></label>
             <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://hub.example.com/s/..." required autoFocus disabled={busy} />
           </div>
           <div className="form-field">

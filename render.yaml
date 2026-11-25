@@ -8,7 +8,6 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: starter
-    healthCheckPath: /healthz
     envVars:
       - key: HUB_CREATE_KEY
         generateValue: true

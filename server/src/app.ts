@@ -43,6 +43,9 @@ class HttpError extends Error {
   }
 }
 
+/** Thrown for anything a caller without a valid key or token could probe: answered with an empty 404. */
+const HIDDEN = new HttpError(404, '')
+
 const JSON_LIMIT = 8 * 1024 * 1024
 
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex')
@@ -72,10 +75,10 @@ export function createHub(opts: HubOptions) {
 
   async function authorize(req: http.IncomingMessage, url: URL, need: HubRole): Promise<Access> {
     const header = req.headers.authorization ?? ''
-    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : url.searchParams.get('t') ?? ''
-    if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) throw new HttpError(401, 'Missing or malformed token')
+    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
+    if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) throw HIDDEN
     const access = await storage.getJson<Access>(keys.token(token))
-    if (!access) throw new HttpError(401, 'Unknown token')
+    if (!access) throw HIDDEN
     if (need === 'edit' && access.role !== 'edit') throw new HttpError(403, 'This link is listen-only')
     return access
   }
@@ -98,7 +101,7 @@ export function createHub(opts: HubOptions) {
     if (opts.createKey) {
       const given = String(req.headers['x-hub-key'] ?? '')
       const a = Buffer.from(sha256(given)), b = Buffer.from(sha256(opts.createKey))
-      if (!crypto.timingSafeEqual(a, b)) throw new HttpError(403, 'Wrong hub key')
+      if (!crypto.timingSafeEqual(a, b)) throw HIDDEN
     }
     const body = await readJson(req)
     const log = toSharedLog(body?.log ?? body)
@@ -236,17 +239,14 @@ export function createHub(opts: HubOptions) {
     const parts = url.pathname.split('/').filter(Boolean)
     const method = req.method ?? 'GET'
 
-    // No pages: the hub only answers the DAWLab app. Anything else is a bare 404.
-    if (url.pathname === '/healthz') return send(res, 200, { ok: true })
-    if (parts[0] !== 'api') {
-      res.writeHead(404, { 'Content-Length': 0 })
-      return res.end()
-    }
+    // No pages and no unauthenticated endpoints: without a valid key or token
+    // every request gets the same empty 404, so the hub reveals nothing.
+    if (parts[0] !== 'api') throw HIDDEN
 
     if (url.pathname === '/api/projects' && method === 'POST') return createProject(req, res)
 
     // Everything below is scoped to the project the token belongs to.
-    if (parts[1] !== 'project') throw new HttpError(404, 'Not found')
+    if (parts[1] !== 'project') throw HIDDEN
     const rest = parts.slice(2)
 
     if (rest.length === 0 && method === 'GET') {
@@ -281,7 +281,7 @@ export function createHub(opts: HubOptions) {
         return postComments(await authorize(req, url, 'listen'), commitId, req, res)
       }
     }
-    throw new HttpError(404, 'Not found')
+    throw HIDDEN
   }
 
   return async function handler(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -290,8 +290,12 @@ export function createHub(opts: HubOptions) {
     } catch (err: any) {
       const status = err instanceof HttpError ? err.status : 500
       if (status === 500) console.error('[hub]', req.method, req.url?.split('?')[0], err)
-      if (!res.headersSent) send(res, status, { error: status === 500 ? 'Internal error' : err.message })
-      else res.destroy()
+      if (res.headersSent) res.destroy()
+      else if (err === HIDDEN) {
+        req.resume()
+        res.writeHead(404, { 'Content-Length': 0 })
+        res.end()
+      } else send(res, status, { error: status === 500 ? 'Internal error' : err.message })
     }
   }
 }

@@ -73,9 +73,9 @@ export const ShareModal = ({ isOpen, projectName, onClose, onSynced }: ShareModa
         <h3>{remote ? 'Shared project' : 'Share project'}</h3>
         {remote ? (
           <>
-            <p className="share-hint">Collaborators open the first link in DAWLab. Anyone can play previews and comment with the second one in a browser.</p>
-            <CopyField label="Collaborator link (edit)" value={remote.editUrl} />
-            {remote.listenUrl && <CopyField label="Listen link (previews and comments)" value={remote.listenUrl} />}
+            <p className="share-hint">Both links open only in DAWLab (Add &gt; Open Shared Project). Anyone who has a link can use it, so send it privately.</p>
+            {remote.editUrl && <CopyField label="Collaborator link: files, versions, comments" value={remote.editUrl} />}
+            {remote.listenUrl && <CopyField label="Listener link: previews and comments only" value={remote.listenUrl} />}
             {remote.lastSync && <p className="share-hint">Last synced {new Date(remote.lastSync).toLocaleString()}</p>}
           </>
         ) : (

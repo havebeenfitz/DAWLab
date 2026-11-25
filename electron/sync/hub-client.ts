@@ -22,7 +22,7 @@ import { rollbackProject } from '../dawvcs/operations/rollback'
 import { parseCommentsFile, serializeComments } from '../feedback/comments-file'
 import {
   allCommits, mergeComments, mergeLogs, parseShareLink, toSharedLog,
-  type CreateProjectResponse, type ProjectResponse, type SharedComment, type SharedLog,
+  type CreateProjectResponse, type HubRole, type ProjectResponse, type SharedComment, type SharedLog,
 } from '../../shared/hub-protocol'
 
 export interface HubSettings {
@@ -32,8 +32,10 @@ export interface HubSettings {
 
 export interface ProjectRemote {
   hubUrl: string
-  /** Edit token: lets this machine push and pull. */
+  /** The link's token: an edit token lets this machine push and pull, a listen token only fetches previews and comments. */
   token: string
+  /** Missing on remotes saved before listen links opened in the app: those are edit links. */
+  role?: HubRole
   editUrl: string
   listenUrl?: string
   lastSync?: string
@@ -114,10 +116,7 @@ class HubClient {
       ...init,
       headers: { Authorization: `Bearer ${this.token}`, ...(init.headers as Record<string, string>) },
     })
-    if (!res.ok) {
-      const body: any = await res.json().catch(() => ({}))
-      throw new Error(`Hub: ${body.error || `${res.status} ${res.statusText}`}`)
-    }
+    if (!res.ok) throw await hubError(res, 'This link is not valid on this hub (it may have been revoked, or the hub address is wrong).')
     return res
   }
 
@@ -191,11 +190,10 @@ export async function shareProject(projectName: string, onProgress: SyncProgress
     headers: { 'Content-Type': 'application/json', ...(hubKey ? { 'X-Hub-Key': hubKey } : {}) },
     body: JSON.stringify({ log: toSharedLog(log) }),
   })
-  const body: any = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(`Hub: ${body.error || `${res.status} ${res.statusText}`}`)
-  const created = body as CreateProjectResponse
+  if (!res.ok) throw await hubError(res, 'The hub did not accept this key. Check the hub address and the hub key.')
+  const created = (await res.json()) as CreateProjectResponse
   saveProjectRemote(projectName, {
-    hubUrl, token: created.editToken, editUrl: created.editUrl, listenUrl: created.listenUrl,
+    hubUrl, token: created.editToken, role: 'edit', editUrl: created.editUrl, listenUrl: created.listenUrl,
   })
   return syncProject(projectName, onProgress)
 }
@@ -207,9 +205,21 @@ export async function syncProject(projectName: string, onProgress: SyncProgress 
   const client = new HubClient(remote.hubUrl, remote.token)
   const { casDir, commitsDir } = getProjectStorageDirs(projectName)
 
-  // ---- push
   const local = loadLocalProjectLog(projectName)
   if (!local) throw new Error(`Project '${projectName}' not found`)
+
+  if (remote.role === 'listen') {
+    // Listeners get the version list, previews and comments; nothing of theirs is pushed but comments.
+    const { log: remoteLog } = await client.getProject()
+    const pulled = await pullInto(projectName, client, remoteLog, onProgress, { previewsOnly: true })
+    onProgress('Syncing comments...')
+    for (const c of allCommits(remoteLog)) await syncComments(projectName, c.commit_id, client, commitsDir)
+    const next = { ...remote, lastSync: new Date().toISOString() }
+    saveProjectRemote(projectName, next)
+    return { pushed: 0, pulled: pulled.versions, uploadedFiles: 0, downloadedFiles: pulled.files, remote: next }
+  }
+
+  // ---- push
   const before = await client.getProject()
   const remoteIds = new Set(allCommits(before.log).map((c) => c.commit_id))
   const toPush = allCommits(local).filter(
@@ -279,10 +289,6 @@ export async function openSharedProject(
   const client = new HubClient(hubUrl, token)
   onProgress('Reading the shared project...')
   const { role, log: remoteLog } = await client.getProject()
-  if (role !== 'edit') {
-    throw new Error('This is a listen-only link. Open it in a browser, or ask for the collaborator link.')
-  }
-
   const registry = loadRegistry()
   const already = Object.entries(registry).find(([name]) => getProjectRemote(name)?.token === token)
   if (already) {
@@ -303,14 +309,16 @@ export async function openSharedProject(
   const base = buildProjectLog(projectName, projectPath, { projectID: projectId, daw: remoteLog.daw, privacy_flag: 'shared' })
   base.branches = []
   saveProjectLog(projectName, base)
-  saveProjectRemote(projectName, { hubUrl, token, editUrl: link.trim() })
+  saveProjectRemote(projectName, role === 'edit'
+    ? { hubUrl, token, role, editUrl: link.trim() }
+    : { hubUrl, token, role, editUrl: '', listenUrl: link.trim() })
 
   await syncProject(projectName, onProgress)
 
   const log = loadLocalProjectLog(projectName)
   const main = log.branches.find((b: any) => b.name === 'main') ?? log.branches[0]
   const latest = main?.commits?.[main.commits.length - 1]
-  if (latest) {
+  if (latest && role === 'edit') {
     onProgress('Restoring the latest version...')
     log.current_branch = main.name
     saveProjectLog(projectName, log)
@@ -323,7 +331,13 @@ export async function openSharedProject(
 
 // ---------------------------------------------------------------- helpers
 
-async function pullInto(projectName: string, client: HubClient, remoteLog: SharedLog, onProgress: SyncProgress) {
+async function pullInto(
+  projectName: string,
+  client: HubClient,
+  remoteLog: SharedLog,
+  onProgress: SyncProgress,
+  opts: { previewsOnly?: boolean } = {},
+) {
   const { casDir, commitsDir } = getProjectStorageDirs(projectName)
   ensureCasDir(casDir)
   const newCommits = allCommits(remoteLog).filter((c) => !commitExists(projectName, c.commit_id, commitsDir))
@@ -331,7 +345,8 @@ async function pullInto(projectName: string, client: HubClient, remoteLog: Share
   const need = new Set<string>()
   const filemaps = new Map<string, Array<{ path: string; hash: string }>>()
   for (const c of newCommits) {
-    const filemap = await client.getFilemap(c.commit_id)
+    // A listen link can't read filemaps: its versions are kept with no files, just previews and comments.
+    const filemap = opts.previewsOnly ? [] : await client.getFilemap(c.commit_id)
     filemaps.set(c.commit_id, filemap)
     for (const e of filemap) if (e.hash !== 'empty' && !fs.existsSync(getCasPath(e.hash, casDir))) need.add(e.hash)
   }
@@ -368,6 +383,13 @@ async function syncComments(projectName: string, commitId: string, client: HubCl
   const merged = local.length ? await client.postComments(commitId, local) : await client.getComments(commitId)
   const result = mergeComments(local, merged)
   if (JSON.stringify(result) !== JSON.stringify(local)) writeJsonSync(file, serializeComments(result))
+}
+
+/** A hub answers an unknown key or token with an empty 404 and nothing else, so say what that usually means. */
+async function hubError(res: Response, hiddenMessage: string): Promise<Error> {
+  const body: any = await res.json().catch(() => null)
+  if (res.status === 404 && !body) return new Error(hiddenMessage)
+  return new Error(`Hub: ${body?.error || `${res.status} ${res.statusText}`}`)
 }
 
 function safeName(name: string) {

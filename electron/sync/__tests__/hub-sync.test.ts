@@ -45,10 +45,11 @@ vi.mock('electron', () => ({ app: { getPath: () => MOCK_HOME } }))
 
 import { setUsername } from '../../dawvcs/core/constants'
 import { initProject } from '../../dawvcs/operations/init'
-import { commitProject } from '../../dawvcs/operations/commit'
+import { commitProject, addPreviewToCommit } from '../../dawvcs/operations/commit'
 import { loadLocalProjectLog } from '../../dawvcs/core/log'
 import { getProjectStorageDirs } from '../../dawvcs/core/storage-location'
-import { getCommitPath } from '../../dawvcs/core/commits'
+import { getCommitPath, getCommitFileMap } from '../../dawvcs/core/commits'
+import { getCasPath } from '../../dawvcs/core/cas'
 import { getProjectPath } from '../../dawvcs/core/registry'
 import { saveHubSettings, shareProject, syncProject, openSharedProject, getProjectRemote } from '../hub-client'
 import { createHub } from '../../../server/src/app.ts'
@@ -90,7 +91,7 @@ describe('DAWLab Hub sharing', () => {
     setUsername('alice')
     await initProject(name, aliceDir, { storageMode: 'project', author: 'alice' })
     saveHubSettings({ hubUrl, hubKey: 'wrong' })
-    await expect(shareProject(name)).rejects.toThrow(/Wrong hub key/)
+    await expect(shareProject(name)).rejects.toThrow(/did not accept this key/)
   })
 
   it('shares a project and its comments', async () => {
@@ -144,23 +145,58 @@ describe('DAWLab Hub sharing', () => {
     expect(log.branches[0].commits.map((c: any) => c.message)).toEqual(['Initial Commit', 'bob idea'])
   })
 
-  it('keeps listen links to previews and comments only', async () => {
+  it('opens a listener link in the app with previews and comments only', async () => {
+    setUsername('alice')
+    const preview = path.join(work, 'mix.wav')
+    fs.writeFileSync(preview, 'RIFF....WAVEmix')
+    const [first] = commitIds(name)
+    await addPreviewToCommit(name, first, preview)
+    await syncProject(name)
+
+    setUsername('carol')
+    const carolParent = path.join(work, 'carol')
+    fs.mkdirSync(carolParent, { recursive: true })
+    const { projectName, projectPath } = await openSharedProject(listenUrl, carolParent)
+    const log = loadLocalProjectLog(projectName)
+    expect(log.branches[0].commits.map((c: any) => c.message)).toEqual(['Initial Commit', 'bob idea'])
+    expect(fs.readdirSync(projectPath)).toEqual([]) // no project files for listeners
+    const { casDir, commitsDir } = getProjectStorageDirs(projectName)
+    expect(getCommitFileMap(projectName, first, commitsDir)).toEqual([])
+    const previewHash = log.branches[0].commits[0].preview_file
+    expect(fs.readFileSync(getCasPath(previewHash, casDir), 'utf8')).toBe('RIFF....WAVEmix')
+
+    // A listener's comment reaches the owner.
+    const file = path.join(getCommitPath(projectName, first, commitsDir), 'comments.json')
+    const mine = JSON.parse(fs.readFileSync(file, 'utf8'))
+    mine.comments.push({ id: 'w1', username: 'carol', comment: 'love it', timestamp: 3 })
+    fs.writeFileSync(file, JSON.stringify(mine))
+    expect((await syncProject(projectName)).pushed).toBe(0)
+
+    setUsername('alice')
+    await syncProject(name)
+    const aliceDirs = getProjectStorageDirs(name)
+    const aliceComments = JSON.parse(fs.readFileSync(path.join(getCommitPath(name, first, aliceDirs.commitsDir), 'comments.json'), 'utf8'))
+    expect(aliceComments.comments.map((c: any) => c.id)).toEqual(['c1', 'w1'])
+
+    // And the listener token can't read project files or change history.
     const token = listenUrl.split('/s/')[1]
     const auth = { Authorization: `Bearer ${token}` }
-    const project = await (await fetch(`${hubUrl}/api/project`, { headers: auth })).json()
-    expect(project.role).toBe('listen')
+    expect((await fetch(`${hubUrl}/api/project/commits/${first}/filemap`, { headers: auth })).status).toBe(403)
+    expect((await fetch(`${hubUrl}/api/project/log`, { method: 'PUT', headers: auth, body: '{}' })).status).toBe(403)
+  })
 
-    const filemapRes = await fetch(`${hubUrl}/api/project/commits/${project.log.branches[0].commits[0].commit_id}/filemap`, { headers: auth })
-    expect(filemapRes.status).toBe(403)
-    const putRes = await fetch(`${hubUrl}/api/project/log`, { method: 'PUT', headers: auth, body: '{}' })
-    expect(putRes.status).toBe(403)
-
-    const commitId = project.log.branches[0].commits[0].commit_id
-    const posted = await fetch(`${hubUrl}/api/project/commits/${commitId}/comments`, {
-      method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify([{ id: 'w1', username: 'fan', comment: 'love it', timestamp: 3 }]),
-    })
-    expect((await posted.json()).map((c: any) => c.id)).toEqual(['c1', 'w1'])
+  it('shows nothing to anyone without a key or token', async () => {
+    const probes: Array<[string, RequestInit?]> = [
+      ['/'], ['/healthz'], ['/s/abcdefghijklmnopqrstuvwx'], ['/api/project'],
+      ['/api/project', { headers: { Authorization: 'Bearer abcdefghijklmnopqrstuvwx' } }],
+      ['/api/projects', { method: 'POST', body: '{}' }],
+      ['/api/projects', { method: 'POST', headers: { 'X-Hub-Key': 'nope' }, body: '{}' }],
+    ]
+    for (const [p, init] of probes) {
+      const res = await fetch(hubUrl + p, init)
+      expect(res.status, p).toBe(404)
+      expect(await res.text(), p).toBe('')
+    }
   })
 
   it('rejects uploads whose content does not match the hash', async () => {

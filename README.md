@@ -154,7 +154,7 @@ DAWLab stays local-first: nothing leaves your machine unless you share a project
 
 - **Share** (button in a project's header): uploads the project's versions and gives you two links.
   - **Collaborator link**: others choose *Add > Open Shared Project* in DAWLab, paste it, and get the full project with history. **Sync now** sends your new versions and fetches theirs.
-  - **Listen link**: opens in any browser. Anyone with it can play each version's preview and leave timestamped comments, which show up in the desktop app after a sync. It never exposes the project files.
+  - **Listener link**: also opened in DAWLab. It brings in the version list, each version's preview and the comments, and lets the listener comment. It never exposes the project files or lets anyone change history.
 - Only missing files are transferred (files are addressed by SHA-256, the same hashes DAWLab's local storage uses).
 - History and comments merge, never overwrite: versions are matched by id, so two people can work offline and sync later.
 
@@ -172,13 +172,13 @@ cd server && npm install && HUB_CREATE_KEY=choose-a-secret npm start
 
 | Variable | Meaning |
 | --- | --- |
-| `HUB_CREATE_KEY` | Secret needed to create projects on the hub (entered once in DAWLab's Share dialog). Strongly recommended. |
+| `HUB_CREATE_KEY` | Required, 12+ characters. Password for creating projects on the hub (entered once in DAWLab's Share dialog). |
 | `DATA_DIR` | Where projects are stored on disk (default `./data`, `/data` in Docker). |
 | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_PREFIX`, `S3_FORCE_PATH_STYLE` | Store projects in an S3-compatible bucket instead of on disk. Credentials come from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. |
 | `PUBLIC_URL` | Public address used in share links, if the hub sits behind a proxy that changes the Host header. |
 | `MAX_UPLOAD_MB` | Largest single file accepted (default 2048). |
 
-Access works by link, there are no accounts: whoever has a link has its rights, so share collaborator links only with collaborators.
+The hub is private by design: it has no web pages and no public endpoints. Without the hub key or a valid project token, every request gets the same empty 404, so a scanner can't even tell it is a DAWLab hub. Creating a project needs `HUB_CREATE_KEY` (the hub won't start without one); after that, access is by link: whoever has a link has its rights, there are no accounts or invite confirmations, so send links privately.
 
 ---
 

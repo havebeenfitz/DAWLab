@@ -1,6 +1,6 @@
 /** Renderer-side types and calls for DAWLab Hub sharing (see electron/sync). */
 export interface HubSettings { hubUrl: string; hubKey: string }
-export interface ProjectRemote { hubUrl: string; token: string; editUrl: string; listenUrl?: string; lastSync?: string }
+export interface ProjectRemote { hubUrl: string; token: string; role?: 'edit' | 'listen'; editUrl: string; listenUrl?: string; lastSync?: string }
 export interface SyncResult { pushed: number; pulled: number; uploadedFiles: number; downloadedFiles: number; remote: ProjectRemote }
 
 export const hub = {

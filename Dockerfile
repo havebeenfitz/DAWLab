@@ -20,5 +20,6 @@ COPY server/src/ server/src/
 RUN mkdir -p /data
 VOLUME ["/data"]
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1:${PORT}/healthz || exit 1
+# The hub has no public endpoint to probe, so the health check only checks that the port accepts connections.
+HEALTHCHECK --interval=30s --timeout=5s CMD node -e "require('net').connect(process.env.PORT,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"
 CMD ["sh", "-c", "mkdir -p \"$DATA_DIR\" && chown node:node \"$DATA_DIR\" && exec su node -s /bin/sh -c \"exec node server/src/index.ts\""]
