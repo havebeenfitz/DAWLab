@@ -4,12 +4,14 @@
  * S3-compatible bucket (AWS S3, Cloudflare R2, Backblaze B2, MinIO).
  *
  * Layout:
- *   tokens/<sha256(token)>.json              -> { projectId, role }
- *   projects/<id>/meta.json                  -> { id, name, createdAt }
+ *   tokens/<sha256(token)>.json              -> { projectId, role } | { kind: 'member', spaceId, memberId }
+ *   projects/<id>/meta.json                  -> { id, name, createdAt, updatedAt?, spaceId? }
  *   projects/<id>/log.json                   -> SharedLog
  *   projects/<id>/commits/<cid>/filemap.json -> FileMapEntry[]
  *   projects/<id>/commits/<cid>/comments.json
  *   projects/<id>/objects/<sha256>           -> file contents
+ *   spaces/<id>/{meta,members,invites,projects}.json, invites/<sha256(code)>.json
+ *                                            -> see docs/hub-spaces.md
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -29,6 +31,8 @@ export interface Storage {
   /** Moves a finished temp file into place (the file is consumed). */
   putFile(key: string, tmpPath: string, size: number): Promise<void>
   stream(key: string, range?: ByteRange): Promise<Readable | null>
+  /** Removes a key; a missing key is not an error. */
+  delete(key: string): Promise<void>
 }
 
 export class FsStorage implements Storage {
@@ -90,6 +94,10 @@ export class FsStorage implements Storage {
     const full = this.file(key)
     if (!fs.existsSync(full)) return null
     return fs.createReadStream(full, range ? { start: range.start, end: range.end } : {})
+  }
+
+  async delete(key: string) {
+    await fs.promises.rm(this.file(key), { force: true })
   }
 }
 
@@ -176,6 +184,11 @@ export class S3Storage implements Storage {
       if (err?.$metadata?.httpStatusCode === 404 || err?.name === 'NoSuchKey') return null
       throw err
     }
+  }
+
+  async delete(key: string) {
+    const { client, sdk } = await this.s3()
+    await client.send(new sdk.DeleteObjectCommand({ Bucket: this.bucket, Key: this.key(key) }))
   }
 }
 

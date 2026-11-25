@@ -163,6 +163,147 @@ export function parseShareLink(link: string): { hubUrl: string; token: string } 
   return { hubUrl: `${url.origin}${base}`, token: match[1] }
 }
 
+// ------------------------------------------------------------ spaces (shared folders)
+
+/** A member's role in a space. See docs/hub-spaces.md. */
+export type SpaceRole = 'owner' | 'edit' | 'listen'
+
+export interface SpaceInfo {
+  id: string
+  name: string
+  createdAt: string
+}
+
+export interface SpaceMember {
+  id: string
+  name: string
+  role: SpaceRole
+  joinedAt: string
+}
+
+/** `me` in space responses. */
+export interface SpaceMe {
+  id: string
+  name: string
+  role: SpaceRole
+}
+
+export interface SpaceProject {
+  id: string
+  name: string
+  daw: string
+  addedAt: string
+  /** Member id of whoever added the project. */
+  addedBy: string
+  /** When the project's version history was last written. Only in GET /api/space. */
+  updatedAt?: string
+}
+
+/** GET /api/space */
+export interface SpaceResponse {
+  space: SpaceInfo
+  me: SpaceMe
+  members: SpaceMember[]
+  projects: SpaceProject[]
+}
+
+/** POST /api/spaces (201) */
+export interface CreateSpaceResponse {
+  space: SpaceInfo
+  me: SpaceMe
+  token: string
+}
+
+/** POST /api/join (200) */
+export type JoinResponse = CreateSpaceResponse
+
+/** GET /api/space/invites: one entry. The code itself is never returned again. */
+export interface InviteInfo {
+  id: string
+  role: Exclude<SpaceRole, 'owner'>
+  expiresAt: string
+  maxUses: number
+  uses: number
+}
+
+/** POST /api/space/invites (201). `code` is formatted as DAWL-XXXX-XXXX-XXXX. */
+export interface CreatedInvite {
+  id: string
+  code: string
+  role: Exclude<SpaceRole, 'owner'>
+  expiresAt: string
+  maxUses: number
+}
+
+/** POST /api/invite/peek (200): what a code would join, without using it up. */
+export interface InvitePreview {
+  space: { id: string; name: string }
+  role: Exclude<SpaceRole, 'owner'>
+  /** Name of the member who created the invite (the owner). */
+  invitedBy: string
+  projectCount: number
+  memberCount: number
+  expiresAt: string
+}
+
+/** Crockford base32: 0-9 A-Z without I L O U. */
+export const INVITE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+export const INVITE_CODE_LENGTH = 12
+const INVITE_PREFIX = 'DAWL'
+const RAW_INVITE_RE = /^[0-9A-HJKMNP-TV-Z]{12}$/
+
+/**
+ * Canonical form of a typed or pasted invite code: the 12 raw characters.
+ * Uppercases, drops everything but 0-9 A-Z, drops the DAWL prefix, and maps
+ * the look-alikes I L -> 1 and O -> 0. The result may still be invalid; check
+ * it with isInviteCode.
+ */
+export function normalizeInviteCode(code: string): string {
+  let s = String(code ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '')
+  if (s.startsWith(INVITE_PREFIX) && s.length === INVITE_PREFIX.length + INVITE_CODE_LENGTH) s = s.slice(INVITE_PREFIX.length)
+  return s.replace(/[IL]/g, '1').replace(/O/g, '0')
+}
+
+/** True when `value` (in any accepted spelling) normalizes to a well-formed invite code. */
+export function isInviteCode(value: string): boolean {
+  return typeof value === 'string' && RAW_INVITE_RE.test(normalizeInviteCode(value))
+}
+
+/** 12 raw characters -> `DAWL-XXXX-XXXX-XXXX`. Throws on anything that isn't a valid code. */
+export function formatInviteCode(raw12: string): string {
+  const raw = normalizeInviteCode(raw12)
+  if (!RAW_INVITE_RE.test(raw)) throw new Error('Not a DAWLab invite code')
+  return `${INVITE_PREFIX}-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`
+}
+
+/** `dawlab://join?hub=<urlencoded hub origin>&code=<code>` */
+export function buildJoinLink(hubUrl: string, code: string): string {
+  return `dawlab://join?hub=${encodeURIComponent(hubUrl.replace(/\/+$/, ''))}&code=${encodeURIComponent(formatInviteCode(code))}`
+}
+
+/** Parses an app join link. `code` comes back formatted (DAWL-XXXX-XXXX-XXXX); throws on a bad link. */
+export function parseJoinLink(link: string): { hubUrl: string; code: string } {
+  let url: URL
+  try {
+    url = new URL(String(link ?? '').trim())
+  } catch {
+    throw new Error('Not a DAWLab invite link')
+  }
+  const target = (url.hostname || url.pathname.replace(/^\/+/, '')).replace(/\/+$/, '').toLowerCase()
+  if (url.protocol !== 'dawlab:' || target !== 'join') throw new Error('Not a DAWLab invite link (expected dawlab://join?...)')
+  const hub = url.searchParams.get('hub') ?? ''
+  const code = url.searchParams.get('code') ?? ''
+  let hubParsed: URL
+  try {
+    hubParsed = new URL(hub)
+  } catch {
+    throw new Error('The invite link has no valid hub address')
+  }
+  if (hubParsed.protocol !== 'https:' && hubParsed.protocol !== 'http:') throw new Error('The invite link has no valid hub address')
+  if (!isInviteCode(code)) throw new Error('The invite link has no valid code')
+  return { hubUrl: `${hubParsed.origin}${hubParsed.pathname.replace(/\/+$/, '')}`, code: formatInviteCode(code) }
+}
+
 function definedOnly<T extends object>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>
 }
