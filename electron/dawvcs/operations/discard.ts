@@ -15,6 +15,7 @@ import { getAllFiles } from '../core/fs-utils'
 import { isNoisePath } from '../core/noise'
 import { parentForNewVersion } from './commit'
 import { saveUnsavedWork } from './guard'
+import { trashFiles, pruneEmptyDirs, type TrashFn } from '../core/trash'
 
 export type WorkingChangeKind = 'added' | 'modified' | 'deleted'
 
@@ -38,8 +39,7 @@ export interface DiscardResult {
   trashedAs: string | null
 }
 
-/** Moves a path to the Trash. Electron's shell.trashItem in the app; injectable for tests. */
-export type TrashFn = (fullPath: string) => Promise<void>
+export type { TrashFn } from '../core/trash'
 
 // Hashes of files we've already read, so checking again only reads what changed.
 const hashCache = new Map<string, { size: number; mtimeMs: number; hash: string }>()
@@ -121,22 +121,6 @@ export async function getUnsavedChanges(projectName: string): Promise<WorkingCha
   return { baseCommitId, changes: await compare(projectPath, log.ignoredFiles || [], casDir, files) }
 }
 
-const stamp = () => {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}`
-}
-
-/** Removes folders left empty under `root` by removed files, deepest first; never `root` itself. */
-function pruneEmptyDirs(root: string, rels: string[]) {
-  const dirs = new Set<string>()
-  for (const rel of rels) for (let d = path.posix.dirname(rel); d !== '.'; d = path.posix.dirname(d)) dirs.add(d)
-  for (const d of [...dirs].sort((a, b) => b.length - a.length)) {
-    const full = path.join(root, d)
-    try { if (fs.readdirSync(full).length === 0) fs.rmdirSync(full) } catch { /* gone or not empty */ }
-  }
-}
-
 /**
  * Puts the folder back to `expectedBaseId` (the version the user confirmed).
  * Added and changed files are moved, as one folder, to the Trash; then changed
@@ -164,29 +148,10 @@ export async function discardWorkingChanges(projectName: string, expectedBaseId:
 
   const replaced = changes.filter((c) => c.kind !== 'deleted').map((c) => c.path)
   let trashedAs: string | null = null
-  if (replaced.length) {
-    trashedAs = `${path.basename(projectPath)} — discarded changes ${stamp()}`
-    const staging = path.join(path.dirname(projectPath), trashedAs)
-    if (fs.existsSync(staging)) throw new Error('Try again in a second.')
-    const moved: string[] = []
-    const putBack = () => {
-      for (const rel of moved) {
-        try { fs.mkdirSync(path.dirname(path.join(projectPath, rel)), { recursive: true }); fs.renameSync(path.join(staging, rel), path.join(projectPath, rel)) } catch { /* best effort */ }
-      }
-      fs.rmSync(staging, { recursive: true, force: true })
-    }
-    try {
-      for (const rel of replaced) {
-        const to = path.join(staging, rel)
-        fs.mkdirSync(path.dirname(to), { recursive: true })
-        fs.renameSync(path.join(projectPath, rel), to)
-        moved.push(rel)
-      }
-      await trash(staging)
-    } catch (err) {
-      putBack()
-      throw new Error(`Couldn't move your current files to the Trash, so nothing was changed. ${(err as Error)?.message ?? ''}`.trim())
-    }
+  try {
+    trashedAs = await trashFiles(projectPath, replaced, 'discarded changes', trash)
+  } catch (err) {
+    throw new Error(`Couldn't move your current files to the Trash, so nothing was changed. ${String((err as Error)?.message ?? '').replace(/^Couldn't move files to the Trash, so nothing was changed\.\s*/, '')}`.trim())
   }
 
   let restored = 0

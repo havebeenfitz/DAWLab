@@ -57,6 +57,16 @@ vi.mock("../core/constants", async (importOriginal) => {
 // Mock Electron module first (before any imports that use it)
 // Mock Electron module first
 vi.mock('electron', () => ({
+  // A Trash that behaves like macOS: Restore moves files the version doesn't have into it.
+  shell: {
+    trashItem: vi.fn(async (p: string) => {
+      const trash = path.join(MOCK_HOME, '.Trash');
+      fs.mkdirSync(trash, { recursive: true });
+      let to = path.join(trash, path.basename(p));
+      for (let i = 2; fs.existsSync(to); i++) to = path.join(trash, `${path.basename(p)} ${i}`);
+      fs.renameSync(p, to);
+    }),
+  },
   app: {
     getPath: vi.fn((name) => {
       if (name === 'home') return MOCK_HOME;
@@ -90,6 +100,18 @@ vi.mock("../core/cas", () => ({
 }));
 
 // Don't mock DAW detection - let it run with real project structure!
+
+
+/** Where Restore put a file it removed: the fake Trash, under "<project> — removed by restore <date>". */
+function inTrash(relPath: string): string | null {
+  const trash = path.join(MOCK_HOME, '.Trash');
+  if (!fs.existsSync(trash)) return null;
+  for (const dir of fs.readdirSync(trash)) {
+    const f = path.join(trash, dir, relPath);
+    if (fs.existsSync(f)) return f;
+  }
+  return null;
+}
 
 describe("Core VCS Operations", () => {
   let testDir: string;
@@ -1130,9 +1152,13 @@ describe("Core VCS Operations", () => {
   });
 
   // ========== ROLLBACK SAFETY TESTS ==========
+  // Restore makes the folder an exact copy of the version. Files the version doesn't
+  // have are never deleted: they go to the Trash (and, in the app, into an automatic
+  // version first). Nothing outside the project folder is ever touched.
+
 
   describe("Rollback Safety - Data Loss Prevention", () => {
-    it("should NOT delete untracked files during rollback", async () => {
+    it("moves files the version doesn't have to the Trash during rollback, never deleting them", async () => {
       // Initialize and commit
       await initProject(projectName, projectPath, {
         author: "test-author",
@@ -1170,11 +1196,9 @@ describe("Core VCS Operations", () => {
       // Rollback to initial commit
       await rollbackProjectLocal(projectName, initialCommitId);
 
-      // CRITICAL: Untracked file should still exist after rollback
-      expect(fs.existsSync(untrackedFile)).toBe(true);
-      if (fs.existsSync(untrackedFile)) {
-        expect(fs.readFileSync(untrackedFile, "utf-8")).toContain("USER DATA");
-      }
+      // CRITICAL: the file is not lost: it is in the Trash, unchanged
+      expect(fs.existsSync(untrackedFile)).toBe(false);
+      expect(fs.readFileSync(inTrash("important-untracked.txt")!, "utf-8")).toContain("USER DATA");
     });
 
     it("should NOT delete files from parent directory during rollback", async () => {
@@ -1219,7 +1243,7 @@ describe("Core VCS Operations", () => {
       }
     });
 
-    it("should NOT wipe entire folder when multiple project files exist", async () => {
+    it("never wipes the folder: only files the version doesn't have go to the Trash", async () => {
       // Initialize and commit first
       const { projectId } = await initProject(projectName, projectPath, {
         author: "test-author",
@@ -1250,16 +1274,12 @@ describe("Core VCS Operations", () => {
       // Rollback
       await rollbackProjectLocal(projectName, commitId);
 
-      // CRITICAL: The other project file should NOT be deleted (it's untracked)
-      expect(fs.existsSync(otherProjectFile)).toBe(true);
-      if (fs.existsSync(otherProjectFile)) {
-        expect(fs.readFileSync(otherProjectFile, "utf-8")).toContain(
-          "OTHER ABLETON PROJECT"
-        );
-      }
+      // CRITICAL: the other set is in the Trash unchanged, and the rest of the folder is still there
+      expect(fs.readFileSync(inTrash("other-song.als")!, "utf-8")).toContain("OTHER ABLETON PROJECT");
+      expect(fs.existsSync(path.join(projectPath, "test_project.als"))).toBe(true);
     });
 
-    it("should only delete files that are in the commit filemap", async () => {
+    it("restores exactly the version's files and moves the rest to the Trash", async () => {
       // Initialize
       await initProject(projectName, projectPath, {
         author: "test-author",
@@ -1291,8 +1311,11 @@ describe("Core VCS Operations", () => {
       // Rollback to first commit (should only have song1 and song2)
       await rollbackProjectLocal(projectName, commit1.commitId);
 
-      // User file should STILL exist
-      expect(fs.existsSync(userFile)).toBe(true);
+      // song3 and the notes aren't in that version: both are in the Trash, nothing is deleted
+      expect(fs.existsSync(userFile)).toBe(false);
+      expect(fs.readFileSync(inTrash("user-notes.txt")!, "utf-8")).toContain("My personal notes");
+      expect(fs.readFileSync(inTrash("song3.wav")!, "utf-8")).toBe("audio data 3");
+      expect(fs.existsSync(path.join(projectPath, "song1.wav"))).toBe(true);
     });
 
     it("should protect files in subdirectories outside project scope", async () => {

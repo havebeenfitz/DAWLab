@@ -21,8 +21,9 @@ export function HistoryWarningModals({ commits, storage, onManageSettings }: Pro
         message={
           <>
             Nothing will be lost: if you restore now, DAWLab first keeps your
-            current files as a version marked “Kept automatically”, and you can
-            bring it back from the history.
+            current files as a version marked “Kept automatically”, which you can
+            bring back from the history. The folder then becomes an exact copy of
+            the version you restore; files it doesn't have go to the Trash.
             <br />
             <br />
             Or save them as a version with a name first, then restore.

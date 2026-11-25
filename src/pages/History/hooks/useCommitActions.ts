@@ -149,9 +149,11 @@ export function useCommitActions(o: CommitActionsOptions) {
     setRestoringCommitId(commitId);
 
     try {
-      await window.ipcRenderer.invoke("rollback-project", passedProject, commitId, bypassLimit);
+      const result = await window.ipcRenderer.invoke("rollback-project", passedProject, commitId, bypassLimit);
       // Reload project log to get updated lastCheckout
       await o.loadProjectLog(passedProject);
+      const note = describeRestore(result);
+      if (note) notify.info(note.title, note.detail);
     } catch (error: any) {
       console.error("Error during rollback:", error);
       const errorMessage = errorText(error);
@@ -289,3 +291,17 @@ export function useCommitActions(o: CommitActionsOptions) {
     handleCancelDeleteCommit,
   };
 }
+
+/** What a Restore did beyond putting the version in place: kept unsaved work, moved extra files to the Trash. */
+export function describeRestore(r: { keptAs?: { message: string } | null; removed?: number; trashedAs?: string | null } | null | undefined): { title: string; detail: string } | null {
+  if (!r) return null
+  const removed = r.removed ?? 0
+  const files = `${removed} extra file${removed === 1 ? '' : 's'}`
+  if (r.keptAs && removed > 0) {
+    return { title: 'Restored, and your work is kept', detail: `${files} ${removed === 1 ? 'was' : 'were'} moved to the Trash and kept in “${r.keptAs.message}”. Bring back restores them.` }
+  }
+  if (r.keptAs) return { title: 'Restored, and your work is kept', detail: `Your unsaved work is in “${r.keptAs.message}”. Bring back restores it.` }
+  if (removed > 0) return { title: 'Restored', detail: `${files} not in this version ${removed === 1 ? 'was' : 'were'} moved to the Trash${r.trashedAs ? `, in “${r.trashedAs}”` : ''}.` }
+  return null
+}
+

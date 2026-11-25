@@ -36,7 +36,20 @@ vi.mock('../../core/constants', async (importOriginal) => {
   }
 })
 vi.mock('../../../workers/metadataManager', () => ({ extractMetadataInBackground: vi.fn() }))
-vi.mock('electron', () => ({ app: { getPath: () => MOCK_HOME }, shell: { trashItem: vi.fn() } }))
+// A Trash that behaves like macOS: the item is moved into it.
+vi.mock('electron', () => ({
+  app: { getPath: () => MOCK_HOME },
+  shell: {
+    trashItem: async (p: string) => {
+      const fs = require('fs'); const path = require('path')
+      const trash = path.join(MOCK_HOME, '.Trash')
+      fs.mkdirSync(trash, { recursive: true })
+      let to = path.join(trash, path.basename(p))
+      for (let i = 2; fs.existsSync(to); i++) to = path.join(trash, `${path.basename(p)} ${i}`)
+      fs.renameSync(p, to)
+    },
+  },
+}))
 
 import { setUsername } from '../../core/constants'
 import { initProject } from '../init'
@@ -176,9 +189,54 @@ describe('no switch loses work', () => {
     expect(snap.branch).toBe('main')
     expect(snap.parent).toBe(byMessage('v2'))
     await rollbackProject(name, String(snap.commit_id)) // "Bring back"
-    // Restoring never deletes files, so the sample deleted before stays back; everything you had is there as it was.
+    expect(tree(dir)).toEqual(before)
+  })
+})
+
+describe('Restore is an exact copy of the version', () => {
+  beforeEach(setUp)
+
+  it('moves files the version doesn\'t have to the Trash, inside .logicx too, and Bring back returns them byte for byte', async () => {
+    write(`${name}.logicx/Alternatives/001/ProjectData`, 'a second Logic alternative')
+    write(`${name}.logicx/Resources/extra.plist`, 'extra')
+    write('Audio Files/takes/vox 1.wav', 'vox')
+    write(`${name}.logicx/Alternatives/000/Undo Data.nosync/1.undo`, 'undo')
+    const before = tree(dir)
+
+    const r = await rollbackProject(name, byMessage('Initial Commit'))
+    const initial = path.join(MOCK_HOME, 'initial', name)
+    await rollbackProject(name, byMessage('Initial Commit'), initial)
+    // The folder is exactly the version now (noise left alone).
     const now = tree(dir)
-    for (const [rel, content] of Object.entries(before)) expect(now[rel]).toBe(content)
+    expect(Object.keys(now).filter((k) => !k.includes('.nosync')).sort()).toEqual(Object.keys(tree(initial)).sort())
+    expect(now[`${name}.logicx/Alternatives/000/Undo Data.nosync/1.undo`]).toBe(Buffer.from('undo').toString('base64'))
+    expect(r.removed).toBe(3)
+    expect(r.keptAs?.message).toBe(`${AUTO_SNAPSHOT_PREFIX} “Initial Commit”`)
+    // The removed files are in the Trash, in one folder, at their paths.
+    expect(Object.keys(tree(path.join(MOCK_HOME, '.Trash', r.trashedAs!))).sort()).toEqual([
+      'Audio Files/takes/vox 1.wav', `${name}.logicx/Alternatives/001/ProjectData`, `${name}.logicx/Resources/extra.plist`,
+    ].sort())
+    expect(fs.existsSync(path.join(dir, 'Audio Files/takes'))).toBe(false)
+
+    await rollbackProject(name, r.keptAs!.commitId) // Bring back
+    expect(tree(dir)).toEqual(before)
+  })
+
+  it('changes nothing when the Trash fails', async () => {
+    write('Audio Files/takes/vox 1.wav', 'vox')
+    const before = tree(dir)
+    await expect(rollbackProject(name, byMessage('Initial Commit'), undefined, { trash: async () => { throw new Error('no Trash') } }))
+      .rejects.toThrow(/Couldn't move files to the Trash, so nothing was changed/)
+    expect(tree(dir)).toEqual(before)
+  })
+
+  it('leaves a preview folder alone: only the project folder is made exact', async () => {
+    const out = path.join(MOCK_HOME, 'preview', name)
+    fs.mkdirSync(out, { recursive: true })
+    fs.writeFileSync(path.join(out, 'keep.txt'), 'mine')
+    const r = await rollbackProject(name, byMessage('Initial Commit'), out)
+    expect(fs.readFileSync(path.join(out, 'keep.txt'), 'utf8')).toBe('mine')
+    expect(r).toMatchObject({ removed: 0, keptAs: null })
   })
 })
 
