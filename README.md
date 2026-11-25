@@ -148,6 +148,40 @@ chmod +x release/<version>/DAWLab-Linux-<version>.AppImage
 
 ---
 
+## Sharing projects (DAWLab Hub)
+
+DAWLab stays local-first: nothing leaves your machine unless you share a project. To work with other people, run a **DAWLab Hub**, a small self-hosted server that acts as a "remote" for your projects (like GitHub for git).
+
+- **Share** (button in a project's header): uploads the project's versions and gives you two links.
+  - **Collaborator link**: others choose *Add > Open Shared Project* in DAWLab, paste it, and get the full project with history. **Sync now** sends your new versions and fetches theirs.
+  - **Listen link**: opens in any browser. Anyone with it can play each version's preview and leave timestamped comments, which show up in the desktop app after a sync. It never exposes the project files.
+- Only missing files are transferred (files are addressed by SHA-256, the same hashes DAWLab's local storage uses).
+- History and comments merge, never overwrite: versions are matched by id, so two people can work offline and sync later.
+
+### Run a hub
+
+```bash
+# Docker / any VPS
+HUB_CREATE_KEY=choose-a-secret docker compose up -d     # http://localhost:8080
+
+# Without Docker (Node >= 22.18)
+cd server && npm install && HUB_CREATE_KEY=choose-a-secret npm start
+```
+
+**Render:** create a new Blueprint from your fork; `render.yaml` sets up the service with a persistent disk and generates `HUB_CREATE_KEY` (find it in the service's Environment tab). On Render's free instance the disk is wiped on restart, so remove the `disk` block and point the hub at an S3-compatible bucket instead (Cloudflare R2's free tier works).
+
+| Variable | Meaning |
+| --- | --- |
+| `HUB_CREATE_KEY` | Secret needed to create projects on the hub (entered once in DAWLab's Share dialog). Strongly recommended. |
+| `DATA_DIR` | Where projects are stored on disk (default `./data`, `/data` in Docker). |
+| `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_PREFIX`, `S3_FORCE_PATH_STYLE` | Store projects in an S3-compatible bucket instead of on disk. Credentials come from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. |
+| `PUBLIC_URL` | Public address used in share links, if the hub sits behind a proxy that changes the Host header. |
+| `MAX_UPLOAD_MB` | Largest single file accepted (default 2048). |
+
+Access works by link, there are no accounts: whoever has a link has its rights, so share collaborator links only with collaborators.
+
+---
+
 ## Development
 
 ### Scripts

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Library.css';
-import { Plus, FolderPlus, Search, LayoutGrid, List, Music, User, Loader2, ArrowUpRight, FileMusic, Filter, X, Play, Square, AudioLines, Pencil, Trash2 } from 'lucide-react';
+import { Plus, FolderPlus, Search, LayoutGrid, List, Music, User, Loader2, ArrowUpRight, FileMusic, Filter, X, Play, Square, AudioLines, Pencil, Trash2, Link2 } from 'lucide-react';
 import logo from '../../assets/logo.png';
 import logicLogo from '@/assets/logic_logo.png';
 import abletonLogo from '@/assets/ableton_live_logo.png';
@@ -41,6 +41,7 @@ import type { QuickLookDetail } from '@/components/QuickLook';
 import { DitherGradient, EMPTY_LIBRARY_DITHER } from '@/components/ui/DitherGradient';
 import { FoundProjectsBanner, FoundProjectsPanel } from '@/components/FoundProjects';
 import type { FoundProject } from '@/components/FoundProjects';
+import { OpenSharedModal } from '@/components/Sharing';
 
 // Runs the watched-folder scan for new projects at most once per app session, so
 // navigating away from the Library and back doesn't re-walk the disk each time.
@@ -103,6 +104,7 @@ export const Library: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+  const [showOpenSharedModal, setShowOpenSharedModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -1409,6 +1411,10 @@ export const Library: React.FC = () => {
                   <AudioLines size={14} />
                   Add Audio
                 </button>
+                <button className="add-dropdown-item" onClick={() => { setShowOpenSharedModal(true); setShowAddMenu(false); }}>
+                  <Link2 size={14} />
+                  Open Shared Project
+                </button>
               </div>
             )}
           </div>
@@ -2067,6 +2073,12 @@ export const Library: React.FC = () => {
           onAdded={loadMyProjects}
         />
       )}
+
+      <OpenSharedModal
+        isOpen={showOpenSharedModal}
+        onClose={() => setShowOpenSharedModal(false)}
+        onOpened={() => { setShowOpenSharedModal(false); loadMyProjects(); }}
+      />
 
       {/* New Folder Modal */}
       <InputModal

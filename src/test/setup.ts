@@ -7,53 +7,56 @@ afterEach(() => {
   cleanup();
 });
 
-// Mock electron APIs
-(global as any).window.electronAPI = {
-  pickFolder: vi.fn(),
-  initProject: vi.fn(),
-  cloneProject: vi.fn(),
-  openProject: vi.fn(),
-  deleteProject: vi.fn(),
-};
+// Browser mocks; skipped for suites that opt into `@vitest-environment node`.
+if (typeof window !== 'undefined') {
+  // Mock electron APIs
+  (global as any).window.electronAPI = {
+    pickFolder: vi.fn(),
+    initProject: vi.fn(),
+    cloneProject: vi.fn(),
+    openProject: vi.fn(),
+    deleteProject: vi.fn(),
+  };
 
-(global as any).window.ipcRenderer = {
-  invoke: vi.fn().mockResolvedValue(undefined),
-  on: vi.fn(),
-  off: vi.fn(),
-  removeListener: vi.fn(),
-  removeAllListeners: vi.fn(),
-};
-
-// Mock window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: vi.fn().mockImplementation((query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
+  (global as any).window.ipcRenderer = {
+    invoke: vi.fn().mockResolvedValue(undefined),
+    on: vi.fn(),
+    off: vi.fn(),
     removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  })),
-});
+    removeAllListeners: vi.fn(),
+  };
 
-// Mock IntersectionObserver
-global.IntersectionObserver = class IntersectionObserver {
-  constructor() {}
-  disconnect() {}
-  observe() {}
-  takeRecords() {
-    return [];
-  }
-  unobserve() {}
-} as any;
+  // Mock window.matchMedia
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
 
-// Mock ResizeObserver
-global.ResizeObserver = class ResizeObserver {
-  constructor() {}
-  disconnect() {}
-  observe() {}
-  unobserve() {}
-} as any;
+  // Mock IntersectionObserver
+  global.IntersectionObserver = class IntersectionObserver {
+    constructor() {}
+    disconnect() {}
+    observe() {}
+    takeRecords() {
+      return [];
+    }
+    unobserve() {}
+  } as any;
+
+  // Mock ResizeObserver
+  global.ResizeObserver = class ResizeObserver {
+    constructor() {}
+    disconnect() {}
+    observe() {}
+    unobserve() {}
+  } as any;
+}

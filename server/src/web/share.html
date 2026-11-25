@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>DAWLab shared project</title>
+<style>
+  :root { --bg:#0b0b0d; --panel:#16161a; --line:#26262c; --text:#ececf1; --dim:#8b8b96; --accent:#8b5cf6; --accent2:#22d3ee; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:860px; margin:0 auto; padding:24px 16px 64px; }
+  header h1 { margin:0 0 4px; font-size:26px; }
+  .meta { color:var(--dim); font-size:13px; display:flex; gap:14px; flex-wrap:wrap; }
+  .note { margin:16px 0; padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--dim); font-size:13px; }
+  .note code { color:var(--text); word-break:break-all; }
+  select, input, textarea, button { font:inherit; color:var(--text); background:#0f0f12; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  button { background:var(--accent); border-color:var(--accent); cursor:pointer; font-weight:600; }
+  button.ghost { background:transparent; border-color:var(--line); font-weight:500; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:18px 0 10px; }
+  .versions { display:flex; flex-direction:column; gap:8px; }
+  .version { padding:12px 14px; background:var(--panel); border:1px solid var(--line); border-radius:10px; cursor:pointer; }
+  .version.active { border-color:var(--accent); }
+  .version .msg { font-weight:600; }
+  .version .sub { color:var(--dim); font-size:12px; margin-top:2px; }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:99px; background:#2a2140; color:#cbb8ff; margin-left:6px; }
+  .player { position:sticky; top:0; z-index:2; margin:18px 0; padding:14px; background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+  .player audio { width:100%; margin-top:8px; }
+  .comments { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+  .comment { padding:10px 12px; border-left:3px solid var(--accent2); background:#111116; border-radius:6px; }
+  .comment .who { font-weight:600; }
+  .comment .at { color:var(--accent2); cursor:pointer; margin-right:6px; font-variant-numeric:tabular-nums; }
+  .reply { margin:6px 0 0 14px; color:var(--dim); font-size:13px; }
+  form.add { display:grid; grid-template-columns: 140px 1fr auto; gap:8px; margin-top:12px; }
+  @media (max-width:560px) { form.add { grid-template-columns:1fr; } }
+  .empty, .error { color:var(--dim); padding:12px 0; }
+  .error { color:#f87171; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">Loading...</h1>
+    <div class="meta" id="meta"></div>
+  </header>
+  <div class="note" id="editNote" hidden>
+    This is a collaborator link. To get the project files, open DAWLab on your computer, choose
+    <b>Open shared project</b> and paste this link: <code id="editLink"></code>
+  </div>
+  <div class="player" id="player" hidden>
+    <div id="nowTitle"></div>
+    <audio id="audio" controls preload="metadata"></audio>
+    <div class="comments" id="comments"></div>
+    <form class="add" id="addForm">
+      <input id="name" placeholder="Your name" maxlength="40" required>
+      <input id="text" placeholder="Comment at the current time" maxlength="2000" required>
+      <button type="submit">Comment</button>
+    </form>
+  </div>
+  <div class="row">
+    <label for="branch">Branch</label>
+    <select id="branch"></select>
+  </div>
+  <div class="versions" id="versions"></div>
+  <div class="error" id="error" hidden></div>
+</main>
+<script>
+(() => {
+  const token = location.pathname.split('/').filter(Boolean).pop();
+  const api = (p, init = {}) => fetch('../api/project' + p, {
+    ...init, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', ...(init.headers || {}) },
+  }).then(async (r) => { const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.error || r.statusText); return b; });
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const fmtTime = (s) => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const fmtDate = (ts) => {
+    const m = String(ts).match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/);
+    return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5])).toLocaleString() : ts;
+  };
+  let log, current = null, comments = [];
+  try { $('name').value = localStorage.getItem('dawlab-name') || ''; } catch {}
+
+  function renderVersions() {
+    const branch = log.branches.find((b) => b.name === $('branch').value) || log.branches[0];
+    const list = branch ? [...branch.commits].reverse() : [];
+    $('versions').innerHTML = list.length ? '' : '<div class="empty">No versions shared yet.</div>';
+    for (const c of list) {
+      const el = document.createElement('div');
+      el.className = 'version' + (current && current.commit_id === c.commit_id ? ' active' : '');
+      el.innerHTML = '<div class="msg">' + esc(c.message) + (c.tags || []).map((t) => '<span class="tag">' + esc(t) + '</span>').join('') +
+        '</div><div class="sub">' + esc(c.author) + ' · ' + esc(fmtDate(c.timestamp)) + (c.preview_file ? ' · preview' : ' · no preview') + '</div>';
+      el.onclick = () => select(c);
+      $('versions').appendChild(el);
+    }
+  }
+
+  async function select(c) {
+    current = c;
+    renderVersions();
+    $('player').hidden = false;
+    $('nowTitle').textContent = c.message;
+    const audio = $('audio');
+    if (c.preview_file) { audio.hidden = false; audio.src = '../api/project/objects/' + c.preview_file + '?t=' + encodeURIComponent(token); }
+    else { audio.hidden = true; audio.removeAttribute('src'); }
+    comments = await api('/commits/' + c.commit_id + '/comments').catch(() => []);
+    renderComments();
+  }
+
+  function renderComments() {
+    const box = $('comments');
+    const sorted = [...comments].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    box.innerHTML = sorted.length ? '' : '<div class="empty">No comments on this version yet.</div>';
+    for (const c of sorted) {
+      const el = document.createElement('div');
+      el.className = 'comment';
+      el.innerHTML = '<span class="at">' + fmtTime(c.timestamp) + (c.endTimestamp ? '-' + fmtTime(c.endTimestamp) : '') +
+        '</span><span class="who">' + esc(c.username) + '</span><div>' + esc(c.comment) + '</div>' +
+        (c.replies || []).map((r) => '<div class="reply"><b>' + esc(r.username) + ':</b> ' + esc(r.comment) + '</div>').join('');
+      el.querySelector('.at').onclick = () => { $('audio').currentTime = c.timestamp || 0; $('audio').play(); };
+      box.appendChild(el);
+    }
+  }
+
+  $('addForm').onsubmit = async (e) => {
+    e.preventDefault();
+    if (!current) return;
+    const username = $('name').value.trim(), text = $('text').value.trim();
+    if (!username || !text) return;
+    try { localStorage.setItem('dawlab-name', username); } catch {}
+    const comment = {
+      id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+      username, comment: text, timestamp: Math.round(($('audio').currentTime || 0) * 10) / 10, replies: [],
+    };
+    try {
+      comments = await api('/commits/' + current.commit_id + '/comments', { method: 'POST', body: JSON.stringify([comment]) });
+      $('text').value = '';
+      renderComments();
+    } catch (err) { alert('Could not save the comment: ' + err.message); }
+  };
+  $('branch').onchange = renderVersions;
+
+  api('').then((res) => {
+    log = res.log;
+    document.title = log.name + ' · DAWLab';
+    $('title').textContent = log.name;
+    $('meta').innerHTML = [log.daw, log.bpm && log.bpm + ' BPM', log.key].filter(Boolean).map((m) => '<span>' + esc(m) + '</span>').join('');
+    if (res.role === 'edit') { $('editNote').hidden = false; $('editLink').textContent = location.href; }
+    $('branch').innerHTML = log.branches.map((b) => '<option>' + esc(b.name) + '</option>').join('');
+    if (log.branches.some((b) => b.name === 'main')) $('branch').value = 'main';
+    renderVersions();
+    const branch = log.branches.find((b) => b.name === $('branch').value);
+    const latest = branch && [...branch.commits].reverse().find((c) => c.preview_file);
+    if (latest) select(latest);
+  }).catch((err) => { $('title').textContent = 'Link not available'; $('error').hidden = false; $('error').textContent = err.message; });
+})();
+</script>
+</body>
+</html>

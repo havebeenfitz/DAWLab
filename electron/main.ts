@@ -61,6 +61,7 @@ import { getCleanableFiles, cleanCasFiles } from "./dawvcs/operations/clean";
 import { scanForProjects, getDefaultScanRoots } from "./dawvcs/operations/scan";
 import { getInstalledPlugins, rescanPlugins } from "./workers/pluginScanner";
 import { startDraftWatch, stopDraftWatch, stopAllDraftWatches } from "./watchers/draftWatcher";
+import { registerHubIpc } from "./sync/ipc";
 import { fileURLToPath } from "node:url";
 
 import path from "node:path";
@@ -345,6 +346,8 @@ app.whenReady().then(() => {
 });
 
 // file dialogs
+registerHubIpc(ipcMain);
+
 ipcMain.handle("pick-folder", async () => {
   const result = await dialog.showOpenDialog(win!, {
     properties: ["openDirectory", "createDirectory"],

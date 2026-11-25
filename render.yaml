@@ -1,0 +1,20 @@
+# One-click deploy of the DAWLab Hub on Render (Blueprint).
+# A persistent disk keeps projects across deploys (needs a paid instance).
+# On the free instance type, remove `disk` and set S3_* variables instead
+# (e.g. a free Cloudflare R2 bucket), because the free filesystem is wiped on restart.
+services:
+  - type: web
+    name: dawlab-hub
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /healthz
+    envVars:
+      - key: HUB_CREATE_KEY
+        generateValue: true
+      - key: DATA_DIR
+        value: /data
+    disk:
+      name: dawlab-hub-data
+      mountPath: /data
+      sizeGB: 10

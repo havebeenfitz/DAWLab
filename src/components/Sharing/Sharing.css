@@ -1,0 +1,8 @@
+.share-modal { max-width: 480px; }
+.share-modal h3 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.share-modal .share-hint { color: var(--text-secondary, #8b8b96); font-size: 0.85rem; margin: 0 0 1rem; }
+.share-modal .share-link { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
+.share-modal .share-link input { flex: 1; min-width: 0; font-size: 0.8rem; }
+.share-modal .share-link-label { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.25rem; }
+.share-modal .share-status { font-size: 0.85rem; color: var(--text-secondary, #8b8b96); min-height: 1.2em; margin: 0.5rem 0; }
+.share-modal .share-error { color: #f87171; }

@@ -25,6 +25,7 @@ import { PluginSection } from "@/components/PluginSection/PluginSection";
 import { PathSelectionModal } from "@/components/PathSelectionModal";
 import { MergeModal } from "@/components/MergeModal/MergeModal";
 import { ProjectSettings } from "@/components/ProjectSettings/ProjectSettings";
+import { ShareModal } from "@/components/Sharing";
 import { ActionButton } from "@/components/ui/ActionButton";
 import {
   Settings,
@@ -34,6 +35,7 @@ import {
   ChevronLeft,
   GalleryHorizontalEnd,
   Maximize2,
+  Share2,
 } from "lucide-react";
 import {
   WarningModal,
@@ -104,6 +106,7 @@ export const History: React.FC = () => {
   } | null>(null);
 
   // Project Settings State
+  const [showShare, setShowShare] = useState(false);
   const [showSettings, setShowSettings] = useState<boolean>(
     location.state?.openSettings === true,
   );
@@ -1780,6 +1783,16 @@ export const History: React.FC = () => {
             </>
           )}
 
+          {/* Share button */}
+          <button
+            className="btn-pill-icon"
+            onClick={() => setShowShare(true)}
+            title="Share project"
+            disabled={!passedProject}
+          >
+            <Share2 size={18} />
+          </button>
+
           {/* Settings button */}
           <button
             className="btn-pill-icon"
@@ -1811,6 +1824,13 @@ export const History: React.FC = () => {
           [Left breadcrumb]
           [Center dropdown]
           [Right buttons] */}
+
+      <ShareModal
+        isOpen={showShare}
+        projectName={passedProject || ""}
+        onClose={() => setShowShare(false)}
+        onSynced={() => { refreshProjectLog(); }}
+      />
 
       {/* Conditional: Show either Project Settings or Commit Graph */}
       {showSettings ? (
