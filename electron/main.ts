@@ -5,7 +5,9 @@ import {
   dialog,
   shell,
   protocol,
+  screen,
 } from "electron";
+import { initialWindowState, readWindowState, trackWindowState, MIN_SIZE } from "./window-state";
 import {
   initProject,
   commitProject,
@@ -204,9 +206,17 @@ function handleDeepLink(url: string) {
 }
 
 function createWindow() {
+  const windowStateFile = path.join(app.getPath("userData"), "window-state.json");
+  const placement = initialWindowState(
+    readWindowState(windowStateFile),
+    screen.getAllDisplays().map((d) => d.workArea),
+    screen.getPrimaryDisplay().workArea,
+  );
   win = new BrowserWindow({
     icon: path.join(__dirname, "..", "src", "assets", "icons", "logo.icns"),
-    minWidth: 450,
+    ...placement.bounds,
+    minWidth: MIN_SIZE.width,
+    minHeight: MIN_SIZE.height,
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 15, y: 10 },
     webPreferences: {
@@ -215,7 +225,9 @@ function createWindow() {
     },
   });
 
-  win.maximize();
+  if (placement.maximized) win.maximize();
+  if (placement.fullScreen) win.setFullScreen(true);
+  trackWindowState(win, windowStateFile);
 
   // Prevent the Electron window from navigating away to external https:// URLs.
   // Any link/redirect to a non-app origin opens in the system browser instead.
