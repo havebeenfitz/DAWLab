@@ -134,7 +134,7 @@ const renderCommitMessage = (
   onCommitClick: (commitId: string) => void,
 ): React.ReactNode => {
   // Pattern to match "Created branch <name> from <commitId>"
-  const branchPattern = /^Created branch (.+) from ([a-zA-Z0-9]+)$/;
+  const branchPattern = /^Created branch (.+?) from (?:commit )?([A-Za-z0-9_-]+)$/;
   const match = message.match(branchPattern);
 
   if (match) {

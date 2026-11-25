@@ -1,4 +1,5 @@
 import { getAllFiles } from '../core/fs-utils'
+import { newVersionId } from '../core/version-id'
 import { storeInCasSync } from '../core/cas'
 import { loadLocalProjectLog, saveProjectLog, addCommitToLog } from '../core/log'
 import { FileMapEntry } from '../types'
@@ -53,7 +54,7 @@ async function snapshotProjectFiles(
     previewHash = storeInCasSync(opts.previewFile, casDir)
   }
 
-  const commitId = timestamp
+  const commitId = newVersionId(timestamp)
   saveCommit(projectName, commitId, fileMap, commitsDir)
 
   return { commitId, timestamp, numFiles: fileMap.length, previewHash, commitsDir }

@@ -1,4 +1,5 @@
 import { loadProjectLog, loadLocalProjectLog, saveProjectLog, addCommitToLog } from '../core/log'
+import { newVersionId } from '../core/version-id'
 import { getCommitFileMap, saveCommit } from '../core/commits'
 import { storeInCasSync } from '../core/cas'
 import { getAllFiles } from '../core/fs-utils'
@@ -31,7 +32,7 @@ export async function createBranch(
   saveProjectLog(projectName, log)
 
   const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)
-  const commitId = timestamp
+  const commitId = newVersionId(timestamp)
   const { casDir, commitsDir } = getProjectStorageDirs(projectName)
 
   if (fromCommit) {

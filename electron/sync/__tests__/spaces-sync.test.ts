@@ -220,6 +220,25 @@ describe('Shared folders', () => {
     expect(await countIncomingVersions('Nope')).toBe(0)
   })
 
+  it('keeps versions saved in the same second on two Macs apart', async () => {
+    vi.setSystemTime(new Date('2026-02-01T13:00:00Z'))
+    setUsername('alice')
+    fs.writeFileSync(path.join(getProjectPath('Snow'), 'Snow.als'), 'Snow by alice at 13:00')
+    await commitProject('Snow', 'alice at 13:00', 'main', 'alice')
+    await syncSharedProject('Snow')
+    setUsername('bob')
+    fs.writeFileSync(path.join(getProjectPath('Snow'), 'Snow.als'), 'Snow by bob at 13:00')
+    await commitProject('Snow', 'bob at 13:00', 'main', 'bob')
+    await syncSharedProject('Snow')
+    const bobIds = versions('Snow')
+    expect(new Set(bobIds).size).toBe(bobIds.length)
+    expect(bobIds.filter((id) => id.startsWith('20260201130000-'))).toHaveLength(2)
+
+    setUsername('alice')
+    await syncSharedProject('Snow')
+    expect(versions('Snow').sort()).toEqual([...bobIds].sort())
+  })
+
   it('lets the owner see and manage people', async () => {
     setUsername('alice')
     const details = await getSpaceDetails(aliceFolder)
