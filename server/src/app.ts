@@ -76,8 +76,10 @@ export function createHub(opts: HubOptions) {
   }
 
   async function authorize(req: http.IncomingMessage, url: URL, need: HubRole): Promise<Access> {
+    // X-Hub-Token is what DAWLab sends; Authorization: Bearer also works (some
+    // proxies in front of a hub rewrite or drop Authorization).
     const header = req.headers.authorization ?? ''
-    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
+    const token = String(req.headers['x-hub-token'] ?? '').trim() || (header.startsWith('Bearer ') ? header.slice(7).trim() : '')
     if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) throw HIDDEN
     const access = await storage.getJson<Access>(keys.token(token))
     if (!access) throw HIDDEN

@@ -191,7 +191,7 @@ describe('DAWLab Hub sharing', () => {
 
     // And the listener token can't read project files or change history.
     const token = listenUrl.split('/s/')[1]
-    const auth = { Authorization: `Bearer ${token}` }
+    const auth = { 'X-Hub-Token': token }
     expect((await fetch(`${hubUrl}/api/project/commits/${first}/filemap`, { headers: auth })).status).toBe(403)
     expect((await fetch(`${hubUrl}/api/project/log`, { method: 'PUT', headers: auth, body: '{}' })).status).toBe(403)
   })
@@ -200,6 +200,7 @@ describe('DAWLab Hub sharing', () => {
     const probes: Array<[string, RequestInit?]> = [
       ['/'], ['/healthz'], ['/s/abcdefghijklmnopqrstuvwx'], ['/api/project'],
       ['/api/project', { headers: { Authorization: 'Bearer abcdefghijklmnopqrstuvwx' } }],
+      ['/api/project', { headers: { 'X-Hub-Token': 'abcdefghijklmnopqrstuvwx' } }],
       ['/api/projects', { method: 'POST', body: '{}' }],
       ['/api/projects', { method: 'POST', headers: { 'X-Hub-Key': 'nope' }, body: '{}' }],
       ['/api/project/objects/' + 'a'.repeat(64), { method: 'PUT', body: 'x' }],
@@ -218,7 +219,7 @@ describe('DAWLab Hub sharing', () => {
     setUsername('alice')
     const token = getProjectRemote(name)!.token
     const res = await fetch(`${hubUrl}/api/project/objects/${'0'.repeat(64)}`, {
-      method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: 'not that',
+      method: 'PUT', headers: { 'X-Hub-Token': token }, body: 'not that',
     })
     expect(res.status).toBe(400)
   })

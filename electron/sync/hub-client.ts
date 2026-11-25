@@ -114,7 +114,7 @@ class HubClient {
   private async request(p: string, init: RequestInit & { duplex?: 'half' } = {}): Promise<Response> {
     const res = await fetch(`${this.hubUrl}/api${p}`, {
       ...init,
-      headers: { Authorization: `Bearer ${this.token}`, ...(init.headers as Record<string, string>) },
+      headers: { 'X-Hub-Token': this.token, ...(init.headers as Record<string, string>) },
     })
     if (!res.ok) throw await hubError(res, 'This link is not valid on this hub (it may have been revoked, or the hub address is wrong).')
     return res
