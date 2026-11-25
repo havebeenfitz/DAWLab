@@ -326,6 +326,25 @@ describe('Shared folders', () => {
     expect(listLocalSpaces()[0].lastError).toMatch(/no longer have access/)
   })
 
+  it('lets a removed member be invited again: same folder, and the history catches up', async () => {
+    setUsername('alice')
+    const expected = Object.fromEntries(['Snow', 'Intro', 'Lodge'].map((n) => [n, versions(n).length]))
+    const again = (await createInvite(aliceFolder, 'listen')).code
+    setUsername('carol')
+    // The old record is still on Carol's Mac, but its access is gone, so the new invite is accepted.
+    expect((await previewInvite(again)).space.name).toBe('Album')
+    const result = await joinSpace(again, path.join(work, 'carol'))
+    expect(result.folderId).toBe(carolFolder)
+    expect(result.space.memberId).not.toBe(carolMemberId)
+    expect(listLocalSpaces()).toHaveLength(1)
+    for (const [name, n] of Object.entries(expected)) expect(versions(name)).toHaveLength(n)
+    // Still a member now, so the same folder can't be joined twice.
+    setUsername('alice')
+    const third = (await createInvite(aliceFolder, 'listen')).code
+    setUsername('carol')
+    await expect(previewInvite(third)).rejects.toThrow(/already in/)
+  })
+
   it('lets a member leave; their copies stay', async () => {
     setUsername('bob')
     await leaveSpace(bobFolder)

@@ -315,8 +315,24 @@ export async function previewInvite(input: string): Promise<InvitePreview & { hu
   })
   if (!res.ok) throw await hubError(res, 'This invite is not valid. It may have expired or been used up; ask for a new one.')
   const preview = (await res.json()) as InvitePreview
-  if (findJoined(hubUrl, preview.space.id)) throw new Error(`You're already in “${preview.space.name}”. It's in the Shared section of your Library.`)
+  const joined = findJoined(hubUrl, preview.space.id)
+  if (joined && (await stillMember(joined))) {
+    throw new Error(`You're already in “${preview.space.name}”. It's in the Shared section of your Library.`)
+  }
   return { ...preview, hubUrl }
+}
+
+/**
+ * False when the hub no longer knows this Mac's token: the owner removed you.
+ * A network error is not proof of that, so it counts as still a member.
+ */
+async function stillMember(space: LocalSpace): Promise<boolean> {
+  try {
+    const res = await fetch(`${space.hubUrl}/api/space`, { headers: { 'X-Hub-Token': space.token } })
+    return res.status !== 404
+  } catch {
+    return true
+  }
 }
 
 const findJoined = (hubUrl: string, spaceId: string) =>
@@ -336,8 +352,13 @@ export async function joinSpace(input: string, parentDir: string, onProgress: Sy
   if (!res.ok) throw await hubError(res, 'This invite is not valid. It may have expired or been used up; ask for a new one.')
   const joined = (await res.json()) as JoinResponse
 
+  // Invited again after being removed: keep the folder and the local copies,
+  // take the new access, and sync so everything missed since comes down.
   const already = findJoined(hubUrl, joined.space.id)
-  if (already) return syncSpace(already.folderId, onProgress)
+  if (already) {
+    writeSpace({ ...already, token: joined.token, memberId: joined.me.id, role: joined.me.role, name: joined.space.name, lastError: undefined })
+    return syncSpace(already.folderId, onProgress)
+  }
 
   const folder = folderManager().createFolder(joined.space.name, null)
   writeSpace({
