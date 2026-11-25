@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Copy, Check, FolderUp } from 'lucide-react';
 import { Dialog } from '@/components/ui/Dialog';
 import { hub, errorText, onHubProgress, relativeTime, type ProjectRemote } from './hub';
@@ -27,6 +27,10 @@ export function ShareProjectDialog({ projectName, onClose, onShareFolder }: Prop
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
 
+  // Only a new project should reload the dialog, not a new callback identity from the parent.
+  const onShareFolderRef = useRef(onShareFolder);
+  onShareFolderRef.current = onShareFolder;
+
   useEffect(() => {
     if (!projectName) return;
     let cancelled = false;
@@ -34,7 +38,7 @@ export function ShareProjectDialog({ projectName, onClose, onShareFolder }: Prop
     (async () => {
       const shared = await hub.getProjectFolder(projectName).catch(() => null);
       if (cancelled) return;
-      if (shared) { onShareFolder(shared.folderId, shared.name); return; }
+      if (shared) { onShareFolderRef.current(shared.folderId, shared.name); return; }
       const [remote, context] = await Promise.all([
         hub.getRemote(projectName).catch(() => null),
         window.ipcRenderer.invoke('hub-project-share-context', projectName) as Promise<Context | null>,
@@ -44,7 +48,7 @@ export function ShareProjectDialog({ projectName, onClose, onShareFolder }: Prop
       setCtx(context);
     })();
     return () => { cancelled = true; };
-  }, [projectName, onShareFolder]);
+  }, [projectName]);
 
   useEffect(() => (projectName ? onHubProgress(projectName, setStatus) : undefined), [projectName]);
 

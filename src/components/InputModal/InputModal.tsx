@@ -17,7 +17,7 @@ interface InputModalProps {
 
 export const InputModal = ({
     isOpen,
-    title: _title,
+    title,
     label,
     value,
     onChange,
@@ -40,8 +40,9 @@ export const InputModal = ({
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
             <button className="modal-close" onClick={onClose} aria-label="Close" />
+                <div className="modal-header"><h2>{title}</h2></div>
                 <form onSubmit={handleSubmit} className="modal-form">
                     <div className="form-field">
                         <label>{label} <span className="required">*</span></label>

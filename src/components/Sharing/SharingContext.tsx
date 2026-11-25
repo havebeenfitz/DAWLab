@@ -43,6 +43,11 @@ export function SharingProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  const handOverToFolder = useCallback((folderId: string, folderName: string) => {
+    setProjectTarget(null);
+    setShareTarget({ folderId, folderName });
+  }, []);
+
   useEffect(() => onSyncStatus((s) => {
     setStatus((prev) => ({ ...prev, [s.folderId]: s }));
     if (s.state === 'syncing') return;
@@ -88,7 +93,7 @@ export function SharingProvider({ children }: { children: ReactNode }) {
       <ShareProjectDialog
         projectName={projectTarget}
         onClose={() => setProjectTarget(null)}
-        onShareFolder={(folderId, folderName) => { setProjectTarget(null); setShareTarget({ folderId, folderName }); }}
+        onShareFolder={handOverToFolder}
       />
       <JoinFolderDialog
         prefill={joinPrefill}

@@ -18,10 +18,12 @@ interface ContextMenuProps {
 export const ContextMenu = forwardRef<HTMLDivElement, ContextMenuProps>(
   ({ x, y, items }, ref) => {
     return (
-      <div ref={ref} className="context-menu" style={{ top: y, left: x }}>
+      <div ref={ref} className="context-menu" style={{ top: y, left: x }} role="menu">
         {items.map((item, index) => (
           <button
             key={index}
+            type="button"
+            role="menuitem"
             onClick={item.onClick}
             className={`context-menu-item ${item.danger ? "danger" : ""}`}
           >

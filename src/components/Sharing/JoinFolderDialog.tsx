@@ -42,8 +42,8 @@ export function JoinFolderDialog({ prefill, onClose, onJoined }: Props) {
   useEffect(() => {
     if (!open) return;
     setPreview(null);
-    if (isLegacyLink(input) || !looksLikeInvite(input)) { setError(''); return; }
-    const mine = ++seq.current;
+    const mine = ++seq.current; // any earlier check is now stale
+    if (isLegacyLink(input) || !looksLikeInvite(input)) { setError(''); setChecking(false); return; }
     setChecking(true);
     const t = setTimeout(async () => {
       try {
