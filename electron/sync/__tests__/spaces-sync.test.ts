@@ -58,7 +58,7 @@ import { rollbackProject } from '../../dawvcs/operations/rollback'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, getSpaceForProject, listLocalSpaces,
   changeMemberRole, removeMember, previewInvite, leaveSpace, parseInvite, revokeInvite, stopSharing, listInvites, getServerStorage,
-  syncSharedProject, countIncomingVersions, findSharedProject,
+  syncSharedProject, countIncomingVersions, findSharedProject, getLocalSpace,
 } from '../spaces-client'
 import { saveProjectRemote } from '../hub-client'
 import { createHub } from '../../../server/src/app.ts'
@@ -409,7 +409,7 @@ describe('Shared folders', () => {
     expect(getSpaceForProject('Mine')?.folderId).toBe(joined.folderId)
   })
 
-  it('leaves projects that were shared on their own before folders alone', async () => {
+  it('does not add a project opened from someone else\'s single-project link, and says why', async () => {
     setUsername('alice')
     const dir = path.join(work, 'alice', 'Old')
     fs.mkdirSync(dir, { recursive: true })
@@ -417,8 +417,14 @@ describe('Shared folders', () => {
     await initProject('Old', dir, { storageMode: 'project', author: 'alice' })
     saveProjectRemote('Old', { hubUrl, token: 'x'.repeat(32), role: 'edit', editUrl: `${hubUrl}/s/${'x'.repeat(32)}` })
     getUserConfigManager('alice').moveProject(projectId('Old'), aliceFolder)
-    expect((await syncSpace(aliceFolder)).uploadedProjects).toEqual([])
+    const r = await syncSpace(aliceFolder)
+    expect(r.uploadedProjects).toEqual([])
+    expect(r.failed).toEqual([{ project: 'Old', error: expect.stringMatching(/someone else's share link/) }])
+    expect(getLocalSpace(aliceFolder)?.lastError).toMatch(/^Old came from someone else's share link/)
     expect(getSpaceForProject('Nope')).toBeNull()
+    getUserConfigManager('alice').moveProject(projectId('Old'), null)
+    expect((await syncSpace(aliceFolder)).failed).toEqual([])
+    expect(getLocalSpace(aliceFolder)?.lastError).toBeUndefined()
   })
 
   it('stops sharing for everyone when the owner says so; copies stay', async () => {

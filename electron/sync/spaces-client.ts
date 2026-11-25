@@ -23,7 +23,7 @@ import {
   type SpaceResponse, type SpaceRole, type SharedLog,
 } from '../../shared/hub-protocol'
 import {
-  HubClient, checkOutLatest, createLocalProject, getHubSettings, getProjectRemote, hubError,
+  HubClient, checkOutLatest, createLocalProject, getHubSettings, getProjectRemote, removeProjectRemote, hubError,
   normalizeHubUrl, syncProjectWith, type SyncProgress,
 } from './hub-client'
 
@@ -190,7 +190,7 @@ export async function syncSpace(folderId: string, onProgress: SyncProgress = () 
       }
     }
 
-    space = { ...space, lastSync: new Date().toISOString(), lastError: result.failed[0]?.error, accessClosed: undefined }
+    space = { ...space, lastSync: new Date().toISOString(), lastError: describeFailures(result.failed), accessClosed: undefined }
     writeSpace(space)
     return { ...result, space }
   } catch (err) {
@@ -228,6 +228,9 @@ async function linkKeptCopies(space: LocalSpace, remoteProjects: SpaceProject[])
   return next
 }
 
+/** A single-project share made on this Mac (Share created both links), not one opened from a link. */
+const sharedFromThisMac = (remote: { editUrl?: string; listenUrl?: string }) => !!remote.editUrl && !!remote.listenUrl
+
 async function uploadNewLocalProjects(
   space: LocalSpace, onProgress: SyncProgress, result: SpaceSyncResult,
 ): Promise<LocalSpace> {
@@ -238,13 +241,25 @@ async function uploadNewLocalProjects(
   let projects = { ...space.projects }
   for (const [name, entry] of Object.entries<any>(registry)) {
     if (folderMap[entry.project_id] !== space.folderId || mapped.has(name)) continue
-    if (getProjectRemote(name)) continue // shared on its own before folders existed; leave it be
+    const remote = getProjectRemote(name)
+    if (remote && !sharedFromThisMac(remote)) {
+      // Opened from someone else's single-project link: it isn't ours to add to the folder.
+      result.failed.push({ project: name, error: `${name} came from someone else's share link, so it can't be added to this folder. Move it out of the folder, or ask its owner to add it.` })
+      continue
+    }
     const log = loadLocalProjectLog(name)
     if (!log) continue
     onProgress(`Adding ${name} to the shared folder...`)
-    const { project } = await call<{ project: SpaceProject }>(space, '/space/projects', 'POST', { log: toSharedLog(log) })
-    projects = { ...projects, [project.id]: name }
-    result.uploadedProjects.push(name)
+    try {
+      const { project } = await call<{ project: SpaceProject }>(space, '/space/projects', 'POST', { log: toSharedLog(log) })
+      projects = { ...projects, [project.id]: name }
+      writeSpace({ ...space, projects })
+      // You shared it on its own before folders existed; from now on it travels with the folder.
+      if (remote) removeProjectRemote(name)
+      result.uploadedProjects.push(name)
+    } catch (err) {
+      result.failed.push({ project: name, error: messageOf(err) })
+    }
   }
   const next = { ...space, projects }
   writeSpace(next)
@@ -621,6 +636,13 @@ function defaultRoot(spaceName: string) {
 function safeFolderName(name: string) {
   const cleaned = String(name || '').replace(/[\\/:*?"<>|\p{Cc}]/gu, '_').replace(/^[.\s]+/, '').trim().slice(0, 80)
   return cleaned || 'Shared folder'
+}
+
+/** What went wrong with individual projects, for the folder bar: the first problem, and how many more. */
+export function describeFailures(failed: Array<{ project: string; error: string }>): string | undefined {
+  if (!failed.length) return undefined
+  const first = failed[0].error.includes(failed[0].project) ? failed[0].error : `${failed[0].project}: ${failed[0].error}`
+  return failed.length === 1 ? first : `${first} (and ${failed.length - 1} more project${failed.length === 2 ? '' : 's'})`
 }
 
 const messageOf = (err: unknown) =>

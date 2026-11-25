@@ -53,10 +53,10 @@ import { initProject } from '../../dawvcs/operations/init'
 import { commitProject } from '../../dawvcs/operations/commit'
 import { loadLocalProjectLog } from '../../dawvcs/core/log'
 import { loadRegistry, getProjectPath } from '../../dawvcs/core/registry'
-import { saveHubSettings } from '../hub-client'
+import { saveHubSettings, shareProject, getProjectRemote } from '../hub-client'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, listLocalSpaces, getLocalSpace,
-  removeMember, previewInvite, leaveSpace, revokeInvite, listInvites, changeMemberRole, stopSharing,
+  removeMember, previewInvite, leaveSpace, revokeInvite, listInvites, changeMemberRole, stopSharing, describeFailures,
 } from '../spaces-client'
 import { createHub } from '../../../server/src/app.ts'
 import { FsStorage } from '../../../server/src/storage.ts'
@@ -432,6 +432,46 @@ describe('when access is closed', () => {
     await expect(syncSpace(joined.folderId)).rejects.toThrow()
     expect(getLocalSpace(joined.folderId)?.accessClosed).toBeFalsy()
     expect(getLocalSpace(joined.folderId)?.lastError).toBeTruthy()
+  })
+})
+
+describe('a project you shared on its own before shared folders', () => {
+  it('joins the folder\'s share when it is in the folder, with all its versions, and collaborators get it', async () => {
+    const w = await world('legacy')
+    as(w.owner)
+    const dir = path.join(work, 'legacy', w.owner, 'interlude')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'interlude.als'), 'v1')
+    await initProject('interlude', dir, { storageMode: 'project', author: w.owner })
+    fs.writeFileSync(path.join(dir, 'interlude.als'), 'v2')
+    await commitProject('interlude', 'second', 'main', w.owner)
+    await shareProject('interlude')
+    expect(getProjectRemote('interlude')).not.toBeNull()
+
+    const bob = w.u('bob')
+    const joined = await w.join(bob, (await w.invite()).code)
+    as(bob)
+    expect(projectNames()).toEqual(['Intro', 'Snow'])
+
+    as(w.owner)
+    getUserConfigManager(w.owner).moveProject(projectId('interlude'), w.folderId)
+    const r = await syncSpace(w.folderId)
+    expect(r.failed).toEqual([])
+    expect(r.uploadedProjects).toEqual(['interlude'])
+    expect(getProjectRemote('interlude')).toBeNull()
+
+    as(bob)
+    const got = await syncSpace(joined.folderId)
+    expect(got.addedProjects).toEqual(['interlude'])
+    expect(versionCount('interlude')).toBe(2)
+    expect(fs.readFileSync(path.join(getProjectPath('interlude'), 'interlude.als'), 'utf8')).toBe('v2')
+  })
+
+  it('one project that fails does not stop the others, and the folder bar says which', async () => {
+    expect(describeFailures([])).toBeUndefined()
+    expect(describeFailures([{ project: 'lodge', error: 'Server full' }])).toBe('lodge: Server full')
+    expect(describeFailures([{ project: 'lodge', error: 'lodge is broken' }, { project: 'snow', error: 'x' }, { project: 'test', error: 'y' }]))
+      .toBe('lodge is broken (and 2 more projects)')
   })
 })
 
