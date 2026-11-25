@@ -812,6 +812,13 @@
   align-items: center;
   padding: 0 40px;
   z-index: 100;
+  /* Spans the whole window bottom; only its own controls take clicks, so the
+     sidebar's Settings button underneath stays clickable. */
+  pointer-events: none;
+}
+
+.library-footer > * {
+  pointer-events: auto;
 }
 
 .footer-left {
