@@ -8,7 +8,7 @@
  * Versions saved before parents were recorded have no `parent` and are always
  * treated as a straight line. Dependency-free: used by the hub and the app.
  */
-import type { ForkInfo, SharedBranch, SharedCommit, SharedLog } from './hub-protocol'
+import type { ForkDismissal, ForkInfo, SharedBranch, SharedCommit, SharedLog } from './hub-protocol'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -156,7 +156,7 @@ export interface ParallelVersion {
 }
 
 /** Fork alternatives that split from `branch` and haven't been made main yet. */
-export function openParallelVersions(log: { branches?: any[] }, branch: string): ParallelVersion[] {
+export function openParallelVersions(log: { branches?: any[] }, branch: string, viewer?: string): ParallelVersion[] {
   const adopted = new Set<string>()
   for (const b of log.branches ?? []) for (const c of b.commits ?? []) if (c.merged_from) adopted.add(String(c.merged_from))
   const out: ParallelVersion[] = []
@@ -165,7 +165,16 @@ export function openParallelVersions(log: { branches?: any[] }, branch: string):
     const commits = [...b.commits].sort((x: any, y: any) => String(x.timestamp).localeCompare(String(y.timestamp)))
     const tip = commits[commits.length - 1]
     if (commits.some((c: any) => adopted.has(String(c.commit_id)))) continue
+    // Dismissed by you for this very version; a newer version in it brings the notice back.
+    if (viewer && dismissalOf(b, String(tip.commit_id), viewer)) continue
     out.push({ branch: b.name, author: b.forkOf.author, tip, from: b.forkOf.branch, parent: b.forkOf.parent })
   }
   return out
 }
+
+/** The dismissal of `tip` in fork alternative `branch` (by `by`, or by anyone), if there is one. */
+export function dismissalOf(branch: { dismissed?: ForkDismissal[] } | undefined, tip: string, by?: string): ForkDismissal | null {
+  const list = (branch?.dismissed ?? []).filter((d) => d.tip === tip && (!by || d.by === by))
+  return list.length ? list[list.length - 1] : null
+}
+

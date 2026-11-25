@@ -37,10 +37,35 @@ export interface ForkInfo {
   author: string
 }
 
+/** Someone hid the "parallel version" notice for one version of a fork alternative, with a reason. */
+export interface ForkDismissal {
+  /** Who dismissed it (their name, as authors are recorded). */
+  by: string
+  /** The fork's newest version at the time; a newer one brings the notice back. */
+  tip: string
+  at: string
+  comment: string
+}
+
 export interface SharedBranch {
   name: string
   commits: SharedCommit[]
   forkOf?: ForkInfo
+  dismissed?: ForkDismissal[]
+}
+
+/** Dismissals that are well formed, one per person and version (the latest wins). */
+export function cleanDismissals(list: unknown): ForkDismissal[] {
+  if (!Array.isArray(list)) return []
+  const byKey = new Map<string, ForkDismissal>()
+  for (const d of list as any[]) {
+    if (!d || typeof d.by !== 'string' || typeof d.tip !== 'string' || !d.by || !d.tip) continue
+    const item = { by: d.by.slice(0, 100), tip: d.tip.slice(0, 64), at: String(d.at ?? '').slice(0, 40), comment: String(d.comment ?? '').slice(0, 1000) }
+    const key = `${item.by}\u0000${item.tip}`
+    const prev = byKey.get(key)
+    if (!prev || prev.at <= item.at) byKey.set(key, item)
+  }
+  return [...byKey.values()].sort((a, b) => a.at.localeCompare(b.at))
 }
 
 /** The part of a project log that is shared. Local-only state (checkout, draft, paths) stays on each machine. */
@@ -130,6 +155,7 @@ export function toSharedLog(log: any): SharedLog {
     ...(b.forkOf && typeof b.forkOf === 'object' && b.forkOf.branch && b.forkOf.parent
       ? { forkOf: { branch: String(b.forkOf.branch), parent: String(b.forkOf.parent), author: String(b.forkOf.author ?? '') } }
       : {}),
+    ...(cleanDismissals(b.dismissed).length ? { dismissed: cleanDismissals(b.dismissed) } : {}),
   }))
   return out as SharedLog
 }
@@ -156,6 +182,9 @@ export function mergeLogs<T extends { branches?: any[] }>(base: T, incoming: Sha
       branches.push(branch)
     }
     if (inBranch.forkOf && !branch.forkOf) branch.forkOf = { ...inBranch.forkOf }
+    if (inBranch.dismissed?.length || branch.dismissed?.length) {
+      branch.dismissed = cleanDismissals([...(branch.dismissed ?? []), ...(inBranch.dismissed ?? [])])
+    }
     for (const inCommit of inBranch.commits ?? []) {
       const idx = branch.commits.findIndex((c: any) => String(c.commit_id) === inCommit.commit_id)
       if (idx === -1) branch.commits.push({ ...inCommit })

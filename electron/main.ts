@@ -71,7 +71,7 @@ import { runningDawApp } from "./dawvcs/core/daw-running";
 import { requestProjectSync } from "./sync/auto-sync";
 import { parseDeepLink } from "./deep-link";
 import { findVersionAudio } from "./dawvcs/operations/version-audio";
-import { makeParallelVersionMain } from "./dawvcs/operations/parallel";
+import { makeParallelVersionMain, dismissParallelVersion } from "./dawvcs/operations/parallel";
 import { fileURLToPath } from "node:url";
 
 import path from "node:path";
@@ -733,6 +733,11 @@ ipcMain.handle('get-version-changes', async (_ev, projectName: string, commitId:
 });
 
 // A parallel version (someone saved on top of the same version) becomes the next version of its alternative.
+ipcMain.handle('dismiss-parallel-version', async (_ev, projectName: string, forkBranch: string, by: string, comment: string) => {
+  const result = dismissParallelVersion(projectName, forkBranch, by, comment);
+  requestProjectSync(projectName).catch(() => undefined);
+  return result;
+});
 ipcMain.handle('make-parallel-version-main', async (_ev, projectName: string, forkBranch: string, author: string) => {
   const result = await makeParallelVersionMain(projectName, forkBranch, author);
   requestProjectSync(projectName).catch(() => undefined);

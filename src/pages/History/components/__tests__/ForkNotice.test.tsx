@@ -17,4 +17,10 @@ describe('ForkNotice', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Go to main' }));
     expect(onGoTo).toHaveBeenCalledWith('main');
   });
+
+  it('tells the collaborator who dismissed it and why, and that it stays', () => {
+    render(<ForkNotice forkOf={{ branch: 'main', author: 'elena' }} branchName="elena · 25 Nov" fromCount={3} onGoTo={vi.fn()} dismissed={{ by: 'max', comment: 'Keeping mine' }} />);
+    expect(screen.getByRole('note')).toHaveTextContent('max dismissed this parallel version: “Keeping mine”. It stays here, and you can keep working in it.');
+  });
 });
+

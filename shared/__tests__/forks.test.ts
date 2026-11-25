@@ -110,3 +110,46 @@ describe('telling you your version went into a parallel alternative', async () =
     expect(placementMoves(adoptHubPlacement(placed as any, placed), placed)).toEqual([])
   })
 })
+
+describe('dismissing a parallel version', async () => {
+  const { dismissalOf } = await import('../forks')
+  const { cleanDismissals } = await import('../hub-protocol')
+  const withFork = (dismissed: any[] = [], tipTs = '20261125120000') => ({
+    branches: [
+      { name: 'main', commits: [v('base', 'max', '20260201100000'), v('A', 'max', '20260201110000', 'base')] },
+      { name: 'bob · 25 Nov', forkOf: { branch: 'main', parent: 'base', author: 'bob' }, commits: [v('B', 'bob', tipTs, 'base')], dismissed },
+    ],
+  })
+
+  it('hides the notice only for whoever dismissed that version', () => {
+    const log = withFork([{ by: 'max', tip: 'B', at: '2026-11-25T12:00:00Z', comment: 'keeping mine' }])
+    expect(openParallelVersions(log, 'main', 'max')).toEqual([])
+    expect(openParallelVersions(log, 'main', 'ann')).toHaveLength(1)
+    expect(openParallelVersions(log, 'main')).toHaveLength(1)
+    expect(dismissalOf(log.branches[1], 'B')).toMatchObject({ by: 'max', comment: 'keeping mine' })
+  })
+
+  it('comes back when a newer version is saved in the alternative', () => {
+    const log = withFork([{ by: 'max', tip: 'B', at: '2026-11-25T12:00:00Z', comment: 'no' }])
+    log.branches[1].commits.push(v('B2', 'bob', '20261125130000', 'B'))
+    expect(openParallelVersions(log, 'main', 'max').map((p) => p.tip.commit_id)).toEqual(['B2'])
+  })
+
+  it('travels through the shared log and merges from both sides without duplicates', () => {
+    const a = { by: 'max', tip: 'B', at: '2026-11-25T12:00:00Z', comment: 'first' }
+    const b = { by: 'ann', tip: 'B', at: '2026-11-25T12:05:00Z', comment: 'me too' }
+    const shared = toSharedLog({ id: 'p', name: 'S', daw: 'L', ...withFork([a]) })
+    expect(shared.branches[1].dismissed).toEqual([a])
+    const merged = mergeLogs(withFork([b]) as any, shared)
+    expect(merged.branches[1].dismissed).toEqual([a, b])
+    expect(mergeLogs(merged, shared).branches[1].dismissed).toEqual([a, b])
+  })
+
+  it('keeps only well-formed dismissals, the latest per person and version', () => {
+    expect(cleanDismissals([
+      { by: 'max', tip: 'B', at: '1', comment: 'old' }, { by: 'max', tip: 'B', at: '2', comment: 'new' },
+      { by: '', tip: 'B' }, null, { tip: 'B' }, 'x',
+    ])).toEqual([{ by: 'max', tip: 'B', at: '2', comment: 'new' }])
+    expect(cleanDismissals(undefined)).toEqual([])
+  })
+})

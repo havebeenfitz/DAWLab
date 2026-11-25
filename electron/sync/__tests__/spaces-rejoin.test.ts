@@ -55,6 +55,9 @@ import { loadLocalProjectLog } from '../../dawvcs/core/log'
 import { loadRegistry, getProjectPath } from '../../dawvcs/core/registry'
 import { saveHubSettings, shareProject, getProjectRemote, onParallelPlacement } from '../hub-client'
 import { rollbackProject } from '../../dawvcs/operations/rollback'
+import { dismissParallelVersion } from '../../dawvcs/operations/parallel'
+import { getProjectStorageDirs } from '../../dawvcs/core/storage-location'
+import { openParallelVersions, dismissalOf } from '../../../shared/forks'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, listLocalSpaces, getLocalSpace,
   removeMember, previewInvite, leaveSpace, revokeInvite, listInvites, changeMemberRole, stopSharing, describeFailures,
@@ -521,6 +524,50 @@ describe('saving while someone else saves (the Elena case)', () => {
     await syncSpace(w.folderId)
     expect(ids()).toEqual(mine)
     onParallelPlacement(() => {})
+  })
+})
+
+describe('dismissing a parallel version, between two Macs', () => {
+  it('hides it for the owner, keeps the alternative, and the collaborator sees why; a new version brings it back', async () => {
+    const w = await world('dismiss')
+    const bob = w.u('bob')
+    const joined = await w.join(bob, (await w.invite()).code)
+    // Both save on top of the same version: bob's goes into a parallel alternative.
+    as(w.owner)
+    fs.writeFileSync(path.join(getProjectPath('Snow'), 'Snow.als'), 'owner take')
+    await commitProject('Snow', 'owner take', 'main', w.owner)
+    await syncSpace(w.folderId)
+    as(bob)
+    fs.writeFileSync(path.join(getProjectPath('Snow'), 'Snow.als'), 'bob take')
+    await commitProject('Snow', 'bob take', 'main', bob)
+    await syncSpace(joined.folderId)
+    as(w.owner)
+    await syncSpace(w.folderId)
+    const [p] = openParallelVersions(loadLocalProjectLog('Snow'), 'main', w.owner)
+    expect(p.author).toBe(bob)
+
+    expect(() => dismissParallelVersion('Snow', p.branch, w.owner, '   ')).toThrow(/Say in a few words why/)
+    dismissParallelVersion('Snow', p.branch, w.owner, 'Keeping my take')
+    expect(openParallelVersions(loadLocalProjectLog('Snow'), 'main', w.owner)).toEqual([])
+    await syncSpace(w.folderId)
+
+    // Bob: the alternative is still his, he sees the dismissal and the comment on his version.
+    as(bob)
+    await syncSpace(joined.folderId)
+    const fork = loadLocalProjectLog('Snow').branches.find((b: any) => b.name === p.branch)
+    expect(fork.commits.map((c: any) => c.message)).toEqual(['bob take'])
+    expect(dismissalOf(fork, String(p.tip.commit_id))).toMatchObject({ by: w.owner, comment: 'Keeping my take' })
+    const commentsFile = path.join(getProjectStorageDirs('Snow').commitsDir, 'Snow', String(p.tip.commit_id), 'comments.json')
+    expect(JSON.parse(fs.readFileSync(commentsFile, 'utf8')).comments.map((c: any) => `${c.username}: ${c.comment}`))
+      .toContain(`${w.owner}: Dismissed this parallel version: Keeping my take`)
+
+    // Bob keeps working in it: the notice comes back for the owner.
+    fs.writeFileSync(path.join(getProjectPath('Snow'), 'Snow.als'), 'bob take 2')
+    await commitProject('Snow', 'bob take 2', p.branch, bob)
+    await syncSpace(joined.folderId)
+    as(w.owner)
+    await syncSpace(w.folderId)
+    expect(openParallelVersions(loadLocalProjectLog('Snow'), 'main', w.owner).map((x) => x.tip.message)).toEqual(['bob take 2'])
   })
 })
 

@@ -84,4 +84,32 @@ describe('ParallelVersionBanner', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Make main' }));
     await waitFor(() => expect(notify.error).toHaveBeenCalledWith('Couldn’t make it main', 'disk full'));
   });
+
+  describe('Dismiss…', () => {
+    it('needs a reason, then dismisses with it and reloads', async () => {
+      invoke.mockResolvedValue({ tip: 'B' });
+      const props = renderBanner();
+      fireEvent.click(screen.getByRole('button', { name: /Dismiss…/ }));
+      const dialog = screen.getByRole('dialog', { name: 'Dismiss bob’s parallel version?' });
+      expect(dialog).toHaveTextContent('The alternative stays for everyone');
+      const go = screen.getByRole('button', { name: 'Dismiss' });
+      expect(go).toBeDisabled();
+      fireEvent.change(screen.getByLabelText(/Why\?/), { target: { value: '  Keeping my chorus  ' } });
+      expect(go).toBeEnabled();
+      fireEvent.click(go);
+      await waitFor(() => expect(props.onChanged).toHaveBeenCalled());
+      expect(invoke).toHaveBeenCalledWith('dismiss-parallel-version', 'Song', 'bob · 25 Nov', 'max', 'Keeping my chorus');
+      expect(notify.success).toHaveBeenCalledWith('Parallel version dismissed', expect.stringMatching(/stays; bob sees your reason/));
+    });
+
+    it('shows a failure in the dialog', async () => {
+      invoke.mockRejectedValue(new Error('Set your name in Settings first.'));
+      renderBanner();
+      fireEvent.click(screen.getByRole('button', { name: /Dismiss…/ }));
+      fireEvent.change(screen.getByLabelText(/Why\?/), { target: { value: 'x' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Set your name in Settings first.');
+    });
+  });
 });
+

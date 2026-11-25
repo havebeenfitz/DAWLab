@@ -22,7 +22,7 @@ import { useProjectAccess } from "@/hooks/useProjectAccess";
 import { useSharedProjectSync } from "@/hooks/useSharedProjectSync";
 import { ParallelVersionBanner } from "./components/ParallelVersionBanner";
 import { ForkNotice } from "./components/ForkNotice";
-import { openParallelVersions } from "../../../shared/forks";
+import { openParallelVersions, dismissalOf } from "../../../shared/forks";
 import FeedbackView from "@/components/Feedback/FeedbackView";
 import { BranchMenu } from "@/components/BranchMenu/BranchMenu";
 import { TagManagerPopover } from "@/components/TagManagerPopover/TagManagerPopover";
@@ -297,7 +297,7 @@ export const History: React.FC = () => {
       {!showSettings && (
         <ParallelVersionBanner
           projectName={passedProject || ""}
-          versions={openParallelVersions(projectLog, selectedBranch || "main")}
+          versions={openParallelVersions(projectLog, selectedBranch || "main", username || undefined)}
           currentTipId={newestOn(projectLog, selectedBranch || "main")}
           username={username || "You"}
           onChanged={log.refreshProjectLog}
@@ -308,6 +308,7 @@ export const History: React.FC = () => {
         const from = current?.forkOf ? projectLog?.branches?.find((b: any) => b.name === current.forkOf.branch) : null;
         return (
           <ForkNotice
+            dismissed={current?.forkOf ? dismissalOf(current, String(newestOn(projectLog, selectedBranch || "main") ?? "")) : null}
             forkOf={from ? current.forkOf : null}
             branchName={selectedBranch || "main"}
             fromCount={from?.commits?.length ?? 0}

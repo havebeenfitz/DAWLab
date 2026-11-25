@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { GitFork, Play, Pause, GitCompare, Check } from 'lucide-react';
+import { GitFork, Play, Pause, GitCompare, Check, EyeOff } from 'lucide-react';
 import { Dialog } from '@/components/ui/Dialog';
 import { useLibraryPreview } from '@/hooks/useLibraryPreview';
 import type { ParallelVersion } from '../../../../shared/forks';
@@ -30,6 +30,7 @@ export function ParallelVersionBanner({ projectName, versions, currentTipId, use
   const [comparing, setComparing] = useState<ParallelVersion | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dismissing, setDismissing] = useState<ParallelVersion | null>(null);
   if (versions.length === 0) return null;
 
   const listen = (p: ParallelVersion) => {
@@ -90,12 +91,22 @@ export function ParallelVersionBanner({ projectName, versions, currentTipId, use
                 <button type="button" className="ui-btn ui-btn-sm" onClick={() => setConfirming(p.branch)}>
                   <Check size={13} aria-hidden /> Make main
                 </button>
+                <button type="button" className="ui-btn ui-btn-sm ui-btn-ghost" onClick={() => setDismissing(p)} title="Hide this notice. The alternative stays, and they see your reason">
+                  <EyeOff size={13} aria-hidden /> Dismiss…
+                </button>
               </div>
             )}
           </div>
         );
       })}
       <CompareDialog projectName={projectName} version={comparing} baseId={currentTipId} onClose={() => setComparing(null)} />
+      <DismissDialog
+        projectName={projectName}
+        version={dismissing}
+        username={username}
+        onClose={() => setDismissing(null)}
+        onDone={async () => { setDismissing(null); await onChanged(); }}
+      />
     </div>
   );
 }
@@ -153,3 +164,62 @@ function CompareDialog({ projectName, version, baseId, onClose }: {
     </Dialog>
   );
 }
+
+/** Dismissing needs a reason: it becomes a comment on their version, so they know. */
+function DismissDialog({ projectName, version, username, onClose, onDone }: {
+  projectName: string; version: ParallelVersion | null; username: string; onClose: () => void; onDone: () => Promise<void>;
+}) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { setText(''); setError(''); }, [version]);
+
+  const dismiss = async () => {
+    if (!version || !text.trim()) return;
+    setBusy(true); setError('');
+    try {
+      await window.ipcRenderer.invoke('dismiss-parallel-version', projectName, version.branch, username, text.trim());
+      notify.success('Parallel version dismissed', `The alternative “${version.branch}” stays; ${version.author} sees your reason as a comment.`);
+      await onDone();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={version !== null}
+      title={version ? `Dismiss ${version.author}’s parallel version?` : ''}
+      subtitle="The notice goes away for you. The alternative stays for everyone, and they can keep working in it."
+      onClose={onClose}
+      busy={busy}
+      footer={
+        <>
+          <button type="button" className="ui-btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="button" className="ui-btn ui-btn-primary" onClick={() => { void dismiss(); }} disabled={busy || !text.trim()}>
+            {busy ? 'Dismissing…' : 'Dismiss'}
+          </button>
+        </>
+      }
+    >
+      <div className="ui-field">
+        <label htmlFor="dismiss-reason">Why? {version ? `${version.author} sees this as a comment on “${version.tip.message}”.` : ''}</label>
+        <textarea
+          id="dismiss-reason"
+          className="ui-input"
+          rows={3}
+          maxLength={1000}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="e.g. Keeping my mix of the chorus for now"
+          disabled={busy}
+          data-autofocus
+        />
+      </div>
+      {error && <p className="ui-status ui-status-error" role="alert">{error}</p>}
+    </Dialog>
+  );
+}
+
