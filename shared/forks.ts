@@ -75,6 +75,52 @@ export function placeIncoming(current: SharedLog, incoming: SharedLog): SharedLo
   return { ...incoming, branches: [...kept, ...forks.values()] }
 }
 
+export interface ParallelPlacement {
+  /** Your version that went into a parallel alternative. */
+  commitId: string
+  message: string
+  /** The alternative you saved it on, and the parallel one it is in now. */
+  from: string
+  fork: string
+  /** What someone else saved on the same version meanwhile, if the hub has it. */
+  meanwhile?: { message: string; author: string }
+}
+
+/**
+ * Versions of yours that a sync is about to move into a parallel alternative
+ * (saved on `from` locally, in a fork on the hub), so the app can say so.
+ */
+export function placementMoves(local: { branches?: any[] }, hub: SharedLog): ParallelPlacement[] {
+  const hubBranch = new Map<string, SharedBranch>()
+  const placeOnHub = new Map<string, string>()
+  for (const b of hub.branches ?? []) {
+    hubBranch.set(b.name, b)
+    for (const c of b.commits ?? []) placeOnHub.set(String(c.commit_id), b.name)
+  }
+  const out: ParallelPlacement[] = []
+  for (const b of local.branches ?? []) {
+    for (const c of b.commits ?? []) {
+      const there = placeOnHub.get(String(c.commit_id))
+      const fork = there ? hubBranch.get(there) : undefined
+      if (!there || there === b.name || !fork?.forkOf) continue
+      const other = hubBranch.get(fork.forkOf.branch)?.commits.find(
+        (o) => String(o.parent ?? '') === fork.forkOf!.parent && o.author !== c.author,
+      )
+      out.push({
+        commitId: String(c.commit_id), message: String(c.message ?? ''), from: b.name, fork: there,
+        ...(other ? { meanwhile: { message: String(other.message ?? ''), author: String(other.author ?? '') } } : {}),
+      })
+    }
+  }
+  return out
+}
+
+/** "Saved as a parallel version in ‘bob · 25 Nov’ because ‘conflict’ was saved meanwhile." */
+export function describePlacement(p: ParallelPlacement): string {
+  const why = p.meanwhile ? ` because ${p.meanwhile.author ? `${p.meanwhile.author} saved ` : ''}‘${p.meanwhile.message}’ on ${p.from} meanwhile` : ''
+  return `“${p.message}” was saved as a parallel version in ‘${p.fork}’${why}. Nothing was lost: switch alternatives with ⌘K, and ${p.from} shows it as a parallel version.`
+}
+
 /**
  * After a sync: put local versions where the hub put them (a version of yours
  * that went into a fork alternative leaves the alternative you saved it on),

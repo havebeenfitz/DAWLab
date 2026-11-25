@@ -92,3 +92,21 @@ describe('open parallel versions', () => {
     expect(openParallelVersions(done, 'main')).toEqual([])
   })
 })
+
+describe('telling you your version went into a parallel alternative', async () => {
+  const { placementMoves, describePlacement } = await import('../forks')
+  it('finds your versions the hub put into a fork, and what was saved meanwhile', () => {
+    const local = log({ main: [v('base', 'max', '20260201100000'), v('B', 'bob', '20261125120000', 'base')] })
+    const onHub = mergeLogs(hub, placeIncoming(hub, local))
+    const moves = placementMoves(local, onHub)
+    expect(moves).toEqual([{ commitId: 'B', message: 'B', from: 'main', fork: 'bob · 25 Nov', meanwhile: { message: 'A', author: 'max' } }])
+    expect(describePlacement(moves[0])).toBe('“B” was saved as a parallel version in ‘bob · 25 Nov’ because max saved ‘A’ on main meanwhile. Nothing was lost: switch alternatives with ⌘K, and main shows it as a parallel version.')
+  })
+
+  it('finds nothing when your versions stayed where you saved them, or were moved already', () => {
+    const local = log({ main: [v('base', 'max', '20260201100000'), v('C', 'bob', '20261125120000', 'A')] })
+    expect(placementMoves(local, mergeLogs(hub, placeIncoming(hub, local)))).toEqual([])
+    const placed = mergeLogs(hub, placeIncoming(hub, log({ main: [v('B', 'bob', '20261125120000', 'base')] })))
+    expect(placementMoves(adoptHubPlacement(placed as any, placed), placed)).toEqual([])
+  })
+})

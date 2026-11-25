@@ -5,7 +5,7 @@ import { getUsername } from '../dawvcs/core/constants'
 import { getUserConfigManager } from '../dawvcs/core/config'
 import { loadRegistry } from '../dawvcs/core/registry'
 import {
-  getHubSettings, saveHubSettings, getProjectRemote, removeProjectRemote,
+  getHubSettings, saveHubSettings, getProjectRemote, removeProjectRemote, onParallelPlacement,
   shareProject, syncProject, openSharedProject,
 } from './hub-client'
 import {
@@ -34,6 +34,12 @@ export function registerHubIpc(ipcMain: IpcMain, getWindow: () => BrowserWindow 
     const win = getWindow()
     if (win && !win.isDestroyed()) win.webContents.send('hub-status', status)
   }
+
+  // Your version went into a parallel alternative: tell the window, it says why and where.
+  onParallelPlacement((projectName, moves) => {
+    const win = getWindow()
+    if (win && !win.isDestroyed()) win.webContents.send('hub-parallel-placed', { projectName, moves })
+  })
 
   // ---- server connection
   ipcMain.handle('hub-get-settings', () => {

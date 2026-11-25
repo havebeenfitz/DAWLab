@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 const m = vi.hoisted(() => ({
   hubClient: {
     getHubSettings: vi.fn(), saveHubSettings: vi.fn(), getProjectRemote: vi.fn(), removeProjectRemote: vi.fn(),
-    shareProject: vi.fn(), syncProject: vi.fn(), openSharedProject: vi.fn(),
+    shareProject: vi.fn(), syncProject: vi.fn(), openSharedProject: vi.fn(), onParallelPlacement: vi.fn(),
   },
   spaces: {
     listLocalSpaces: vi.fn(), getLocalSpace: vi.fn(), getSpaceForProject: vi.fn(), shareFolder: vi.fn(), joinSpace: vi.fn(),
@@ -194,4 +194,12 @@ describe('sharing IPC', () => {
     m.spaces.countIncomingVersions.mockRejectedValueOnce(new Error('offline'))
     expect(await call('hub-project-incoming', 'Snow')).toBe(0)
   })
+
+  it('tells the window when a save went into a parallel version', () => {
+    const listener = m.hubClient.onParallelPlacement.mock.calls.at(-1)![0]
+    const moves = [{ commitId: 'c', message: 'mine', from: 'main', fork: 'max · 25 Nov' }]
+    listener('Snow', moves)
+    expect(sent.at(-1)).toEqual({ channel: 'hub-parallel-placed', payload: { projectName: 'Snow', moves } })
+  })
 })
+

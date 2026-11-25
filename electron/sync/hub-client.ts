@@ -24,7 +24,7 @@ import {
   allCommits, isCommitId, isHash, mergeComments, mergeLogs, parseShareLink, toSharedLog,
   type CreateProjectResponse, type HubRole, type ProjectResponse, type SharedComment, type SharedLog,
 } from '../../shared/hub-protocol'
-import { adoptHubPlacement } from '../../shared/forks'
+import { adoptHubPlacement, placementMoves, type ParallelPlacement } from '../../shared/forks'
 
 export interface HubSettings {
   hubUrl: string
@@ -51,6 +51,12 @@ export interface SyncResult {
 }
 
 export type SyncProgress = (message: string) => void
+
+/** Told when a sync moves your versions into a parallel alternative, so the app can say so. */
+let placementListener: (projectName: string, moves: ParallelPlacement[]) => void = () => {}
+export function onParallelPlacement(fn: (projectName: string, moves: ParallelPlacement[]) => void) {
+  placementListener = fn
+}
 
 // ------------------------------------------------------------ local config
 
@@ -420,7 +426,10 @@ async function pullInto(
   for (const [id, filemap] of filemaps) saveCommit(projectName, id, filemap, commitsDir)
 
   // Versions the hub moved into a parallel alternative leave the one they were saved on here too.
-  const local = adoptHubPlacement(loadLocalProjectLog(projectName), remoteLog)
+  const before = loadLocalProjectLog(projectName)
+  const moves = placementMoves(before, remoteLog)
+  const local = adoptHubPlacement(before, remoteLog)
+  if (moves.length) placementListener(projectName, moves)
   saveProjectLog(projectName, mergeLogs(local, remoteLog))
   return { versions: reallyNew, files: need.size }
 }

@@ -21,6 +21,7 @@ import { useOptionalSharing } from "@/components/Sharing";
 import { useProjectAccess } from "@/hooks/useProjectAccess";
 import { useSharedProjectSync } from "@/hooks/useSharedProjectSync";
 import { ParallelVersionBanner } from "./components/ParallelVersionBanner";
+import { ForkNotice } from "./components/ForkNotice";
 import { openParallelVersions } from "../../../shared/forks";
 import FeedbackView from "@/components/Feedback/FeedbackView";
 import { BranchMenu } from "@/components/BranchMenu/BranchMenu";
@@ -302,6 +303,18 @@ export const History: React.FC = () => {
           onChanged={log.refreshProjectLog}
         />
       )}
+      {!showSettings && (() => {
+        const current = projectLog?.branches?.find((b: any) => b.name === (selectedBranch || "main")) as any;
+        const from = current?.forkOf ? projectLog?.branches?.find((b: any) => b.name === current.forkOf.branch) : null;
+        return (
+          <ForkNotice
+            forkOf={from ? current.forkOf : null}
+            branchName={selectedBranch || "main"}
+            fromCount={from?.commits?.length ?? 0}
+            onGoTo={(b) => { void branches.handleSwitchBranch(b); }}
+          />
+        );
+      })()}
 
       {showSettings ? (
         <ProjectSettings

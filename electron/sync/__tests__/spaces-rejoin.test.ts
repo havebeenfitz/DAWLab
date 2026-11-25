@@ -53,7 +53,8 @@ import { initProject } from '../../dawvcs/operations/init'
 import { commitProject } from '../../dawvcs/operations/commit'
 import { loadLocalProjectLog } from '../../dawvcs/core/log'
 import { loadRegistry, getProjectPath } from '../../dawvcs/core/registry'
-import { saveHubSettings, shareProject, getProjectRemote } from '../hub-client'
+import { saveHubSettings, shareProject, getProjectRemote, onParallelPlacement } from '../hub-client'
+import { rollbackProject } from '../../dawvcs/operations/rollback'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, listLocalSpaces, getLocalSpace,
   removeMember, previewInvite, leaveSpace, revokeInvite, listInvites, changeMemberRole, stopSharing, describeFailures,
@@ -472,6 +473,54 @@ describe('a project you shared on its own before shared folders', () => {
     expect(describeFailures([{ project: 'lodge', error: 'Server full' }])).toBe('lodge: Server full')
     expect(describeFailures([{ project: 'lodge', error: 'lodge is broken' }, { project: 'snow', error: 'x' }, { project: 'test', error: 'y' }]))
       .toBe('lodge is broken (and 2 more projects)')
+  })
+})
+
+describe('saving while someone else saves (the Elena case)', () => {
+  it('nothing is lost, every move is announced, and main keeps everyone\'s versions', async () => {
+    const w = await world('elena')
+    const elena = w.u('elena')
+    const joined = await w.join(elena, (await w.invite()).code)
+    const announced: string[] = []
+    onParallelPlacement((_p, moves) => { for (const m of moves) announced.push(`${m.message} -> ${m.fork} (meanwhile ${m.meanwhile?.message})`) })
+    const ids = () => (loadLocalProjectLog('Snow').branches as any[]).flatMap((b) => b.commits.map((c: any) => `${b.name}:${c.message}`)).sort()
+
+    // Elena saves "audio" on main; the owner gets it.
+    await w.save(elena, joined.folderId, 'Snow', 'audio')
+    await w.ownerVersions('Snow') // the owner pulls "audio" and restores it, as Max did
+    as(w.owner)
+    await rollbackProject('Snow', String((loadLocalProjectLog('Snow').branches.find((b: any) => b.name === 'main').commits as any[]).at(-1).commit_id))
+    await w.save(w.owner, w.folderId, 'Snow', 'conflict')
+    // Elena hasn't pulled "conflict" and saves on top of "audio": a parallel version.
+    as(elena)
+    fs.writeFileSync(path.join(getProjectPath('Snow'), 'Snow.als'), 'elena 4 tracks')
+    await commitProject('Snow', 'elena work', 'main', elena)
+    await syncSpace(joined.folderId)
+    expect(announced).toEqual([`elena work -> ${elena} · ${new Date().getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][new Date().getMonth()]} (meanwhile conflict)`])
+
+    // She restores "conflict", the owner saves "conflict 2", she saves again on top of "conflict".
+    as(elena)
+    const conflict = (loadLocalProjectLog('Snow').branches.find((b: any) => b.name === 'main').commits as any[]).find((c) => c.message === 'conflict')
+    await rollbackProject('Snow', String(conflict.commit_id))
+    await w.save(w.owner, w.folderId, 'Snow', 'conflict 2')
+    as(elena)
+    fs.writeFileSync(path.join(getProjectPath('Snow'), 'Snow.als'), 'elena 4 tracks again')
+    await commitProject('Snow', 'elena again', 'main', elena)
+    await syncSpace(joined.folderId)
+    expect(announced).toHaveLength(2)
+    expect(announced[1]).toMatch(/^elena again -> .*\(2\) \(meanwhile conflict 2\)$/)
+
+    // Every version is still there, on main or in a parallel alternative.
+    as(elena)
+    const mine = ids()
+    for (const m of ['main:audio', 'main:conflict', 'main:conflict 2']) expect(mine).toContain(m)
+    expect(mine.filter((x) => x.endsWith(':elena work') || x.endsWith(':elena again'))).toHaveLength(2)
+    expect(mine.filter((x) => x.startsWith('main:elena'))).toEqual([])
+    // The owner sees the same set.
+    as(w.owner)
+    await syncSpace(w.folderId)
+    expect(ids()).toEqual(mine)
+    onParallelPlacement(() => {})
   })
 })
 

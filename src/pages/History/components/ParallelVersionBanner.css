@@ -16,3 +16,4 @@
 .parallel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .parallel-confirm { color: var(--text-secondary); margin-right: 4px; }
 .parallel-compare-plugins { display: flex; flex-direction: column; gap: 6px; }
+.fork-notice { margin: 0 24px 12px; }

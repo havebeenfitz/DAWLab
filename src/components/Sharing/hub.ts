@@ -1,3 +1,4 @@
+import type { ParallelPlacement } from '../../../shared/forks'
 /** Renderer-side calls and events for DAWLab sharing (see electron/sync). Tokens never reach the renderer. */
 
 export type SpaceRole = 'owner' | 'edit' | 'listen'
@@ -151,6 +152,10 @@ export function onHubProgress(key: string, cb: (message: string) => void) {
 
 /** Background sync state of shared folders. */
 export const onSyncStatus = (cb: Listener<SyncStatus>) => subscribe<SyncStatus>('hub-status', cb)
+
+/** A sync moved versions of yours into a parallel alternative. */
+export const onParallelPlacement = (cb: Listener<{ projectName: string; moves: ParallelPlacement[] }>) =>
+  subscribe<{ projectName: string; moves: ParallelPlacement[] }>('hub-parallel-placed', cb)
 
 /** A dawlab://join link opened while the app was running. */
 export const onJoinLink = (cb: Listener<string>) => subscribe<string>('join-shared', cb)

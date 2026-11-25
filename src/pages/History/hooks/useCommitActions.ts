@@ -66,6 +66,13 @@ export function useCommitActions(o: CommitActionsOptions) {
 
       // Reload the project log to show the new commit
       await o.loadProjectLog(passedProject);
+
+      // "Save first" before a Restore: the work is saved, now do the Restore that was asked for.
+      if (pendingCheckoutId) {
+        const commitId = pendingCheckoutId;
+        setPendingCheckoutId(null);
+        await performCheckout(commitId);
+      }
     } catch (error: any) {
       console.error("Error creating commit:", error);
       const errorMessage = errorText(error);

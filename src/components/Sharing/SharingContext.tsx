@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { hub, describeSync, onJoinLink, onSyncStatus, type SharedFolder, type SyncStatus } from './hub';
+import { hub, describeSync, onJoinLink, onSyncStatus, onParallelPlacement, type SharedFolder, type SyncStatus } from './hub';
+import { describePlacement } from '../../../shared/forks';
 import { ShareFolderDialog } from './ShareFolderDialog';
 import { JoinFolderDialog } from './JoinFolderDialog';
 import { ShareProjectDialog } from './ShareProjectDialog';
@@ -67,6 +68,12 @@ export function SharingProvider({ children }: { children: ReactNode }) {
       notify.info('Shared folder updated', parts.join(', '));
     }
   }), [refresh]);
+
+  // A save of yours went into a parallel alternative: say where and why, every time.
+  useEffect(() => onParallelPlacement(({ projectName, moves }) => {
+    for (const m of moves) notify.info(`${projectName}: saved as a parallel version`, describePlacement(m));
+    announceLibraryChange();
+  }), []);
 
   // dawlab://join links, both while running and the one that launched the app.
   useEffect(() => {
