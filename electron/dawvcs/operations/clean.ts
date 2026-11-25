@@ -1,11 +1,13 @@
 import fs from 'fs'
 import path from 'path'
-import { getCommitsDir } from '../core/constants'
+import { COMMITS_DIR, LOGS_DIR, getCommitsDir, getLogsDir, listUsers, getRegistryFile } from '../core/constants'
 import { getCasPath, CAS_DIR } from '../core/cas'
+import { resolveStorageDirs } from '../core/storage-location'
 import { FileMapEntry } from '../types'
 
 export interface CleanableFile {
   hash: string
+  /** Bytes freed by cleaning it (summed when the same file is left over in several stores). */
   size: number
   filename: string // Just one filename for display (e.g. "drums.wav")
   projectNames: string[] // List of projects using this file
@@ -17,108 +19,153 @@ export interface CleanStats {
   errors: string[]
 }
 
-/**
- * Scans for CAS files that are safe to delete: hashes stored on disk that
- * aren't referenced by any commit filemap of any project still on record.
- * These are typically leftovers from projects that were deleted without a
- * full CAS sweep, or replaced preview files.
- *
- * Only sweeps the shared home CAS — projects using project-root storage
- * (.dawlabproject) have their own isolated CAS and aren't part of this pool.
- */
-export function getCleanableFiles(): CleanableFile[] {
-  const commitsRootDir = getCommitsDir()
-
-  const keepHashes = new Set<string>()
-  const usageMap = new Map<string, { filename: string, projects: Set<string> }>()
-
-  if (fs.existsSync(commitsRootDir)) {
-    const projectDirs = fs.readdirSync(commitsRootDir)
-    for (const projectName of projectDirs) {
-      const projectPath = path.join(commitsRootDir, projectName)
-      if (!fs.statSync(projectPath).isDirectory()) continue
-
-      const commits = fs.readdirSync(projectPath)
-      for (const commitId of commits) {
-        const filemapPath = path.join(projectPath, commitId, 'filemap.json')
-        if (!fs.existsSync(filemapPath)) continue
-        try {
-          const filemap = JSON.parse(fs.readFileSync(filemapPath, 'utf8')) as FileMapEntry[]
-          for (const entry of filemap) {
-            if (!entry.hash || entry.hash === 'empty') continue
-            keepHashes.add(entry.hash)
-            if (!usageMap.has(entry.hash)) {
-              usageMap.set(entry.hash, { filename: path.basename(entry.path), projects: new Set([projectName]) })
-            } else {
-              usageMap.get(entry.hash)!.projects.add(projectName)
-            }
-          }
-        } catch (err) {
-          console.warn(`[clean.ts] Failed to parse filemap: ${filemapPath}`, err)
-        }
-      }
-    }
-  }
-
-  // Walk the CAS directory (two-level sha256 fanout) for stored hashes not in keepHashes
-  const result: CleanableFile[] = []
-  if (!fs.existsSync(CAS_DIR)) return result
-
-  for (const sub1 of fs.readdirSync(CAS_DIR)) {
-    const sub1Path = path.join(CAS_DIR, sub1)
-    if (!fs.statSync(sub1Path).isDirectory()) continue
-    for (const sub2 of fs.readdirSync(sub1Path)) {
-      const sub2Path = path.join(sub1Path, sub2)
-      if (!fs.statSync(sub2Path).isDirectory()) continue
-      for (const hash of fs.readdirSync(sub2Path)) {
-        if (keepHashes.has(hash)) continue
-        const casPath = getCasPath(hash)
-        try {
-          const size = fs.statSync(casPath).size
-          const info = usageMap.get(hash)
-          result.push({
-            hash,
-            size,
-            filename: info?.filename ?? hash,
-            projectNames: info ? Array.from(info.projects) : [],
-          })
-        } catch { /* skip unreadable */ }
-      }
-    }
-  }
-
-  return result
+interface Store {
+  casDir: string
+  commitsDir: string
 }
 
+const readJson = (file: string): any => {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+const subdirs = (dir: string): string[] => {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Every place versions are kept, for every user on this Mac: the shared home
+ * store (with each user's commits and the legacy commits folder) and each
+ * project that keeps its versions next to itself in `.dawlabproject`.
+ */
+function allStores(): Store[] {
+  const stores = new Map<string, Store>()
+  const add = (casDir: string, commitsDir: string) => {
+    const key = `${casDir}\0${commitsDir}`
+    if (!stores.has(key)) stores.set(key, { casDir, commitsDir })
+  }
+  add(CAS_DIR, COMMITS_DIR)
+  for (const user of listUsers()) {
+    add(CAS_DIR, getCommitsDir(user))
+    const projects = readJson(getRegistryFile(user))?.projects ?? {}
+    for (const info of Object.values(projects) as Array<{ storage_mode?: string; path?: string }>) {
+      if (info?.storage_mode === 'project' && info.path) {
+        const dirs = resolveStorageDirs('project', info.path)
+        add(dirs.casDir, dirs.commitsDir)
+      }
+    }
+  }
+  return [...stores.values()]
+}
+
+/** Hashes some version still needs (files and previews), with a name and the projects using each. */
+function hashesInUse(stores: Store[]) {
+  const usage = new Map<string, { filename: string; projects: Set<string> }>()
+  const use = (hash: string | undefined, filename: string, project: string) => {
+    if (!hash || hash === 'empty') return
+    const known = usage.get(hash)
+    if (known) known.projects.add(project)
+    else usage.set(hash, { filename, projects: new Set([project]) })
+  }
+
+  for (const commitsDir of new Set(stores.map((s) => s.commitsDir))) {
+    for (const project of subdirs(commitsDir)) {
+      for (const commitId of subdirs(path.join(commitsDir, project))) {
+        const filemap = readJson(path.join(commitsDir, project, commitId, 'filemap.json'))
+        if (!Array.isArray(filemap)) continue
+        for (const entry of filemap as FileMapEntry[]) use(entry.hash, path.basename(entry.path), project)
+      }
+    }
+  }
+
+  // Previews are kept in the stores too; the project log is what points at them.
+  const logDirs = [LOGS_DIR, ...listUsers().map((u) => getLogsDir(u))]
+  for (const dir of logDirs) {
+    let files: string[] = []
+    try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')) } catch { continue }
+    for (const file of files) {
+      const log = readJson(path.join(dir, file))
+      const project = String(log?.project_name ?? log?.name ?? file.replace(/\.json$/, ''))
+      for (const branch of log?.branches ?? []) {
+        for (const commit of branch?.commits ?? []) use(commit?.preview_file, 'Preview', project)
+      }
+    }
+  }
+  return usage
+}
+
+/** Stored files of one store: hash → bytes. */
+function storedFiles(casDir: string): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const a of subdirs(casDir)) {
+    for (const b of subdirs(path.join(casDir, a))) {
+      let hashes: string[] = []
+      try { hashes = fs.readdirSync(path.join(casDir, a, b)) } catch { continue }
+      for (const hash of hashes) {
+        try { out.set(hash, fs.statSync(getCasPath(hash, casDir)).size) } catch { /* skip unreadable */ }
+      }
+    }
+  }
+  return out
+}
+
+/** Every stored file no version needs any more, in every store, as [casDir, hash, bytes]. */
+function leftovers(): Array<{ casDir: string; hash: string; size: number }> {
+  const stores = allStores()
+  const inUse = hashesInUse(stores)
+  const out: Array<{ casDir: string; hash: string; size: number }> = []
+  for (const casDir of new Set(stores.map((s) => s.casDir))) {
+    for (const [hash, size] of storedFiles(casDir)) if (!inUse.has(hash)) out.push({ casDir, hash, size })
+  }
+  return out
+}
+
+/**
+ * Files in DAWLab's stores that no version of any project on this Mac needs:
+ * leftovers of deleted projects and versions, and replaced previews.
+ * Covers the home store and each project's own `.dawlabproject` store.
+ */
+export function getCleanableFiles(): CleanableFile[] {
+  const byHash = new Map<string, CleanableFile>()
+  for (const { hash, size } of leftovers()) {
+    const known = byHash.get(hash)
+    if (known) known.size += size
+    else byHash.set(hash, { hash, size, filename: hash, projectNames: [] })
+  }
+  return [...byHash.values()]
+}
+
+/** Deletes the given leftovers. A hash some version still needs is never deleted. */
 export function cleanCasFiles(hashes: string[]): CleanStats {
-    const stats: CleanStats = {
-        filesDeleted: 0,
-        bytesFreed: 0,
-        errors: []
+  const stats: CleanStats = { filesDeleted: 0, bytesFreed: 0, errors: [] }
+  const wanted = new Set(hashes)
+  for (const { casDir, hash, size } of leftovers()) {
+    if (!wanted.has(hash)) continue
+    const casPath = getCasPath(hash, casDir)
+    try {
+      fs.unlinkSync(casPath)
+      stats.filesDeleted++
+      stats.bytesFreed += size
+      removeEmptyParents(casPath, casDir)
+    } catch (err: any) {
+      stats.errors.push(`Failed to delete ${hash}: ${err.message}`)
     }
+  }
+  return stats
+}
 
-    for (const hash of hashes) {
-        try {
-            const casPath = getCasPath(hash)
-            if (fs.existsSync(casPath)) {
-                const size = fs.statSync(casPath).size
-                fs.unlinkSync(casPath)
-
-                // Try to clean up empty parents
-                try {
-                    const d1 = path.dirname(casPath)
-                    if (fs.readdirSync(d1).length === 0) fs.rmdirSync(d1)
-                    const d2 = path.dirname(d1)
-                     if (fs.readdirSync(d2).length === 0) fs.rmdirSync(d2)
-                } catch (e) {}
-
-                stats.filesDeleted++
-                stats.bytesFreed += size
-            }
-        } catch (err: any) {
-            stats.errors.push(`Failed to delete ${hash}: ${err.message}`)
-        }
+function removeEmptyParents(casPath: string, casDir: string) {
+  try {
+    for (let dir = path.dirname(casPath); dir.startsWith(casDir + path.sep); dir = path.dirname(dir)) {
+      if (fs.readdirSync(dir).length) break
+      fs.rmdirSync(dir)
     }
-
-    return stats
+  } catch { /* leave it */ }
 }
