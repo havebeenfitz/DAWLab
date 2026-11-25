@@ -62,6 +62,7 @@ import { scanForProjects, getDefaultScanRoots } from "./dawvcs/operations/scan";
 import { getInstalledPlugins, rescanPlugins } from "./workers/pluginScanner";
 import { startDraftWatch, stopDraftWatch, stopAllDraftWatches } from "./watchers/draftWatcher";
 import { registerHubIpc } from "./sync/ipc";
+import { requestProjectSync } from "./sync/auto-sync";
 import { fileURLToPath } from "node:url";
 
 import path from "node:path";
@@ -120,6 +121,8 @@ function tryGetUsername(): string | null {
 
 // Deep link protocol name
 const PROTOCOL = "dawlab";
+// A dawlab://join link that arrived before the window could take it.
+let pendingJoinLink: string | null = null;
 
 // Register custom protocol for deep linking (OAuth callbacks)
 if (process.defaultApp) {
@@ -178,6 +181,18 @@ if (!gotTheLock) {
 function handleDeepLink(url: string) {
   try {
     console.log("[main.ts] Processing deep link:", url);
+
+    // Invite to a shared folder: dawlab://join?hub=...&code=DAWL-...
+    if (/^dawlab:\/\/join\b/i.test(url)) {
+      if (win && !win.webContents.isLoading()) {
+        win.webContents.send("join-shared", url);
+        if (win.isMinimized()) win.restore();
+        win.focus();
+      } else {
+        pendingJoinLink = url;
+      }
+      return;
+    }
 
     // Handle project open link: dawlab://open/project?name=xxx&id=xxx&commit=xxx
     if (url.includes("open/project")) {
@@ -346,7 +361,13 @@ app.whenReady().then(() => {
 });
 
 // file dialogs
-registerHubIpc(ipcMain);
+registerHubIpc(ipcMain, () => win);
+
+ipcMain.handle("hub-take-pending-join", () => {
+  const link = pendingJoinLink;
+  pendingJoinLink = null;
+  return link;
+});
 
 ipcMain.handle("pick-folder", async () => {
   const result = await dialog.showOpenDialog(win!, {
@@ -587,7 +608,10 @@ ipcMain.handle("clear-ignored-project-paths", async () => {
 ipcMain.handle(
   "commit-project",
   async (_ev, projectName: string, message = "No message", branch_name: string, author: string) => {
-    return commitProject(projectName, message, branch_name, author);
+    const result = await commitProject(projectName, message, branch_name, author);
+    // Shared folders upload new versions on their own; failures surface as sync status, never as a failed save.
+    requestProjectSync(projectName).catch(() => undefined);
+    return result;
   },
 );
 

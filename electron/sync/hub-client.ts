@@ -88,13 +88,15 @@ function saveProjectRemote(projectName: string, remote: ProjectRemote) {
   writeJsonSync(remotesFile(), all)
 }
 
+export { saveProjectRemote }
+
 export function removeProjectRemote(projectName: string) {
   const all = readJson<Record<string, ProjectRemote>>(remotesFile(), {})
   delete all[projectName]
   writeJsonSync(remotesFile(), all)
 }
 
-function normalizeHubUrl(url: string) {
+export function normalizeHubUrl(url: string) {
   const trimmed = (url || '').trim().replace(/\/+$/, '')
   if (!trimmed) return ''
   const parsed = new URL(/^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`)
@@ -103,12 +105,18 @@ function normalizeHubUrl(url: string) {
 
 // ------------------------------------------------------------- HTTP client
 
-class HubClient {
-  hubUrl: string
-  token: string
-  constructor(hubUrl: string, token: string) {
+/**
+ * Talks to one project on a hub. `base` is `/project` for a legacy project
+ * link, or `/space/projects/<id>` for a project in a shared folder.
+ */
+export class HubClient {
+  readonly hubUrl: string
+  readonly token: string
+  readonly base: string
+  constructor(hubUrl: string, token: string, base = '/project') {
     this.hubUrl = hubUrl
     this.token = token
+    this.base = base
   }
 
   private async request(p: string, init: RequestInit & { duplex?: 'half' } = {}): Promise<Response> {
@@ -116,7 +124,7 @@ class HubClient {
       ...init,
       headers: { 'X-Hub-Token': this.token, ...(init.headers as Record<string, string>) },
     })
-    if (!res.ok) throw await hubError(res, 'This link is not valid on this hub (it may have been revoked, or the hub address is wrong).')
+    if (!res.ok) throw await hubError(res, 'You no longer have access to this on the DAWLab server. Ask the owner to invite you again.')
     return res
   }
 
@@ -128,18 +136,18 @@ class HubClient {
     return (await res.json()) as T
   }
 
-  getProject = () => this.json<ProjectResponse>('/project')
-  putLog = (log: SharedLog) => this.json<ProjectResponse>('/project/log', 'PUT', log)
-  missing = (hashes: string[]) => this.json<{ missing: string[] }>('/project/objects/missing', 'POST', { hashes })
-  putFilemap = (commitId: string, filemap: unknown) => this.json(`/project/commits/${commitId}/filemap`, 'PUT', filemap)
-  getFilemap = (commitId: string) => this.json<Array<{ path: string; hash: string }>>(`/project/commits/${commitId}/filemap`)
-  getComments = (commitId: string) => this.json<SharedComment[]>(`/project/commits/${commitId}/comments`)
+  getProject = () => this.json<ProjectResponse>(this.base)
+  putLog = (log: SharedLog) => this.json<ProjectResponse>(`${this.base}/log`, 'PUT', log)
+  missing = (hashes: string[]) => this.json<{ missing: string[] }>(`${this.base}/objects/missing`, 'POST', { hashes })
+  putFilemap = (commitId: string, filemap: unknown) => this.json(`${this.base}/commits/${commitId}/filemap`, 'PUT', filemap)
+  getFilemap = (commitId: string) => this.json<Array<{ path: string; hash: string }>>(`${this.base}/commits/${commitId}/filemap`)
+  getComments = (commitId: string) => this.json<SharedComment[]>(`${this.base}/commits/${commitId}/comments`)
   postComments = (commitId: string, comments: SharedComment[]) =>
-    this.json<SharedComment[]>(`/project/commits/${commitId}/comments`, 'POST', comments)
+    this.json<SharedComment[]>(`${this.base}/commits/${commitId}/comments`, 'POST', comments)
 
   async uploadObject(hash: string, file: string) {
     const size = fs.statSync(file).size
-    await this.request(`/project/objects/${hash}`, {
+    await this.request(`${this.base}/objects/${hash}`, {
       method: 'PUT',
       body: Readable.toWeb(fs.createReadStream(file)) as any,
       duplex: 'half',
@@ -149,7 +157,7 @@ class HubClient {
 
   /** Downloads to a temp file, checks the hash, then moves it into CAS. */
   async downloadObject(hash: string, target: string) {
-    const res = await this.request(`/project/objects/${hash}`)
+    const res = await this.request(`${this.base}/objects/${hash}`)
     fs.mkdirSync(path.dirname(target), { recursive: true })
     const tmp = `${target}.${process.pid}.download`
     const hasher = crypto.createHash('sha256')
@@ -180,7 +188,7 @@ export async function shareProject(projectName: string, onProgress: SyncProgress
   if (existing) return syncProject(projectName, onProgress)
 
   const { hubUrl, hubKey } = getHubSettings()
-  if (!hubUrl) throw new Error('Set the hub address in Settings first.')
+  if (!hubUrl) throw new Error('Connect a DAWLab server first: Settings → DAWLab server.')
   const log = loadLocalProjectLog(projectName)
   if (!log) throw new Error(`Project '${projectName}' not found`)
 
@@ -190,7 +198,7 @@ export async function shareProject(projectName: string, onProgress: SyncProgress
     headers: { 'Content-Type': 'application/json', ...(hubKey ? { 'X-Hub-Key': hubKey } : {}) },
     body: JSON.stringify({ log: toSharedLog(log) }),
   })
-  if (!res.ok) throw await hubError(res, 'The hub did not accept this key. Check the hub address and the hub key.')
+  if (!res.ok) throw await hubError(res, 'The DAWLab server did not accept the password. Check it in Settings → DAWLab server.')
   const created = (await res.json()) as CreateProjectResponse
   saveProjectRemote(projectName, {
     hubUrl, token: created.editToken, role: 'edit', editUrl: created.editUrl, listenUrl: created.listenUrl,
@@ -203,20 +211,40 @@ export async function syncProject(projectName: string, onProgress: SyncProgress 
   const remote = getProjectRemote(projectName)
   if (!remote) throw new Error(`'${projectName}' is not shared yet.`)
   const client = new HubClient(remote.hubUrl, remote.token)
-  const { casDir, commitsDir } = getProjectStorageDirs(projectName)
+  const counts = await syncProjectWith(projectName, client, remote.role ?? 'edit', onProgress)
+  const next = { ...remote, lastSync: new Date().toISOString() }
+  saveProjectRemote(projectName, next)
+  return { ...counts, remote: next }
+}
 
+export interface SyncCounts {
+  pushed: number
+  pulled: number
+  uploadedFiles: number
+  downloadedFiles: number
+}
+
+/**
+ * One sync of a local project against one hub project, through `client`.
+ * An `edit` role pushes local versions and pulls everyone else's; a `listen`
+ * role pulls the version list, previews and comments only.
+ */
+export async function syncProjectWith(
+  projectName: string,
+  client: HubClient,
+  role: HubRole,
+  onProgress: SyncProgress = () => {},
+): Promise<SyncCounts> {
+  const { casDir, commitsDir } = getProjectStorageDirs(projectName)
   const local = loadLocalProjectLog(projectName)
   if (!local) throw new Error(`Project '${projectName}' not found`)
 
-  if (remote.role === 'listen') {
-    // Listeners get the version list, previews and comments; nothing of theirs is pushed but comments.
+  if (role === 'listen') {
     const { log: remoteLog } = await client.getProject()
     const pulled = await pullInto(projectName, client, remoteLog, onProgress, { previewsOnly: true })
     onProgress('Syncing comments...')
     for (const c of allCommits(remoteLog)) await syncComments(projectName, c.commit_id, client, commitsDir)
-    const next = { ...remote, lastSync: new Date().toISOString() }
-    saveProjectRemote(projectName, next)
-    return { pushed: 0, pulled: pulled.versions, uploadedFiles: 0, downloadedFiles: pulled.files, remote: next }
+    return { pushed: 0, pulled: pulled.versions, uploadedFiles: 0, downloadedFiles: pulled.files }
   }
 
   // ---- push
@@ -249,7 +277,9 @@ export async function syncProject(projectName: string, onProgress: SyncProgress 
     uploaded++
     onProgress(`Uploading file ${uploaded} of ${missing.length}...`)
     const file = blobFiles.get(hash)!
-    if (!fs.existsSync(file)) throw new Error(`Local file for ${hash} is missing; cannot share this version.`)
+    if (!fs.existsSync(file)) {
+      throw new Error(`A file from one of the versions of '${projectName}' is missing on this Mac, so that version can't be shared. Open the project once so DAWLab can find it, then sync again.`)
+    }
     await client.uploadObject(hash, file)
   }
   for (const [id, filemap] of filemaps) await client.putFilemap(id, filemap)
@@ -270,9 +300,7 @@ export async function syncProject(projectName: string, onProgress: SyncProgress 
   onProgress('Syncing comments...')
   for (const c of allCommits(after.log)) await syncComments(projectName, c.commit_id, client, commitsDir)
 
-  const next = { ...remote, lastSync: new Date().toISOString() }
-  saveProjectRemote(projectName, next)
-  return { pushed: toPush.length, pulled: pulled.versions, uploadedFiles: missing.length, downloadedFiles: pulled.files, remote: next }
+  return { pushed: toPush.length, pulled: pulled.versions, uploadedFiles: missing.length, downloadedFiles: pulled.files }
 }
 
 /**
@@ -297,6 +325,20 @@ export async function openSharedProject(
     return { projectName: already[0], projectPath: (already[1] as any).path }
   }
 
+  const created = createLocalProject(remoteLog, parentFolder)
+  saveProjectRemote(created.projectName, role === 'edit'
+    ? { hubUrl, token, role, editUrl: link.trim() }
+    : { hubUrl, token, role, editUrl: '', listenUrl: link.trim() })
+
+  await syncProject(created.projectName, onProgress)
+  await checkOutLatest(created.projectName, created.projectPath, role, onProgress)
+  return created
+}
+
+/** Registers an empty local project for a hub project, in `parentFolder/<name>`. */
+export function createLocalProject(remoteLog: SharedLog, parentFolder: string): { projectName: string; projectPath: string; projectId: string } {
+  assertSafeLog(remoteLog)
+  const registry = loadRegistry()
   let projectName = safeName(remoteLog.name || 'Shared project')
   for (let i = 2; registry[projectName]; i++) projectName = `${safeName(remoteLog.name)} (${i})`
   const projectPath = path.join(parentFolder, projectName)
@@ -310,12 +352,11 @@ export async function openSharedProject(
   const base = buildProjectLog(projectName, projectPath, { projectID: projectId, daw: remoteLog.daw, privacy_flag: 'shared' })
   base.branches = []
   saveProjectLog(projectName, base)
-  saveProjectRemote(projectName, role === 'edit'
-    ? { hubUrl, token, role, editUrl: link.trim() }
-    : { hubUrl, token, role, editUrl: '', listenUrl: link.trim() })
+  return { projectName, projectPath, projectId }
+}
 
-  await syncProject(projectName, onProgress)
-
+/** After a first download: collaborators get the newest version on main in the project folder. */
+export async function checkOutLatest(projectName: string, projectPath: string, role: HubRole, onProgress: SyncProgress = () => {}) {
   const log = loadLocalProjectLog(projectName)
   const main = log.branches.find((b: any) => b.name === 'main') ?? log.branches[0]
   const latest = main?.commits?.[main.commits.length - 1]
@@ -327,7 +368,6 @@ export async function openSharedProject(
   } else {
     fs.mkdirSync(projectPath, { recursive: true })
   }
-  return { projectName, projectPath }
 }
 
 // ---------------------------------------------------------------- helpers
@@ -389,10 +429,10 @@ async function syncComments(projectName: string, commitId: string, client: HubCl
 }
 
 /** A hub answers an unknown key or token with an empty 404 and nothing else, so say what that usually means. */
-async function hubError(res: Response, hiddenMessage: string): Promise<Error> {
+export async function hubError(res: Response, hiddenMessage: string): Promise<Error> {
   const body: any = await res.json().catch(() => null)
   if (res.status === 404 && !body) return new Error(hiddenMessage)
-  return new Error(`Hub: ${body?.error || `${res.status} ${res.statusText}`}`)
+  return new Error(body?.error || `The DAWLab server answered ${res.status} ${res.statusText}.`)
 }
 
 function safeName(name: string) {

@@ -102,7 +102,7 @@ describe('DAWLab Hub sharing', () => {
     await initProject(name, aliceDir, { storageMode: 'project', author: 'alice' })
     if (live && !process.env.HUB_LIVE_KEY) return // a proxy adds the real key to every request
     saveHubSettings({ hubUrl, hubKey: 'wrong' })
-    await expect(shareProject(name)).rejects.toThrow(/did not accept this key/)
+    await expect(shareProject(name)).rejects.toThrow(/did not accept the password/)
   })
 
   it('shares a project and its comments', async () => {
