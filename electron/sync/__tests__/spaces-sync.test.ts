@@ -129,9 +129,11 @@ describe('Shared folders', () => {
   it('creates invites that show what they open without using them up', async () => {
     setUsername('alice')
     const edit = await createInvite(aliceFolder, 'edit')
-    expect(edit.code).toMatch(/^DAWL-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/)
+    // The code carries the server address, so joiners need no settings at all.
+    expect(edit.code).toMatch(/^DAWL-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}(-[0-9A-Z]{1,4})+$/)
+    expect(edit.code).not.toContain('127.0.0.1')
     expect(edit.link.startsWith('dawlab://join?')).toBe(true)
-    editInvite = edit.link
+    editInvite = edit.code
     listenInvite = (await createInvite(aliceFolder, 'listen')).link
 
     await expect(previewInvite(editInvite)).rejects.toThrow(/already in “Album”/)
@@ -225,7 +227,7 @@ describe('Shared folders', () => {
   it('reads invites as codes or app links, and explains bad ones', () => {
     setUsername('dave')
     expect(() => parseInvite('hello')).toThrow(/not a DAWLab invite/)
-    expect(() => parseInvite('DAWL-AAAA-BBBB-CCCC')).toThrow(/needs a DAWLab server/)
+    expect(() => parseInvite('DAWL-AAAA-BBBB-CCCC')).toThrow(/incomplete/)
     saveHubSettings({ hubUrl, hubKey: '' })
     expect(parseInvite(' dawl-aaaa-bbbb-cccc ')).toEqual({ hubUrl, code: expect.stringMatching(/AAAABBBBCCCC|DAWL-AAAA-BBBB-CCCC/) })
     expect(() => parseInvite('dawlab://join?hub=ftp%3A%2F%2Fx&code=DAWL-AAAA-BBBB-CCCC')).toThrow()

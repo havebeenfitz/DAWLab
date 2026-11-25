@@ -276,6 +276,102 @@ export function formatInviteCode(raw12: string): string {
   return `${INVITE_PREFIX}-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`
 }
 
+/** Bytes -> Crockford base32 (no padding). */
+function toBase32(bytes: Uint8Array): string {
+  let out = ''
+  let bits = 0
+  let value = 0
+  for (const b of bytes) {
+    value = (value << 8) | b
+    bits += 8
+    while (bits >= 5) {
+      out += INVITE_ALPHABET[(value >>> (bits - 5)) & 31]
+      bits -= 5
+    }
+  }
+  if (bits > 0) out += INVITE_ALPHABET[(value << (5 - bits)) & 31]
+  return out
+}
+
+/** Crockford base32 -> bytes; null on a character outside the alphabet. Leftover bits are dropped. */
+function fromBase32(text: string): Uint8Array | null {
+  const out: number[] = []
+  let bits = 0
+  let value = 0
+  for (const ch of text) {
+    const v = INVITE_ALPHABET.indexOf(ch)
+    if (v < 0) return null
+    value = ((value << 5) | v) & 0xffff
+    bits += 5
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 0xff)
+      bits -= 8
+    }
+  }
+  return Uint8Array.from(out)
+}
+
+const HUB_HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?::\d{1,5})?$/
+
+/** Hub address -> what goes into a full invite: the bare host for https, the whole origin otherwise. */
+function hubPayload(hubUrl: string): string {
+  const url = new URL(hubUrl)
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('The DAWLab server address must start with https://')
+  const path = url.pathname.replace(/\/+$/, '')
+  if (url.protocol === 'https:' && !path) return url.host.toLowerCase()
+  return `${url.protocol}//${url.host.toLowerCase()}${path}`
+}
+
+function hubFromPayload(payload: string): string | null {
+  if (payload.includes('://')) {
+    try {
+      const url = new URL(payload)
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
+      if (url.username || url.password || url.search || url.hash) return null
+      return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
+    } catch {
+      return null
+    }
+  }
+  return HUB_HOST_RE.test(payload) ? `https://${payload}` : null
+}
+
+/**
+ * The invite people send: `DAWL-XXXX-XXXX-XXXX-` followed by the server
+ * address in the same base32 alphabet, in groups of four. Joiners need
+ * nothing else: no server address, no password. It is never a web link.
+ */
+export function buildFullInvite(hubUrl: string, code: string): string {
+  const payload = toBase32(new TextEncoder().encode(hubPayload(hubUrl)))
+  const groups = payload.match(/.{1,4}/g) ?? []
+  return [formatInviteCode(code), ...groups].join('-')
+}
+
+/**
+ * Reads any spelling of an invite: the full one (code + server) or a bare
+ * `DAWL-XXXX-XXXX-XXXX`. `hubUrl` is null for a bare code. Returns null when
+ * the text isn't an invite at all.
+ */
+export function parseFullInvite(text: string): { hubUrl: string | null; code: string } | null {
+  const s = String(text ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '')
+  if (!s.startsWith(INVITE_PREFIX)) return isInviteCode(s) ? { hubUrl: null, code: normalizeInviteCode(s) } : null
+  const body = s.slice(INVITE_PREFIX.length).replace(/[IL]/g, '1').replace(/O/g, '0')
+  const code = body.slice(0, INVITE_CODE_LENGTH)
+  if (!RAW_INVITE_RE.test(code)) return null
+  const rest = body.slice(INVITE_CODE_LENGTH)
+  if (!rest) return { hubUrl: null, code }
+  const bytes = fromBase32(rest)
+  if (!bytes || bytes.length === 0) return null
+  let payload: string
+  try {
+    payload = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    return null
+  }
+  const hubUrl = hubFromPayload(payload)
+  return hubUrl ? { hubUrl, code } : null
+}
+
 /** `dawlab://join?hub=<urlencoded hub origin>&code=<code>` */
 export function buildJoinLink(hubUrl: string, code: string): string {
   return `dawlab://join?hub=${encodeURIComponent(hubUrl.replace(/\/+$/, ''))}&code=${encodeURIComponent(formatInviteCode(code))}`

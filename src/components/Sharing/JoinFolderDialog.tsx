@@ -92,7 +92,7 @@ export function JoinFolderDialog({ prefill, onClose, onJoined }: Props) {
     <Dialog
       open={open}
       title="Join a shared folder"
-      subtitle="Paste the invite code or the dawlab:// link you were sent."
+      subtitle="Paste the invite code you were sent. Nothing else to set up."
       onClose={onClose}
       busy={busy}
       footer={
@@ -111,7 +111,7 @@ export function JoinFolderDialog({ prefill, onClose, onJoined }: Props) {
           className="ui-input ui-mono"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="DAWL-7KQ4-MX2P-9TRB"
+          placeholder="DAWL-7KQ4-MX2P-9TRB-…"
           autoComplete="off"
           spellCheck={false}
           disabled={busy}

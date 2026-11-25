@@ -16,7 +16,7 @@ import { loadLocalProjectLog } from '../dawvcs/core/log'
 import { loadRegistry } from '../dawvcs/core/registry'
 import { writeJsonSync } from '../dawvcs/core/fs-utils'
 import {
-  isInviteCode, normalizeInviteCode, parseJoinLink, toSharedLog,
+  parseFullInvite, buildFullInvite, parseJoinLink, toSharedLog,
   type CreatedInvite, type InviteInfo, type InvitePreview, type JoinResponse, type SpaceMember, type SpaceProject,
   type SpaceResponse, type SpaceRole,
 } from '../../shared/hub-protocol'
@@ -242,17 +242,23 @@ export async function syncProjectIfShared(projectName: string, onProgress: SyncP
   return space ? syncSpace(space.folderId, onProgress) : null
 }
 
-/** Accepts `DAWL-XXXX-XXXX-XXXX` or a `dawlab://join?...` link. A bare code uses the server from Settings. */
+/**
+ * Accepts the full invite (code + server, what Share produces), a
+ * `dawlab://join?...` link, or a bare `DAWL-XXXX-XXXX-XXXX`, which uses the
+ * server from Settings.
+ */
 export function parseInvite(input: string): { hubUrl: string; code: string } {
   const text = String(input || '').trim()
   if (text.toLowerCase().startsWith('dawlab://')) {
     const { hubUrl, code } = parseJoinLink(text)
     return { hubUrl: normalizeHubUrl(hubUrl), code }
   }
-  if (!isInviteCode(text)) throw new Error('That is not a DAWLab invite. Invites look like DAWL-7KQ4-MX2P-9TRB.')
+  const parsed = parseFullInvite(text)
+  if (!parsed) throw new Error('That is not a DAWLab invite. Copy the whole invite code you were sent, starting with DAWL-.')
+  if (parsed.hubUrl) return { hubUrl: normalizeHubUrl(parsed.hubUrl), code: parsed.code }
   const { hubUrl } = getHubSettings()
-  if (!hubUrl) throw new Error('This invite needs a DAWLab server. Paste the full dawlab:// link, or connect the server in Settings first.')
-  return { hubUrl, code: normalizeInviteCode(text) }
+  if (!hubUrl) throw new Error('This invite code is incomplete. Ask for the invite again and copy the whole code.')
+  return { hubUrl, code: parsed.code }
 }
 
 /** What an invite opens, before joining. Doesn't use up the invite. */
@@ -320,7 +326,8 @@ export async function createInvite(folderId: string, role: 'edit' | 'listen', ex
   const space = mustSpace(folderId)
   const invite = await call<CreatedInvite>(space, '/space/invites', 'POST', { role, expiresInDays, maxUses })
   const link = `dawlab://join?hub=${encodeURIComponent(space.hubUrl)}&code=${encodeURIComponent(invite.code)}`
-  return { ...invite, link }
+  // The code people send carries the server address, so joiners set up nothing.
+  return { ...invite, code: buildFullInvite(space.hubUrl, invite.code), link }
 }
 
 export const revokeInvite = (folderId: string, inviteId: string) =>
