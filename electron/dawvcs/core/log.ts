@@ -142,7 +142,7 @@ export function buildProjectLog(projectName: string, _projectPath: string, opts:
 export function addCommitToLog(
   log: any,
   branch_name: string,
-  commitData: { commit_id: string; timestamp: string; message: string; author: string; preview_file?: string },
+  commitData: { commit_id: string; timestamp: string; message: string; author: string; preview_file?: string; parent?: string; merged_from?: string },
 ) {
   const branch = log.branches.find((b: any) => b.name === branch_name);
   if (!branch) {

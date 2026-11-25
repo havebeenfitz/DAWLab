@@ -25,7 +25,7 @@ export interface VersionChanges {
   songChanges: SongDiff | null
 }
 
-interface LogCommit { commit_id: string; timestamp: string; message: string }
+interface LogCommit { commit_id: string; timestamp: string; message: string; parent?: string }
 
 /**
  * The version a commit builds on: the one before it on its branch, or for the
@@ -33,6 +33,12 @@ interface LogCommit { commit_id: string; timestamp: string; message: string }
  */
 export function findParent(log: { branches?: Array<{ commits: LogCommit[] }> } | null, commitId: string): LogCommit | null {
   const branches = log?.branches ?? []
+  // Versions that recorded what they were saved on top of (also across alternatives).
+  const self = branches.flatMap(b => b.commits).find(c => c.commit_id === commitId)
+  if (self?.parent) {
+    const recorded = branches.flatMap(b => b.commits).find(c => c.commit_id === self.parent)
+    if (recorded) return recorded
+  }
   for (const b of branches) {
     const i = b.commits.findIndex(c => c.commit_id === commitId)
     if (i > 0) return b.commits[i - 1]
@@ -112,12 +118,15 @@ export function pluginsOfVersion(fileMap: FileMapEntry[], daw: string, casDir: s
 }
 
 /** What changed in `commitId` compared with the version before it. */
-export function getVersionChanges(projectName: string, commitId: string): VersionChanges {
+/** What changed in `commitId` compared with the version before it, or with `baseId` when given. */
+export function getVersionChanges(projectName: string, commitId: string, baseId?: string): VersionChanges {
   const log = loadLocalProjectLog(projectName)
   if (!log) throw new Error(`Project '${projectName}' not found`)
   const { commitsDir, casDir } = getProjectStorageDirs(projectName)
   const current = getCommitFileMap(projectName, commitId, commitsDir)
-  const parent = findParent(log, commitId)
+  const parent = baseId
+    ? (log.branches ?? []).flatMap((b: any) => b.commits).find((c: any) => String(c.commit_id) === baseId) ?? null
+    : findParent(log, commitId)
   let previous: FileMapEntry[] | null = null
   if (parent) {
     try {

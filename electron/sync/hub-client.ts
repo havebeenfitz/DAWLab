@@ -24,6 +24,7 @@ import {
   allCommits, isCommitId, isHash, mergeComments, mergeLogs, parseShareLink, toSharedLog,
   type CreateProjectResponse, type HubRole, type ProjectResponse, type SharedComment, type SharedLog,
 } from '../../shared/hub-protocol'
+import { adoptHubPlacement } from '../../shared/forks'
 
 export interface HubSettings {
   hubUrl: string
@@ -406,7 +407,8 @@ async function pullInto(
   // Filemaps last: a version only appears locally once all its files are here.
   for (const [id, filemap] of filemaps) saveCommit(projectName, id, filemap, commitsDir)
 
-  const local = loadLocalProjectLog(projectName)
+  // Versions the hub moved into a parallel alternative leave the one they were saved on here too.
+  const local = adoptHubPlacement(loadLocalProjectLog(projectName), remoteLog)
   saveProjectLog(projectName, mergeLogs(local, remoteLog))
   return { versions: newCommits.length, files: need.size }
 }

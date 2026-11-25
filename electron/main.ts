@@ -67,6 +67,7 @@ import { getVersionChanges } from "./dawvcs/operations/version-changes";
 import { requestProjectSync } from "./sync/auto-sync";
 import { parseDeepLink } from "./deep-link";
 import { findVersionAudio } from "./dawvcs/operations/version-audio";
+import { makeParallelVersionMain } from "./dawvcs/operations/parallel";
 import { fileURLToPath } from "node:url";
 
 import path from "node:path";
@@ -708,13 +709,20 @@ ipcMain.handle("get-cas-preview-url", (_ev, hash: string) => {
 });
 
 // What a version changed compared with the one before it: files and plugins, git-diff style.
-ipcMain.handle('get-version-changes', async (_ev, projectName: string, commitId: string) => {
+ipcMain.handle('get-version-changes', async (_ev, projectName: string, commitId: string, baseId?: string) => {
   try {
-    return getVersionChanges(projectName, commitId);
+    return getVersionChanges(projectName, commitId, baseId);
   } catch (error) {
     console.error(`[main.ts] Error getting changes for ${commitId}:`, error);
     return null;
   }
+});
+
+// A parallel version (someone saved on top of the same version) becomes the next version of its alternative.
+ipcMain.handle('make-parallel-version-main', async (_ev, projectName: string, forkBranch: string, author: string) => {
+  const result = await makeParallelVersionMain(projectName, forkBranch, author);
+  requestProjectSync(projectName).catch(() => undefined);
+  return result;
 });
 
 // Plays an audio file exactly as it was in a version, from DAWLab storage.

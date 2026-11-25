@@ -43,7 +43,7 @@ export async function createBranch(
 
     const updatedLog = loadLocalProjectLog(projectName)
     if (!updatedLog) throw new Error('project log not found')
-    addCommitToLog(updatedLog, newBranch, { commit_id: commitId, timestamp, message: commitMessage, author: author ?? 'local' })
+    addCommitToLog(updatedLog, newBranch, { commit_id: commitId, timestamp, message: commitMessage, author: author ?? 'local', parent: String(fromCommit) })
     updatedLog.lastCheckout = { commitId, timestamp }
     saveProjectLog(projectName, updatedLog)
 

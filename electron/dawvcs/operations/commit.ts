@@ -76,6 +76,15 @@ function clearDraft(projectName: string, log: any, commitsDir: string, keepCommi
   log.draft = null
 }
 
+export function parentForNewVersion(log: any, branchName: string): string | undefined {
+  const branch = (log.branches ?? []).find((b: any) => b.name === branchName)
+  const commits: any[] = branch?.commits ?? []
+  const checkedOut = log.lastCheckout?.commitId ? String(log.lastCheckout.commitId) : undefined
+  if (checkedOut && commits.some((c) => String(c.commit_id) === checkedOut)) return checkedOut
+  const newest = [...commits].sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp))).pop()
+  return newest ? String(newest.commit_id) : undefined
+}
+
 export async function commitProject(
   projectName: string,
   message = 'No message',
@@ -97,6 +106,10 @@ export async function commitProject(
     throw new Error(`Project path not found for '${projectName}'. Please set the project path in settings.`)
   }
 
+  // The version this one is saved on top of: the one checked out if it is on this
+  // alternative, else the newest on it. Lets shared folders tell parallel work apart.
+  const parent = parentForNewVersion(log, branch_name)
+
   const { commitId, timestamp, numFiles, previewHash, commitsDir } =
     await snapshotProjectFiles(projectName, log, projectPath, opts)
 
@@ -105,6 +118,7 @@ export async function commitProject(
     timestamp,
     message,
     author,
+    ...(parent ? { parent } : {}),
     ...(previewHash ? { preview_file: previewHash } : {})
   })
 

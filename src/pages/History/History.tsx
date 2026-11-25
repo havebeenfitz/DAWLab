@@ -20,6 +20,8 @@ import { ProjectSettings } from "@/components/ProjectSettings/ProjectSettings";
 import { useOptionalSharing } from "@/components/Sharing";
 import { useProjectAccess } from "@/hooks/useProjectAccess";
 import { useSharedProjectSync } from "@/hooks/useSharedProjectSync";
+import { ParallelVersionBanner } from "./components/ParallelVersionBanner";
+import { openParallelVersions } from "../../../shared/forks";
 import FeedbackView from "@/components/Feedback/FeedbackView";
 import { BranchMenu } from "@/components/BranchMenu/BranchMenu";
 import { TagManagerPopover } from "@/components/TagManagerPopover/TagManagerPopover";
@@ -44,6 +46,13 @@ import { useBranchActions } from "./hooks/useBranchActions";
 import "./History.css";
 
 /** The focused commit, falling back to the checked-out one. */
+/** Newest version on an alternative, or null. */
+function newestOn(projectLog: ProjectLog | null, branch: string): string | null {
+  const commits = projectLog?.branches?.find((b) => b.name === branch)?.commits ?? [];
+  const newest = [...commits].sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp))).pop();
+  return newest ? String(newest.commit_id) : null;
+}
+
 function findActiveCommit(projectLog: ProjectLog | null, focusedCommitId: string | null) {
   if (!projectLog?.branches) return null;
   const targetId = focusedCommitId || projectLog.lastCheckout?.commitId;
@@ -256,6 +265,16 @@ export const History: React.FC = () => {
         onToggleSettings={() => setShowSettings(!showSettings)}
         sync={access.folder ? { incoming: sharedSync.incoming, pulling: sharedSync.pulling, pull: () => { void sharedSync.pull(); } } : undefined}
       />
+
+      {!showSettings && (
+        <ParallelVersionBanner
+          projectName={passedProject || ""}
+          versions={openParallelVersions(projectLog, selectedBranch || "main")}
+          currentTipId={newestOn(projectLog, selectedBranch || "main")}
+          username={username || "You"}
+          onChanged={log.refreshProjectLog}
+        />
+      )}
 
       {showSettings ? (
         <ProjectSettings

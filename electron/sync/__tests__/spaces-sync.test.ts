@@ -52,6 +52,9 @@ import { commitProject } from '../../dawvcs/operations/commit'
 import { loadLocalProjectLog } from '../../dawvcs/core/log'
 import { loadRegistry, getProjectPath } from '../../dawvcs/core/registry'
 import { saveHubSettings } from '../hub-client'
+import { openParallelVersions } from '../../../shared/forks'
+import { makeParallelVersionMain } from '../../dawvcs/operations/parallel'
+import { rollbackProject } from '../../dawvcs/operations/rollback'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, getSpaceForProject, listLocalSpaces,
   changeMemberRole, removeMember, previewInvite, leaveSpace, parseInvite, revokeInvite, stopSharing, listInvites, getServerStorage,
@@ -237,6 +240,71 @@ describe('Shared folders', () => {
     setUsername('alice')
     await syncSharedProject('Snow')
     expect(versions('Snow').sort()).toEqual([...bobIds].sort())
+  })
+
+  it('puts parallel work from the same version into an alternative, the same on both Macs', async () => {
+    const shape = () => loadLocalProjectLog('Intro').branches
+      .map((b: any) => `${b.name}:${b.commits.map((c: any) => c.commit_id).sort().join(',')}`).sort()
+    const forksOf = () => loadLocalProjectLog('Intro').branches.filter((b: any) => b.forkOf)
+
+    // Both have the same version of Intro checked out.
+    setUsername('alice'); await syncSharedProject('Intro')
+    setUsername('bob'); await syncSharedProject('Intro')
+    const base = loadLocalProjectLog('Intro').branches.find((b: any) => b.name === 'main').commits.at(-1).commit_id
+    await rollbackProject('Intro', base)
+    setUsername('alice'); await rollbackProject('Intro', base)
+
+    vi.setSystemTime(new Date('2026-02-01T14:00:00Z'))
+    setUsername('alice')
+    fs.writeFileSync(path.join(getProjectPath('Intro'), 'Intro.als'), 'Intro: alice verse')
+    const a = await commitProject('Intro', 'alice: new verse', 'main', 'alice')
+    await syncSharedProject('Intro')
+
+    vi.setSystemTime(new Date('2026-02-01T14:01:00Z'))
+    setUsername('bob')
+    fs.writeFileSync(path.join(getProjectPath('Intro'), 'Intro.als'), 'Intro: bob drums')
+    const b = await commitProject('Intro', 'bob: new drums', 'main', 'bob')
+    await syncSharedProject('Intro')
+
+    // Bob saved second: his version moved into an alternative named after him, and he follows it.
+    const bobForks = forksOf()
+    expect(bobForks).toHaveLength(1)
+    expect(bobForks[0].name).toMatch(/^bob · 1 Feb/)
+    expect(bobForks[0].forkOf).toEqual({ branch: 'main', parent: base, author: 'bob' })
+    expect(bobForks[0].commits.map((c: any) => c.commit_id)).toEqual([b.commitId])
+    expect(loadLocalProjectLog('Intro').current_branch).toBe(bobForks[0].name)
+    const mainIds = loadLocalProjectLog('Intro').branches.find((x: any) => x.name === 'main').commits.map((c: any) => c.commit_id)
+    expect(mainIds).toContain(a.commitId)
+    expect(mainIds).not.toContain(b.commitId)
+    const bobShape = shape()
+
+    // Alice ends with exactly the same history.
+    setUsername('alice')
+    await syncSharedProject('Intro')
+    expect(shape()).toEqual(bobShape)
+    expect(loadLocalProjectLog('Intro').current_branch).toBe('main')
+    const open = openParallelVersions(loadLocalProjectLog('Intro'), 'main')
+    expect(open.map((p) => [p.author, p.tip.commit_id])).toEqual([['bob', b.commitId]])
+
+    // Alice makes Bob's version main: main continues with it; nothing is rewritten.
+    const made = await makeParallelVersionMain('Intro', open[0].branch, 'alice')
+    expect(fs.readFileSync(path.join(getProjectPath('Intro'), 'Intro.als'), 'utf8')).toBe('Intro: bob drums')
+    await syncSharedProject('Intro')
+    expect(openParallelVersions(loadLocalProjectLog('Intro'), 'main')).toEqual([])
+    const aliceShape = shape()
+    expect(aliceShape.find((x) => x.startsWith('main:'))).toContain(made.commitId)
+
+    setUsername('bob')
+    await syncSharedProject('Intro')
+    expect(shape()).toEqual(aliceShape)
+    expect(openParallelVersions(loadLocalProjectLog('Intro'), 'main')).toEqual([])
+  })
+
+  it('keeps versions without a recorded parent in a straight line', async () => {
+    // Versions from before parents were recorded never split off.
+    setUsername('alice')
+    const log = loadLocalProjectLog('Intro')
+    expect(log.branches.find((b: any) => b.name === 'main').commits[0].parent).toBeUndefined()
   })
 
   it('lets the owner see and manage people', async () => {

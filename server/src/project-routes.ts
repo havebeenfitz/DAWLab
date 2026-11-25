@@ -16,6 +16,7 @@ import {
   allCommits, isCommitId, isHash, mergeComments, mergeLogs, toSharedLog,
   type HubRole, type SharedComment, type SharedLog,
 } from '../../shared/hub-protocol.ts'
+import { placeIncoming } from '../../shared/forks.ts'
 import { HIDDEN, HttpError, nowIso, readJson, send, withLock } from './http-util.ts'
 import { keys, type ProjectMeta } from './keys.ts'
 import { filterListenerComments, filterMemberComments } from './comment-rules.ts'
@@ -54,7 +55,8 @@ export function createProjectRoutes(storage: Storage, maxUpload: number) {
           throw new HttpError(409, `Upload the filemap of version ${c.commit_id} before the log`)
         }
       }
-      const next = mergeLogs(current, { ...incoming, id: current.id })
+      // Two people saving on top of the same version: the later one goes into its own alternative.
+      const next = mergeLogs(current, placeIncoming(current, { ...incoming, id: current.id }))
       await storage.putJson(keys.log(access.projectId), next)
       const meta = await storage.getJson<ProjectMeta>(keys.meta(access.projectId))
       if (meta) await storage.putJson(keys.meta(access.projectId), { ...meta, updatedAt: nowIso() })

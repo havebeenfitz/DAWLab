@@ -21,11 +21,26 @@ export interface SharedCommit {
   author: string
   tags?: string[]
   preview_file?: string
+  /** The version this one was saved on top of. Missing on versions saved before this was recorded. */
+  parent?: string
+  /** For "make main": the version from a parallel alternative this one takes over. */
+  merged_from?: string
+}
+
+/** Set on an alternative the hub created because two people saved on top of the same version. */
+export interface ForkInfo {
+  /** The alternative both saved on (usually main). */
+  branch: string
+  /** The version both saved on top of. */
+  parent: string
+  /** Who saved second, whose versions went into this alternative. */
+  author: string
 }
 
 export interface SharedBranch {
   name: string
   commits: SharedCommit[]
+  forkOf?: ForkInfo
 }
 
 /** The part of a project log that is shared. Local-only state (checkout, draft, paths) stays on each machine. */
@@ -88,8 +103,13 @@ export function toSharedLog(log: any): SharedLog {
       }
       if (Array.isArray(c.tags)) commit.tags = c.tags.map(String)
       if (c.preview_file) commit.preview_file = String(c.preview_file)
+      if (c.parent) commit.parent = String(c.parent)
+      if (c.merged_from) commit.merged_from = String(c.merged_from)
       return commit
     }),
+    ...(b.forkOf && typeof b.forkOf === 'object' && b.forkOf.branch && b.forkOf.parent
+      ? { forkOf: { branch: String(b.forkOf.branch), parent: String(b.forkOf.parent), author: String(b.forkOf.author ?? '') } }
+      : {}),
   }))
   return out as SharedLog
 }
@@ -115,6 +135,7 @@ export function mergeLogs<T extends { branches?: any[] }>(base: T, incoming: Sha
       branch = { name: inBranch.name, commits: [] }
       branches.push(branch)
     }
+    if (inBranch.forkOf && !branch.forkOf) branch.forkOf = { ...inBranch.forkOf }
     for (const inCommit of inBranch.commits ?? []) {
       const idx = branch.commits.findIndex((c: any) => String(c.commit_id) === inCommit.commit_id)
       if (idx === -1) branch.commits.push({ ...inCommit })
