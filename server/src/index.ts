@@ -6,8 +6,9 @@ const port = Number(process.env.PORT || 8080)
 const storage = storageFromEnv()
 const createKey = process.env.HUB_CREATE_KEY || undefined
 
-if (!createKey) {
-  console.warn('[hub] HUB_CREATE_KEY is not set: anyone who can reach this hub can create projects on it.')
+if (!createKey || createKey.length < 12) {
+  console.error('[hub] Set HUB_CREATE_KEY (12+ characters). It is the password for creating projects on this hub.')
+  process.exit(1)
 }
 
 const server = http.createServer(createHub({

@@ -13,7 +13,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import { fileURLToPath } from 'node:url'
 import type { Storage } from './storage.ts'
 import { resolveRange } from '../../electron/media/range.ts'
 import {
@@ -45,7 +44,6 @@ class HttpError extends Error {
 }
 
 const JSON_LIMIT = 8 * 1024 * 1024
-const WEB_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'web')
 
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex')
 const newToken = () => crypto.randomBytes(24).toString('base64url')
@@ -238,10 +236,12 @@ export function createHub(opts: HubOptions) {
     const parts = url.pathname.split('/').filter(Boolean)
     const method = req.method ?? 'GET'
 
-    if (url.pathname === '/healthz') return send(res, 200, { ok: true, storage: storage.kind })
-    if (url.pathname === '/' && method === 'GET') return sendFile(res, 'index.html')
-    if (parts[0] === 's' && parts.length === 2 && method === 'GET') return sendFile(res, 'share.html')
-    if (parts[0] !== 'api') throw new HttpError(404, 'Not found')
+    // No pages: the hub only answers the DAWLab app. Anything else is a bare 404.
+    if (url.pathname === '/healthz') return send(res, 200, { ok: true })
+    if (parts[0] !== 'api') {
+      res.writeHead(404, { 'Content-Length': 0 })
+      return res.end()
+    }
 
     if (url.pathname === '/api/projects' && method === 'POST') return createProject(req, res)
 
@@ -301,17 +301,6 @@ export function createHub(opts: HubOptions) {
 function send(res: http.ServerResponse, status: number, body: unknown) {
   const data = JSON.stringify(body)
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(data) })
-  res.end(data)
-}
-
-function sendFile(res: http.ServerResponse, name: string) {
-  const data = fs.readFileSync(path.join(WEB_DIR, name))
-  res.writeHead(200, {
-    'Content-Type': 'text/html; charset=utf-8',
-    'Content-Length': data.length,
-    'Referrer-Policy': 'no-referrer',
-    'X-Content-Type-Options': 'nosniff',
-  })
   res.end(data)
 }
 
