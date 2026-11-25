@@ -1,52 +1,81 @@
 /**
  * History.tsx
  *
- * Main component for displaying commit history visualization
+ * A project's page: its versions (commit graph per alternative), the files,
+ * plugins and comments of the active version, and the preview player.
  *
- * Features:
- * - Project selection dropdown
- * - Branch selection dropdown
- * - Visual commit graph with branching
- * - Checkout buttons for each commit
- * - Branch legend showing all branches
- *
+ * State and actions live in ./hooks, presentational pieces in ./components.
  * The heavy logic for graph reconstruction is in utils/commitGraphUtils.ts
  */
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { notify } from "@/lib/notify";
 import { createPortal } from "react-dom";
-import { motion } from "motion/react";
 import { Link, useLocation, useParams, useNavigate } from "react-router-dom";
-import { ProjectLog } from "@/types/project.types";
-import { applyAudioSettings } from "@/lib/audioOutput";
+import type { ProjectLog } from "@/types/project.types";
 import { CommitGraph } from "@/components/CommitGraph";
-import { FileExplorer } from "@/components/FileExplorer/FileExplorer";
-import { PluginSection } from "@/components/PluginSection/PluginSection";
 import { PathSelectionModal } from "@/components/PathSelectionModal";
 import { MergeModal } from "@/components/MergeModal/MergeModal";
 import { ProjectSettings } from "@/components/ProjectSettings/ProjectSettings";
 import { useOptionalSharing } from "@/components/Sharing";
 import { useProjectAccess } from "@/hooks/useProjectAccess";
-import { HistoryHeader } from "./components/HistoryHeader";
-import { Play, Pause, Rewind, Maximize2 } from "lucide-react";
-import {
-  WarningModal,
-  shouldSkipWarning,
-} from "@/components/WarningModal/WarningModal";
-import { StorageWarningModal } from "../../components/ui/StorageWarningModal";
-import FeedbackView, { type FeedbackHandoff, type FeedbackVersion } from "@/components/Feedback/FeedbackView";
-import { VersionComments } from "@/components/Feedback/VersionComments";
+import FeedbackView from "@/components/Feedback/FeedbackView";
 import { BranchMenu } from "@/components/BranchMenu/BranchMenu";
-import { TagChip } from "@/components/ui/TagChip";
 import { TagManagerPopover } from "@/components/TagManagerPopover/TagManagerPopover";
-import { buildTagSuggestions } from "@/lib/tags";
-import "./History.css";
 import { useUsername } from "@/hooks/useUsername";
+import { HistoryHeader } from "./components/HistoryHeader";
+import { VersionTagFilter } from "./components/VersionTagFilter";
+import { HistoryBottomPanels, type BottomPanelTab } from "./components/HistoryBottomPanels";
+import { PreviewBar } from "./components/PreviewBar";
+import { HistoryWarningModals } from "./components/HistoryWarningModals";
+import { useProjectLog } from "./hooks/useProjectLog";
+import { usePathPrompt } from "./hooks/usePathPrompt";
+import { useProjectPath } from "./hooks/useProjectPath";
+import { useUnsavedChanges } from "./hooks/useUnsavedChanges";
+import { useDraftWatch } from "./hooks/useDraftWatch";
+import { useVersionTags } from "./hooks/useVersionTags";
+import { usePreviewPlayer } from "./hooks/usePreviewPlayer";
+import { useFeedbackSession } from "./hooks/useFeedbackSession";
+import { usePreviewUpload } from "./hooks/usePreviewUpload";
+import { useStorageWarning } from "./hooks/useStorageWarning";
+import { useCommitActions } from "./hooks/useCommitActions";
+import { useBranchActions } from "./hooks/useBranchActions";
+import "./History.css";
+
+/** The focused commit, falling back to the checked-out one. */
+function findActiveCommit(projectLog: ProjectLog | null, focusedCommitId: string | null) {
+  if (!projectLog?.branches) return null;
+  const targetId = focusedCommitId || projectLog.lastCheckout?.commitId;
+  if (!targetId) return null;
+  for (const branch of projectLog.branches) {
+    const commit = branch.commits.find((c) => String(c.commit_id) === String(targetId));
+    if (commit) return commit;
+  }
+  return null;
+}
+
+/** 1-based position of `commitId` on `branchName` (commits are oldest first). */
+function findVersionNumber(projectLog: ProjectLog | null, branchName: string, commitId: string | undefined) {
+  if (!commitId || !projectLog?.branches) return null;
+  const branch = projectLog.branches.find((b) => b.name === branchName);
+  if (!branch) return null;
+  const index = branch.commits.findIndex((c) => String(c.commit_id) === String(commitId));
+  return index !== -1 ? index + 1 : null;
+}
+
+async function openInDaw(projectPath: string) {
+  try {
+    const result = await window.ipcRenderer.invoke("open-project", projectPath);
+    if (!result.success) {
+      notify.error("Couldn't open the project", result.error);
+    }
+  } catch (error) {
+    console.error("Error opening project:", error);
+    notify.error("Couldn't open the project", "Check that the project folder still exists, or set its location in Project settings.");
+  }
+}
+
 export const History: React.FC = () => {
-  // ============================================================================
-  // STATE MANAGEMENT
-  // ============================================================================
   const { username } = useUsername();
   const location = useLocation();
   const navigate = useNavigate();
@@ -54,50 +83,58 @@ export const History: React.FC = () => {
   const { projectId } = useParams();
   const sharing = useOptionalSharing();
   const access = useProjectAccess(passedProject);
-  /** Version control log for the selected project (contains all branches and commits) */
-  const [projectLog, setProjectLog] = useState<ProjectLog | null>(null);
 
-  /** Currently selected branch (for highlighting in the graph) */
-  const [selectedBranch, setSelectedBranch] = useState<string>("main");
-
-  /** Track the latest request ID to prevent stale-response race conditions */
-  const lastLogRequestIdRef = useRef<number>(0);
+  const log = useProjectLog(passedProject, projectId);
+  const { projectLog, selectedBranch, loadProjectLog } = log;
+  const pathPrompt = usePathPrompt();
+  const projectPath = useProjectPath(projectLog, () => pathPrompt.requestPath(null));
+  const hasUnsavedChanges = useUnsavedChanges(projectLog, projectPath);
+  const tags = useVersionTags({ passedProject, projectLog, setProjectLog: log.setProjectLog, selectedBranch });
 
   /** Currently focused commit for preview/actions (independent of checkout) */
   const [focusedCommitId, setFocusedCommitId] = useState<string | null>(null);
-  
-  /** Mobile tab state for Files/Plugins toggle */
-  const [activeMobileTab, setActiveMobileTab] = useState<"files" | "plugins" | "comments">(
-    "files",
-  );
-
-  /** Dropdown open/close state */
+  /** Mobile tab state for Files/Plugins/Comments toggle */
+  const [activeMobileTab, setActiveMobileTab] = useState<BottomPanelTab>("files");
+  /** Alternatives menu open/close state */
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-
-  /** Controls whether the commit form is visible */
-  const [isCreatingCommit, setIsCreatingCommit] = useState<boolean>(false);
-
-  /** Commit message being typed */
-  const [commitMessage, setCommitMessage] = useState<string>("");
-
   /** Controls whether the merge modal is visible */
   const [isMerging, setIsMerging] = useState<boolean>(false);
+  const [showSettings, setShowSettings] = useState<boolean>(location.state?.openSettings === true);
 
-  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
-  const [newBranchName, setNewBranchName] = useState("");
-  const [branchError, setBranchError] = useState<string | null>(null);
-
-  // Path Selection State
-  const [showPathModal, setShowPathModal] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{
-    type: "checkout" | "commit" | "branch";
-    commitId?: string;
-  } | null>(null);
-
-  // Project Settings State
-  const [showSettings, setShowSettings] = useState<boolean>(
-    location.state?.openSettings === true,
+  const activeCommit = useMemo(() => findActiveCommit(projectLog, focusedCommitId), [projectLog, focusedCommitId]);
+  const versionNumber = useMemo(
+    () => findVersionNumber(projectLog, selectedBranch, activeCommit?.commit_id),
+    [activeCommit, projectLog, selectedBranch],
   );
+
+  const player = usePreviewPlayer(activeCommit, passedProject);
+  const feedback = useFeedbackSession(player, activeCommit, tags.branchCommits);
+  const upload = usePreviewUpload(activeCommit, passedProject, log.refreshProjectLog);
+  const storage = useStorageWarning();
+  const commits = useCommitActions({
+    passedProject, projectLog, projectPath, selectedBranch, username, hasUnsavedChanges,
+    loadProjectLog, requestPath: pathPrompt.requestPath, storage,
+  });
+  const branches = useBranchActions({
+    passedProject, projectId, projectLog, projectPath, username, loadProjectLog,
+    setProjectLog: log.setProjectLog, setSelectedBranch: log.setSelectedBranch,
+    invalidatePendingLoads: log.invalidatePendingLoads, requestPath: pathPrompt.requestPath,
+    closeBranchMenu: () => setIsDropdownOpen(false), setFocusedCommitId,
+  });
+  useDraftWatch({ passedProject, projectPath, selectedBranch, username, isListener: access.isListener });
+
+  // Cmd+K (or Ctrl+K) opens the alternatives menu
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (feedback.feedbackOpenRef.current) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsDropdownOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [feedback.feedbackOpenRef]);
 
   // Back navigation: from project settings, step back to the project view;
   // otherwise return to the library (which restores the folder you came from).
@@ -109,1241 +146,53 @@ export const History: React.FC = () => {
     navigate("/");
   };
 
-  // Unsaved Changes Warning State
-  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
-  const [pendingCheckoutId, setPendingCheckoutId] = useState<string | null>(
-    null,
-  );
-
-  // Track if files have been modified since last commit (for status icons)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-
-  // Track which commit is currently being restored (for spinning animation)
-  const [restoringCommitId, setRestoringCommitId] = useState<string | null>(
-    null,
-  );
-
-  // Duplicate Commit Warning State
-  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
-
-  // Committing State (for loading indicator)
-  const [isCommitting, setIsCommitting] = useState(false);
-
-  // Storage Warning State
-  const [showStorageWarning, setShowStorageWarning] = useState(false);
-  const [storageWarningMessage, setStorageWarningMessage] = useState("");
-
-  // Delete Commit State
-  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
-  const [pendingDeleteCommitId, setPendingDeleteCommitId] = useState<
-    string | null
-  >(null);
-  const [isDeletingCommit, setIsDeletingCommit] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  // Audio Preview state
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [isDraggingProgress, setIsDraggingProgress] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const progressContainerRef = useRef<HTMLDivElement>(null);
-
-  const [isDraggingFile, setIsDraggingFile] = useState(false);
-  const [isUploadingPreview, setIsUploadingPreview] = useState(false);
-  const pendingSeekRef = useRef<number | null>(null);
-
-  // Full-screen feedback view over the preview player.
-  const [feedbackSession, setFeedbackSession] = useState<{ autoPlay: boolean } | null>(null);
-  const feedbackOpenRef = useRef(false);
-  feedbackOpenRef.current = feedbackSession !== null;
-  // Whether the feedback view has taken playback over from this player yet.
-  const feedbackTookOverRef = useRef(false);
-  const feedbackClosingRef = useRef(false);
-
-  // ---- Version tags ----
-  const [tagColors, setTagColors] = useState<Record<string, string>>({});
-  // Tags used anywhere in the library, so versions can reuse project tags.
-  const [libraryTags, setLibraryTags] = useState<string[]>([]);
-  const [versionTagPopover, setVersionTagPopover] = useState<{
-    commitId: string;
-    x: number;
-    y: number;
-  } | null>(null);
-  // Filter on the version cards; OR semantics (a version matches any active tag).
-  const [activeVersionTags, setActiveVersionTags] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    Promise.all([
-      window.ipcRenderer.invoke("load-tag-colors").catch(() => ({})),
-      window.ipcRenderer.invoke("get-all-projects").catch(() => null),
-    ]).then(([colors, all]) => {
-      setTagColors(colors || {});
-      const gathered = new Set<string>();
-      for (const p of all?.projects || []) for (const t of p.tags || []) gathered.add(t);
-      setLibraryTags(Array.from(gathered));
-    });
-  }, []);
-
-  // Filters are per-branch — start clean when switching alternatives.
-  useEffect(() => {
-    setActiveVersionTags(new Set());
-  }, [selectedBranch]);
-
-  const branchCommits = useMemo(
-    () => projectLog?.branches.find((b) => b.name === selectedBranch)?.commits || [],
-    [projectLog, selectedBranch],
-  );
-
-  // Every version tag on the current branch, in first-seen order.
-  const branchVersionTags = useMemo(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const c of branchCommits) {
-      for (const t of c.tags || []) {
-        if (seen.has(t)) continue;
-        seen.add(t);
-        out.push(t);
-      }
-    }
-    return out;
-  }, [branchCommits]);
-
-  // Ignore active filters whose tag no longer exists on this branch (e.g. just removed).
-  const effectiveVersionFilter = useMemo(
-    () => branchVersionTags.filter((t) => activeVersionTags.has(t)),
-    [branchVersionTags, activeVersionTags],
-  );
-
-  const visibleCommits = useMemo(() => {
-    if (effectiveVersionFilter.length === 0) return branchCommits;
-    return branchCommits.filter((c) =>
-      (c.tags || []).some((t) => effectiveVersionFilter.includes(t)),
-    );
-  }, [branchCommits, effectiveVersionFilter]);
-
-  const versionTagSuggestions = useMemo(() => {
-    const known = new Set<string>(libraryTags);
-    for (const b of projectLog?.branches || []) {
-      for (const c of b.commits) for (const t of c.tags || []) known.add(t);
-    }
-    for (const t of Object.keys(tagColors)) known.add(t);
-    return buildTagSuggestions(Array.from(known), tagColors);
-  }, [libraryTags, projectLog, tagColors]);
-
-  /** Optimistically replace a version's tags, reverting if the write fails. */
-  const updateCommitTags = (commitId: string, tags: string[]) => {
-    const apply = (next: (prevTags: string[]) => string[]) =>
-      setProjectLog((prev) =>
-        prev
-          ? {
-              ...prev,
-              branches: prev.branches.map((b) => ({
-                ...b,
-                commits: b.commits.map((c) =>
-                  String(c.commit_id) === String(commitId)
-                    ? { ...c, tags: next(c.tags || []) }
-                    : c,
-                ),
-              })),
-            }
-          : prev,
-      );
-
-    const previous = findCommitTags(commitId);
-    apply(() => tags);
-
-    window.ipcRenderer
-      .invoke("set-commit-tags", passedProject, commitId, tags)
-      .catch((err: unknown) => {
-        console.error("[History] Failed to save version tags:", err);
-        apply(() => previous);
-      });
-  };
-
-  const findCommitTags = (commitId: string): string[] => {
-    for (const b of projectLog?.branches || []) {
-      const c = b.commits.find((c) => String(c.commit_id) === String(commitId));
-      if (c) return c.tags || [];
-    }
-    return [];
-  };
-
-  const handleAddVersionTag = (commitId: string, tag: string, color: string) => {
-    const current = findCommitTags(commitId);
-    if (current.some((t) => t.toLowerCase() === tag.toLowerCase())) return;
-    if (color && color !== "#007bff" && !tagColors[tag]) {
-      setTagColors((prev) => ({ ...prev, [tag]: color }));
-      window.ipcRenderer.invoke("save-tag-color", tag, color).catch(() => {});
-    }
-    updateCommitTags(commitId, [...current, tag]);
-  };
-
-  const handleRemoveVersionTag = (commitId: string, tag: string) => {
-    updateCommitTags(commitId, findCommitTags(commitId).filter((t) => t !== tag));
-  };
-
-
-  /**
-   * Handle file drop for audio preview
-   */
-  const performPreviewUpload = async (filePath: string) => {
-    const targetCommitId = activeCommit?.commit_id;
-    if (!targetCommitId) return;
-    setIsUploadingPreview(true);
-    try {
-      const result = await window.ipcRenderer.invoke('add-preview-to-commit', passedProject, targetCommitId, filePath);
-      if (result.success) {
-        await refreshProjectLog();
-      }
-    } catch (error: any) {
-      console.error("Failed to add preview:", error);
-      notify.error("Couldn't add the preview", error);
-    } finally {
-      setIsUploadingPreview(false);
-    }
-  };
-
-  const handlePreviewDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDraggingFile(false);
-
-    const files = e.dataTransfer.files;
-    if (files.length === 0) return;
-
-    const file = files[0];
-    const filePath = window.electronAPI.getPathForFile(file);
-
-    if (!filePath) {
-      console.error("No file path found on dropped file");
-      return;
-    }
-
-    const targetCommitId = activeCommit?.commit_id;
-    if (!targetCommitId) {
-      notify.info("Pick a version first", "Select the version you want to attach this preview to, then drop the audio again.");
-      return;
-    }
-
-    await performPreviewUpload(filePath);
-  };
-
-  const refreshProjectLog = async () => {
-    if (!passedProject) return;
-    const log = await window.ipcRenderer.invoke(
-      "get-local-project-log",
-      passedProject,
-      projectId,
-    );
-    if (log) {
-      setProjectLog(log);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDraggingFile(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDraggingFile(false);
-  };
-
-  /** Memoized active commit and its version number */
-  const activeCommit = useMemo(() => {
-    if (!projectLog?.branches) return null;
-
-    // Target commit logic:
-    // 1. If user clicked a commit (focused), use that.
-    // 2. Fallback to currently checked out commit.
-    const targetId = focusedCommitId || projectLog.lastCheckout?.commitId;
-    if (!targetId) return null;
-
-    for (const branch of projectLog.branches) {
-      const commit = branch.commits.find(
-        (c) => String(c.commit_id) === String(targetId),
-      );
-      if (commit) return commit;
-    }
-    return null;
-  }, [projectLog, focusedCommitId]);
-
-  const versionNumber = useMemo(() => {
-    if (!activeCommit || !projectLog?.branches) return null;
-    const branch = projectLog.branches.find((b) => b.name === selectedBranch);
-    if (!branch) return null;
-    // Commits are chronological (oldest first in the array), so index + 1 works as version number
-    const index = branch.commits.findIndex(
-      (c) => String(c.commit_id) === String(activeCommit.commit_id),
-    );
-    return index !== -1 ? index + 1 : null;
-  }, [activeCommit, projectLog, selectedBranch]);
-
-  // Track progress via onTimeUpdate
-  const onAudioTimeUpdate = (e: React.SyntheticEvent<HTMLAudioElement>) => {
-    const audio = e.currentTarget;
-    const progress = (audio.currentTime / audio.duration) * 100;
-
-    // Low-frequency logging to avoid console spam
-    if (Math.floor(audio.currentTime) % 2 === 0 && audio.currentTime > 0) {
-      console.log(
-        `[Audio Debug] Time: ${audio.currentTime.toFixed(2)}s / ${audio.duration.toFixed(2)}s (${progress.toFixed(1)}%)`,
-      );
-    }
-
-    if (audio.currentTime > 0 && !isDraggingProgress) {
-      setCurrentTime(audio.currentTime);
-    }
-    if (audio.duration && audio.duration > 0 && audio.duration !== Infinity) {
-      setDuration(audio.duration);
-    }
-  };
-
-  const onAudioLoadedMetadata = (e: React.SyntheticEvent<HTMLAudioElement>) => {
-    const audio = e.currentTarget;
-    if (audio.duration && audio.duration > 0 && audio.duration !== Infinity) {
-      setDuration(audio.duration);
-    }
-    if (pendingSeekRef.current !== null) {
-      audio.currentTime = pendingSeekRef.current;
-      setCurrentTime(pendingSeekRef.current);
-      pendingSeekRef.current = null;
-    }
-  };
-
-  const onAudioEnded = () => {
-    setIsPlaying(false);
-    setCurrentTime(0);
-  };
-
-  // Handle Rewind (Back 10s)
-  const handleRewind = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      setCurrentTime(0);
-    }
-  };
-
-  // Handle Play/Pause
-  const [audioUrl, setAudioUrl] = useState<string>("");
-
-  /** Points the player at the active version's preview; null if it's missing. */
-  const loadPreviewUrl = async (): Promise<string | null> => {
-    if (!activeCommit?.preview_file) return null;
-    try {
-      const url = await window.ipcRenderer.invoke(
-        "get-preview-url",
-        passedProject,
-        activeCommit.commit_id,
-        activeCommit.preview_file,
-      );
-      // null = the preview file is gone; don't point <audio> at a dead URL.
-      if (!url) {
-        console.error("Audio preview file not found for commit", activeCommit.commit_id);
-        return null;
-      }
-      setAudioUrl(url);
-      return url;
-    } catch (err) {
-      console.error("Failed to resolve audio preview:", err);
-      return null;
-    }
-  };
-
-  const handleTogglePlay = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!activeCommit?.preview_file) return;
-
-    if (!isPlaying) {
-      if (!audioUrl) {
-        if (await loadPreviewUrl()) setIsPlaying(true);
-      } else if (audioRef.current) {
-        setIsPlaying(true);
-      }
-    } else if (audioRef.current) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    }
-  };
-
-  /** Plays the History player from `seconds` (e.g. a double-clicked comment). */
-  const playFrom = async (seconds: number) => {
-    const el = audioRef.current;
-    if (audioUrl && el) {
-      el.currentTime = seconds;
-      setCurrentTime(seconds);
-      setIsPlaying(true);
-      return;
-    }
-    // Not loaded yet: seek once metadata arrives (onAudioLoadedMetadata).
-    pendingSeekRef.current = seconds;
-    setCurrentTime(seconds);
-    if (await loadPreviewUrl()) setIsPlaying(true);
-    else pendingSeekRef.current = null;
-  };
-
-  // Sync isPlaying state with audio element. A failed play() (dead source, output
-  // device error) must reset the button rather than leave it stuck on "playing".
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    if (isPlaying && audioUrl) {
-      let cancelled = false;
-      applyAudioSettings(el)
-        .then(() => (cancelled ? undefined : el.play()))
-        .catch((e) => {
-          if (cancelled || e?.name === "AbortError") return;
-          console.error("Audio play failed:", e);
-          setIsPlaying(false);
-        });
-      return () => { cancelled = true; };
-    }
-    el.pause();
-  }, [audioUrl, isPlaying]);
-
-  // Cleanup/Reset audio on commit change
-  useEffect(() => {
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setDuration(0);
-    setAudioUrl("");
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-  }, [activeCommit?.commit_id]);
-
-  const handleProgressClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!audioRef.current || duration === 0) return;
-
-    const rect = progressContainerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const clickX = e.clientX - rect.left;
-    const newTime = (clickX / rect.width) * duration;
-    audioRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-  };
-
-  /** Versions on this branch that have a preview, labelled like the player. */
-  const feedbackVersions = useMemo<FeedbackVersion[]>(
-    () =>
-      branchCommits.flatMap((c, i) =>
-        c.preview_file
-          ? [{
-              commitId: String(c.commit_id),
-              previewFile: c.preview_file,
-              label: c.message ? `Version ${i + 1} · ${c.message}` : `Version ${i + 1}`,
-            }]
-          : [],
-      ),
-    [branchCommits],
-  );
-
-  const feedbackVersion = useMemo<FeedbackVersion | null>(() => {
-    if (!activeCommit?.preview_file) return null;
-    const id = String(activeCommit.commit_id);
-    return (
-      feedbackVersions.find((v) => v.commitId === id) ?? {
-        commitId: id,
-        previewFile: activeCommit.preview_file,
-        label: activeCommit.message || "Version",
-      }
-    );
-  }, [activeCommit, feedbackVersions]);
-
-  // Open full screen. This player keeps going until the feedback view's audio
-  // is running (onTakeover), so there's no gap while it loads.
-  const handleOpenFeedback = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!feedbackVersion) return;
-    feedbackTookOverRef.current = false;
-    feedbackClosingRef.current = false;
-    setFeedbackSession({ autoPlay: isPlaying });
-  };
-
-  const handleFeedbackTakeover = () => {
-    feedbackTookOverRef.current = true;
-    audioRef.current?.pause();
-    setIsPlaying(false);
-  };
-
-  /** Resolves once the <audio> element has picked up `url` from a render. */
-  const waitForAudioSrc = (url: string) =>
-    new Promise<HTMLAudioElement | null>((resolve) => {
-      const started = performance.now();
-      const check = () => {
-        const el = audioRef.current;
-        if (el && el.getAttribute("src") === url) resolve(el);
-        else if (performance.now() - started > 1000) resolve(null);
-        else requestAnimationFrame(check);
-      };
-      check();
-    });
-
-  // Leave full screen. If it's playing, start this player at its live position
-  // and only close the overlay once ours is running, then fix any drift.
-  const handleCloseFeedback = async ({ playing, liveTime }: FeedbackHandoff) => {
-    if (feedbackClosingRef.current) return;
-    // Closed before it took over: this player never stopped, leave it be.
-    if (!feedbackTookOverRef.current) {
-      setFeedbackSession(null);
-      return;
-    }
-    if (!playing) {
-      setFeedbackSession(null);
-      const lastTime = liveTime();
-      const el = audioRef.current;
-      if (el && audioUrl) el.currentTime = lastTime;
-      else pendingSeekRef.current = lastTime;
-      setCurrentTime(lastTime);
-      return;
-    }
-
-    feedbackClosingRef.current = true;
-    const finish = () => {
-      feedbackClosingRef.current = false;
-      setFeedbackSession(null);
-    };
-    try {
-      let el = audioRef.current;
-      if (!audioUrl || !el) {
-        const url = await loadPreviewUrl();
-        el = url ? await waitForAudioSrc(url) : null;
-      }
-      if (!el) return finish();
-      pendingSeekRef.current = null;
-      el.currentTime = liveTime();
-      await applyAudioSettings(el);
-      await el.play();
-      const live = liveTime();
-      if (Math.abs(live - el.currentTime) > 0.08) el.currentTime = live;
-      setCurrentTime(el.currentTime);
-      setIsPlaying(true);
-    } catch (err) {
-      console.error("Failed to resume after full screen:", err);
-    }
-    finish();
-  };
-
-  const handleProgressMouseDown = (e: React.MouseEvent) => {
-    setIsDraggingProgress(true);
-    handleProgressClick(e);
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDraggingProgress || !audioRef.current || duration === 0) return;
-
-      const rect = progressContainerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      let clickX = e.clientX - rect.left;
-      clickX = Math.max(0, Math.min(clickX, rect.width));
-      const newTime = (clickX / rect.width) * duration;
-
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    };
-
-    const handleMouseUp = () => {
-      setIsDraggingProgress(false);
-    };
-
-    if (isDraggingProgress) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    }
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isDraggingProgress, duration]);
-
-  const [pendingCheckoutStorageId, setPendingCheckoutStorageId] = useState<
-    string | null
-  >(null);
-
-  // Project path from registry (single source of truth)
-  const [projectPath, setProjectPath] = useState<string | null>(null);
-
-  // ============================================================================
-  // LIFECYCLE EFFECTS
-  // ============================================================================
-
-  /**
-   * When a project is selected: load its version control log from disk.
-   * Falls back to registry-based lookup if no local log file is found yet
-   * (e.g. right after init, before the log file has been written).
-   */
-  useEffect(() => {
-    if (!passedProject) return;
-
-    const loadAndSync = async () => {
-      const requestId = ++lastLogRequestIdRef.current;
-
-      const localLog = await window.ipcRenderer.invoke('get-local-project-log', passedProject, projectId);
-
-      if (requestId === lastLogRequestIdRef.current && localLog) {
-        setProjectLog(localLog);
-        setSelectedBranch(localLog.current_branch || "main");
-        return;
-      }
-
-      if (!localLog) {
-        setIsSyncing(true);
-        const log = await window.ipcRenderer.invoke('get-project-log', passedProject, projectId);
-        setIsSyncing(false);
-
-        if (requestId === lastLogRequestIdRef.current && log) {
-          setProjectLog(log);
-          setSelectedBranch(log.current_branch || 'main');
-        }
-      }
-    };
-
-    loadAndSync();
-  }, [passedProject, projectId]);
-
-  /**
-   * Fetch project path from registry whenever project log changes
-   * Registry is the single source of truth for project paths
-   */
-  useEffect(() => {
-    const fetchProjectPath = async () => {
-      if (!projectLog || Object.keys(projectLog).length === 0) {
-        setProjectPath(null);
-        return;
-      }
-
-      try {
-        const path = await window.ipcRenderer.invoke(
-          "get-project-path",
-          projectLog.name,
-          projectLog.id,
-        );
-        setProjectPath(path);
-
-        // Auto-prompt path selection if it's missing
-        if (!path || path === 'NA' || path === '/') {
-          console.log('[History] Project path is NA, showing path modal automatically');
-          // Set no pending action so it just updates the path
-          setPendingAction(null);
-          setShowPathModal(true);
-        }
-      } catch (error) {
-        console.error("[History] Error fetching project path:", error);
-        setProjectPath(null);
-      }
-    };
-
-    fetchProjectPath();
-  }, [projectLog]);
-
-  /**
-   * Check for unsaved changes when project log loads or branch changes
-   * Uses lastCheckout timestamp from log to determine if files were modified
-   */
-  useEffect(() => {
-    const checkForUnsavedChanges = async () => {
-      console.log("[hasUnsavedChanges] Starting check...");
-
-      // If path is NA, the project hasn't been downloaded locally yet
-      // Skip the unsaved changes check - the blue state will be shown based on no lastCheckout
-      if (projectPath === "NA" || !projectPath || projectPath === "/") {
-        console.log(
-          "[hasUnsavedChanges] No valid project path, skipping check",
-        );
-        setHasUnsavedChanges(false);
-        return;
-      }
-
-      // Check if projectLog exists
-      if (!projectLog) {
-        console.log("[hasUnsavedChanges] No project log, setting false");
-        setHasUnsavedChanges(false);
-        return;
-      }
-
-      // If no lastCheckout info, skip the check (will show blue state)
-      if (!projectLog.lastCheckout) {
-        console.log("[hasUnsavedChanges] No lastCheckout info, setting false");
-        setHasUnsavedChanges(false);
-        return;
-      }
-
-      console.log("[hasUnsavedChanges] lastCheckout:", projectLog.lastCheckout);
-
-      try {
-        const result = await window.ipcRenderer.invoke(
-          "get-project-last-save-time",
-          projectPath,
-        );
-        console.log("[hasUnsavedChanges] File save time result:", result);
-
-        if (result.success) {
-          const fileModTime = result.latestModTime;
-
-          // Parse lastCheckout timestamp (YYYYMMDDHHmmss) as UTC
-          const ts = projectLog.lastCheckout.timestamp;
-          const year = ts.slice(0, 4);
-          const month = ts.slice(4, 6);
-          const day = ts.slice(6, 8);
-          const hour = ts.slice(8, 10);
-          const min = ts.slice(10, 12);
-          const sec = ts.slice(12, 14);
-          // Add 'Z' to parse as UTC (backend saves in UTC via toISOString)
-          const checkoutTime = new Date(
-            `${year}-${month}-${day}T${hour}:${min}:${sec}Z`,
-          ).getTime();
-
-          console.log(
-            "[hasUnsavedChanges] File mod time:",
-            new Date(fileModTime).toISOString(),
-          );
-          console.log(
-            "[hasUnsavedChanges] Latest modified file:",
-            result.latestFilePath,
-          );
-          console.log(
-            "[hasUnsavedChanges] Checkout time:",
-            new Date(checkoutTime).toISOString(),
-          );
-          console.log(
-            "[hasUnsavedChanges] Time diff (ms):",
-            fileModTime - checkoutTime,
-          );
-          console.log("[hasUnsavedChanges] Buffer threshold: 5000ms");
-
-          // Files modified more than 5 seconds after checkout = unsaved changes
-          // 5 second buffer accounts for the rollback operation writing files
-          const hasChanges = fileModTime > checkoutTime + 5000;
-          console.log(
-            "[hasUnsavedChanges] Setting hasUnsavedChanges to:",
-            hasChanges,
-          );
-          setHasUnsavedChanges(hasChanges);
-        } else {
-          console.log(
-            "[hasUnsavedChanges] File save time check failed, setting false",
-          );
-          setHasUnsavedChanges(false);
-        }
-      } catch (error) {
-        console.warn(
-          "[hasUnsavedChanges] Error checking for unsaved changes:",
-          error,
-        );
-        setHasUnsavedChanges(false);
-      }
-    };
-
-    checkForUnsavedChanges();
-  }, [projectLog, projectPath]);
-
-  /**
-   * Re-check for unsaved changes when window gains focus
-   * This triggers when user returns to DAWLab from their DAW
-   */
-  useEffect(() => {
-    const handleWindowFocus = () => {
-      // Trigger a re-check by updating projectLog reference
-      if (projectLog) {
-        setProjectLog({ ...projectLog });
-      }
-    };
-
-    window.addEventListener("focus", handleWindowFocus);
-
-    return () => {
-      window.removeEventListener("focus", handleWindowFocus);
-    };
-  }, [projectLog]);
-
-  /**
-   * Auto-draft watching: while this project is open, the main process watches
-   * its folder and snapshots unsaved DAW saves into an unnamed draft (kept out
-   * of history until the user names it). Restart on branch change so drafts are
-   * captured against the branch the user is on.
-   */
-  useEffect(() => {
-    // Listeners have no project files here, so there is nothing to snapshot.
-    if (access.isListener || !passedProject || !projectPath || projectPath === "/" || projectPath === "NA") {
-      return;
-    }
-
-    window.ipcRenderer
-      .invoke("start-draft-watch", passedProject, projectPath, selectedBranch || "main", username || "")
-      .catch((err) => console.warn("[History] Failed to start draft watch:", err));
-
-    return () => {
-      window.ipcRenderer
-        .invoke("stop-draft-watch", passedProject)
-        .catch((err) => console.warn("[History] Failed to stop draft watch:", err));
-    };
-  }, [passedProject, projectPath, selectedBranch, username, access.isListener]);
-
-  /**
-   * Keyboard shortcuts
-   * Cmd+K (or Ctrl+K) to open branch selector
-   */
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (feedbackOpenRef.current) return;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setIsDropdownOpen((prev) => !prev);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  /**
-   * Reloads the project log (for use after commits, etc.)
-   */
-  const loadProjectLog = async (projectName: string) => {
-    const requestId = ++lastLogRequestIdRef.current;
-
-    try {
-      const isLocalId = !projectId || projectId.startsWith('local:');
-      
-      setIsSyncing(true);
-      const log = await window.ipcRenderer.invoke('get-project-log', projectName, isLocalId ? undefined : projectId);
-      
-      // Only apply update if this is still the most recent request
-      if (requestId === lastLogRequestIdRef.current) {
-        setProjectLog(log);
-        setSelectedBranch(log.current_branch || "main");
-      } else {
-        console.warn(
-          `[History] Ignoring stale log data for ${projectName} (newer request exists)`,
-        );
-      }
-    } catch (error) {
-      if (requestId === lastLogRequestIdRef.current) {
-        console.error("Error loading project log:", error);
-      }
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // ============================================================================
-  // EVENT HANDLERS
-  // ============================================================================
-
-  /**
-   * Performs the actual rollback to a commit
-   */
-  const performCheckout = async (commitId: string, bypassLimit = false) => {
-    if (!projectLog) return;
-    console.log(
-      "Rollback project:",
-      passedProject,
-      "to commit:",
-      commitId,
-      "bypassLimit:",
-      bypassLimit,
-    );
-
-    // Set restoring state to show spinning animation
-    setRestoringCommitId(commitId);
-
-    try {
-      const result = await window.ipcRenderer.invoke(
-        "rollback-project",
-        passedProject,
-        commitId,
-        bypassLimit,
-      );
-      console.log("Project rolled back:", result);
-      // Reload project log to get updated lastCheckout
-      await loadProjectLog(passedProject);
-    } catch (error: any) {
-      console.error("Error during rollback:", error);
-      const errorMessage = error?.message || String(error);
-
-      if (errorMessage.includes("Storage limit exceeded")) {
-        setStorageWarningMessage(
-          "You've reached your local storage limit. You can adjust this in Settings.",
-        );
-        setPendingCheckoutStorageId(commitId);
-        setShowStorageWarning(true);
-      } else {
-        notify.error("Couldn't restore this version", errorMessage);
-      }
-    } finally {
-      // Clear restoring state
-      setRestoringCommitId(null);
-    }
-  };
-
-  /**
-   * Handles checking out (reverting to) a specific commit
-   * Now includes check for unsaved changes before proceeding
-   */
-  const handleCheckout = async (commitId: string) => {
-    console.log("Checkout commit:", commitId);
-
-    if (!projectLog) return;
-
-    // Check if we need to select a path first
-    if (!projectPath || projectPath === "NA") {
-      console.log(
-        "Project path is missing, prompting for path selection",
-      );
-      setPendingAction({ type: "checkout", commitId });
-      setShowPathModal(true);
-      return;
-    }
-
-    // Check for unsaved changes (skip if user opted out)
-    const skipUnsavedWarning = await shouldSkipWarning('unsaved-changes');
-    
-
-
-    if (!skipUnsavedWarning) {
-      try {
-        // Only check if we have lastCheckout info
-        if (projectLog.lastCheckout) {
-          const saveTimeResult = await window.ipcRenderer.invoke(
-            "get-project-last-save-time",
-            projectPath,
-          );
-
-          if (saveTimeResult.success) {
-            const fileModTime = saveTimeResult.latestModTime;
-
-            // Parse lastCheckout timestamp as UTC
-            const ts = projectLog.lastCheckout.timestamp;
-            const year = ts.slice(0, 4);
-            const month = ts.slice(4, 6);
-            const day = ts.slice(6, 8);
-            const hour = ts.slice(8, 10);
-            const min = ts.slice(10, 12);
-            const sec = ts.slice(12, 14);
-            const checkoutTime = new Date(
-              `${year}-${month}-${day}T${hour}:${min}:${sec}Z`,
-            ).getTime();
-
-            console.log(
-              "[handleCheckout] File mod time:",
-              new Date(fileModTime).toISOString(),
-            );
-            console.log(
-              "[handleCheckout] Checkout time:",
-              new Date(checkoutTime).toISOString(),
-            );
-
-            // If files were modified after the last checkout (with 5s buffer), show warning
-            if (fileModTime > checkoutTime + 5000) {
-              console.log(
-                "[handleCheckout] Unsaved changes detected, showing warning",
-              );
-              setPendingCheckoutId(commitId);
-              setShowUnsavedWarning(true);
-              return;
-            }
-          }
-        }
-      } catch (error) {
-        console.warn(
-          "[handleCheckout] Error checking for unsaved changes:",
-          error,
-        );
-        // Continue with checkout if we can't check
-      }
-    }
-
-    // No unsaved changes or user skipped warning - proceed with checkout
-    await performCheckout(commitId);
-  };
-
-  /**
-   * Handle proceeding with checkout despite unsaved changes
-   */
-  const handleProceedAnyway = async () => {
-    setShowUnsavedWarning(false);
-    if (pendingCheckoutId) {
-      await performCheckout(pendingCheckoutId);
-      setPendingCheckoutId(null);
-    }
-  };
-
-  /**
-   * Handle committing changes before checkout
-   */
-  const handleCommitFirst = () => {
-    setShowUnsavedWarning(false);
-    setIsCreatingCommit(true);
-    // pendingCheckoutId is kept so user can checkout after committing
-  };
-
-  /* Removed stray braces */
-
-  const handleProceedCheckoutAnyway = async () => {
-    setShowStorageWarning(false);
-    if (pendingCheckoutStorageId) {
-      // If we had a pending checkout blocked by storage, we still need to check for unsaved changes
-      const commitId = pendingCheckoutStorageId;
-      setPendingCheckoutStorageId(null);
-
-      // Check for unsaved changes (copied logic from handleCheckout)
-      const skipUnsavedWarning = await shouldSkipWarning("unsaved-changes");
-      if (!skipUnsavedWarning) {
-        try {
-          if (projectLog?.lastCheckout) {
-            const saveTimeResult = await window.ipcRenderer.invoke(
-              "get-project-last-save-time",
-              projectPath,
-            );
-            if (saveTimeResult.success) {
-              const fileModTime = saveTimeResult.latestModTime;
-              const ts = projectLog.lastCheckout.timestamp;
-              const year = ts.slice(0, 4);
-              const month = ts.slice(4, 6);
-              const day = ts.slice(6, 8);
-              const hour = ts.slice(8, 10);
-              const min = ts.slice(10, 12);
-              const sec = ts.slice(12, 14);
-              const checkoutTime = new Date(`${year}-${month}-${day}T${hour}:${min}:${sec}Z`).getTime();
-              
-              if (fileModTime > checkoutTime + 5000) {
-                setPendingCheckoutId(commitId);
-                setShowUnsavedWarning(true);
-                return;
-              }
-            }
-          }
-        } catch (error) {
-          console.warn(
-            "[handleProceedCheckoutAnyway] Error checking unsaved changes:",
-            error,
-          );
-        }
-      }
-
-      await performCheckout(commitId, true);
-    }
-  };
-
-  /**
-   * Handle canceling checkout
-   */
-  const handleCancelCheckout = () => {
-    setShowUnsavedWarning(false);
-    setPendingCheckoutId(null);
-  };
-
-  /**
-   * Handles saving a new commit
-   * Calls the IPC method to commit the project
-   */
-  const handleSaveCommit = async (customMessage?: string) => {
-    const messageToUse = customMessage || commitMessage;
-    if (!messageToUse.trim()) {
-      notify.info("Add a short note", "Describe what changed in this version, then save.");
-      return;
-    }
-
-    console.log("Project Log:", projectLog);
+  const handleOpenInDaw = async () => {
     if (!projectLog) return;
     if (!projectPath || projectPath === "/") {
-      console.log(
-        "Project path is missing, prompting for path selection",
-      );
-      setPendingAction({ type: "commit" });
-      setShowPathModal(true);
+      pathPrompt.requestPath({ type: "checkout" });
       return;
     }
-
-    await performCommit(messageToUse);
+    await openInDaw(projectPath);
   };
 
-  /**
-   * Actually performs the commit operation
-   */
-  const performCommit = async (messageOverride?: string) => {
-    if (!projectLog) return;
-
-    setIsCommitting(true);
+  /** Saves the chosen location, then continues whatever was waiting on it. */
+  const handleConfirmPath = async (path: string, setLoading: (loading: boolean) => void) => {
+    const { pendingAction } = pathPrompt;
     try {
-      const res = await window.ipcRenderer.invoke(
-        "commit-project",
-        passedProject,
-        messageOverride || commitMessage,
-        selectedBranch,
-        username || "",
-      );
-      console.log("Commit created:", res);
-
-      // Reset form
-      setCommitMessage("");
-      setIsCreatingCommit(false);
-
-      // Reload the project log to show the new commit
+      // The unified update-project-path handler covers both owned and shared projects
+      await window.ipcRenderer.invoke("update-project-path", projectId || passedProject, path + "/" + passedProject);
       await loadProjectLog(passedProject);
-    } catch (error: any) {
-      console.error('Error creating commit:', error);
-      
-      // Check for storage limit exceeded error
-      const errorMessage = error?.message || String(error);
-      if (
-        errorMessage.includes("Storage limit exceeded") ||
-        errorMessage.includes("403")
-      ) {
-        setStorageWarningMessage(
-          "You've reached your local storage limit. You can adjust this in Settings.",
-        );
-        setShowStorageWarning(true);
-      } else {
-        notify.error("Couldn't save the version", errorMessage);
+
+      if (pendingAction?.type === "checkout") {
+        await window.ipcRenderer.invoke("rollback-project", passedProject, pendingAction.commitId);
       }
+      if (pendingAction?.type === "commit") {
+        await commits.resumeCommitAfterPath();
+      }
+      if (pendingAction?.type === "branch" && !(await branches.resumeBranchAfterPath())) {
+        return;
+      }
+      pathPrompt.closePathModal();
     } finally {
-      setIsCommitting(false);
+      setLoading(false);
     }
   };
 
-  /**
-   * Handle proceeding with duplicate commit anyway - open the commit form
-   */
-  const handleDuplicateCommitAnyway = () => {
-    setShowDuplicateWarning(false);
-    setIsCreatingCommit(true);
-  };
-
-  /**
-   * Handle canceling duplicate commit
-   */
-  const handleCancelDuplicateCommit = () => {
-    setShowDuplicateWarning(false);
-  };
-
-  /**
-   * Handle clicking the Save button in the header
-   * Shows warning if no changes detected, otherwise opens commit form
-   */
-  const handleSaveButtonClick = async () => {
-    console.log('[handleSaveButtonClick] Called');
-    console.log('[handleSaveButtonClick] hasUnsavedChanges:', hasUnsavedChanges);
-    
-    // Check if we need to select a path first
-    if (!projectPath || projectPath === "/" || projectPath === "NA") {
-      console.log(
-        "Project path is missing, prompting for path selection",
-      );
-      setPendingAction({ type: "commit" });
-      setShowPathModal(true);
-      return;
-    }
-    
-    const skipDuplicateWarning = await shouldSkipWarning('duplicate-commit');
-    console.log('[handleSaveButtonClick] skipDuplicateWarning:', skipDuplicateWarning);
-    console.log('[handleSaveButtonClick] Condition (!hasUnsavedChanges && !skipDuplicateWarning):', !hasUnsavedChanges && !skipDuplicateWarning);
-    
-    if (!hasUnsavedChanges && !skipDuplicateWarning) {
-      console.log(
-        "[handleSaveButtonClick] No changes detected, showing duplicate warning",
-      );
-      setShowDuplicateWarning(true);
-      console.log(
-        "[handleSaveButtonClick] setShowDuplicateWarning(true) called",
-      );
-      return;
-    }
-    console.log("[handleSaveButtonClick] Opening commit form directly");
-    setIsCreatingCommit(true);
-  };
-
-  const handleIconDoubleClick = async () => {
-    if (!projectLog) return;
-    if (!projectPath || projectPath === "/") {
-      console.log(
-        "Project path is missing, prompting for path selection",
-      );
-      setPendingAction({ type: "checkout" });
-      setShowPathModal(true);
-      return;
-    }
+  const handleMerge = async (fromBranch: string, toBranch: string) => {
     try {
-      const result = await window.ipcRenderer.invoke(
-        "open-project",
-        projectPath,
-      );
-      console.log("Open project result:", result);
-      if (!result.success) {
-        notify.error("Couldn't open the project", result.error);
-      }
-    } catch (error) {
-      console.error("Error opening project:", error);
-      notify.error("Couldn't open the project", "Check that the project folder still exists, or set its location in Project settings.");
-    }
-  };
-
-  /**
-   * Handle delete commit request - show confirmation modal
-   */
-  const handleDeleteCommitRequest = (commitId: string) => {
-    console.log(
-      "[handleDeleteCommitRequest] Requesting delete for commit:",
-      commitId,
-    );
-    setPendingDeleteCommitId(commitId);
-    setShowDeleteConfirmation(true);
-  };
-
-  /**
-   * Perform the actual commit deletion (works both with and without confirmation)
-   */
-  const handleConfirmDeleteCommit = async (commitIdOverride?: string) => {
-    const commitId = commitIdOverride || pendingDeleteCommitId;
-    if (!commitId || !passedProject || !projectLog) return;
-
-    setIsDeletingCommit(true);
-    try {
-      console.log('[handleConfirmDeleteCommit] Deleting commit:', commitId);
-
-      const result = await window.ipcRenderer.invoke(
-        "delete-commit",
-        commitId,
+      await window.ipcRenderer.invoke(
+        "merge-branches",
         passedProject,
+        projectId || "",
+        fromBranch,
+        toBranch,
+        username || "unknown",
       );
-
-      if (result.success) {
-        console.log(
-          "[handleConfirmDeleteCommit] Commit deleted, files removed:",
-          result.files_deleted || 0,
-        );
-        await loadProjectLog(passedProject);
-      } else {
-        notify.error("Couldn't delete the version", result.error);
-      }
-    } catch (error: any) {
-      console.error("[handleConfirmDeleteCommit] Error:", error);
-      notify.error("Couldn't delete the version", error);
-    } finally {
-      setIsDeletingCommit(false);
-      setShowDeleteConfirmation(false);
-      setPendingDeleteCommitId(null);
+      setIsMerging(false);
+    } catch (error) {
+      console.error("Merge failed:", error);
     }
   };
-
-  /**
-   * Cancel commit deletion
-   */
-  const handleCancelDeleteCommit = () => {
-    setShowDeleteConfirmation(false);
-    setPendingDeleteCommitId(null);
-  };
-
-  // ============================================================================
-  // LOADING STATES
-  // ============================================================================
 
   if (!projectLog) {
     return (
@@ -1370,277 +219,15 @@ export const History: React.FC = () => {
     );
   }
 
-  // ============================================================================
-  // DATA PREPARATION
-  // ============================================================================
-
-  const handleCreateBranch = async (name?: string) => {
-    const branchToCreate = name || newBranchName;
-    if (!passedProject || !branchToCreate.trim()) {
-      console.warn("No project selected or branch name is empty");
-      return;
-    }
-
-    if (!projectLog) return;
-
-    // Check if we need to select a path first
-    if (!projectPath || projectPath === "/") {
-      console.log(
-        "Project path is missing, prompting for path selection",
-      );
-      setPendingAction({ type: "branch" });
-      setShowPathModal(true);
-      return;
-    }
-
-    try {
-      setIsCreatingBranch(true);
-      setBranchError(null);
-      const branchNameTrimmed = branchToCreate.trim();
-      const createResult = await window.ipcRenderer.invoke(
-        "create-branch",
-        passedProject,
-        branchNameTrimmed,
-        undefined,
-        username || "",
-      );
-      if (!createResult.success) {
-        console.error("Failed to create branch:", createResult);
-        setBranchError("Failed to create branch");
-        return;
-      }
-      await window.ipcRenderer.invoke(
-        "switch-branch",
-        passedProject,
-        branchNameTrimmed,
-      );
-
-      await loadProjectLog(passedProject);
-      setSelectedBranch(branchNameTrimmed);
-      setNewBranchName("");
-      setIsDropdownOpen(false);
-      setFocusedCommitId(null); // Reset focus on branch switch
-
-      console.log(`Created and switched to ${branchNameTrimmed}`);
-    } catch (err: any) {
-      console.error("Branch creation error:", err);
-      setBranchError(err?.message || "Failed to create branch");
-    } finally {
-      setIsCreatingBranch(false);
-    }
-  };
-
-  const handleSwitchBranch = async (branchName: string) => {
-    if (!passedProject) {
-      console.warn("No project selected");
-      return;
-    }
-
-    try {
-      // Increment request ID to cancel any pending background log refreshes
-      lastLogRequestIdRef.current++;
-
-      // Optimistic UI: Close immediately and update local state
-      setIsDropdownOpen(false);
-      setSelectedBranch(branchName);
-      setFocusedCommitId(null);
-      
-      const result = await window.ipcRenderer.invoke('switch-branch', passedProject, branchName, projectId);
-      
-      if (result.success && result.log) {
-        setProjectLog(result.log);
-      }
-
-      // Background log refresh (UI is already updated optimistically)
-      loadProjectLog(passedProject);
-
-      console.log(`Switched to ${branchName}`);
-    } catch (err) {
-      console.error("Branch switch error:", err);
-    }
-  };
-
-  // Handler for creating a branch from a specific commit (context menu action)
-  const handleBranchFromCommit = async (
-    branchName: string,
-    fromCommitId: string,
-  ) => {
-    if (!passedProject || !projectLog) {
-      console.error("[History] Cannot create branch: missing project or log");
-      throw new Error("Project information not available");
-    }
-
-    console.log("[History] Creating branch from commit:", {
-      branchName,
-      fromCommitId,
-    });
-
-    // Check if we need to select a path first
-    if (!projectPath || projectPath === "/") {
-      console.log(
-        "[History] Project path is missing, prompting for path selection",
-      );
-      throw new Error("Please set a project path first");
-    }
-
-    try {
-      const author = username || "";
-
-      console.log("[History] Calling create-branch IPC:", {
-        project: passedProject,
-        branch: branchName,
-        fromCommit: fromCommitId,
-        author,
-      });
-
-      const result = await window.ipcRenderer.invoke(
-        "create-branch",
-        passedProject,
-        branchName,
-        fromCommitId, // This is the key parameter - creates branch from this commit
-        author,
-      );
-
-      if (!result.success) {
-        console.error("[History] Branch creation failed:", result);
-        throw new Error(result.error || "Failed to create branch");
-      }
-
-      console.log('[History] Branch created successfully, reloading project log');
-      
-      // Reload the project log to show the new branch
-      await loadProjectLog(passedProject);
-
-      // Optionally switch to the new branch
-      setSelectedBranch(branchName);
-
-      console.log(
-        `[History] Created branch "${branchName}" from commit ${fromCommitId}`,
-      );
-    } catch (err: any) {
-      console.error("[History] Error creating branch from commit:", err);
-      throw err; // Re-throw so CommitGraph can handle the error
-    }
-  };
-
-  const handleConfirmPath = async (
-    path: string,
-    setLoading: (loading: boolean) => void,
-  ) => {
-    console.log("clone-project", passedProject, path);
-    try {
-      // Use the unified update-project-path handler which handles both owned and shared projects
-      const fullPath = path + "/" + passedProject;
-      await window.ipcRenderer.invoke(
-        "update-project-path",
-        projectId || passedProject,
-        fullPath,
-      );
-      await loadProjectLog(passedProject);
-
-      if (pendingAction && pendingAction.type === "checkout") {
-        console.log(
-          `Would checkout commit ${pendingAction.commitId} to ${path}`,
-        );
-        await window.ipcRenderer.invoke(
-          "rollback-project",
-          passedProject,
-          pendingAction.commitId,
-        );
-      }
-
-      if (pendingAction && pendingAction.type === "commit") {
-        console.log("Continuing with commit after path selection");
-        // Re-trigger commit save
-        if (commitMessage.trim()) {
-          try {
-            const res = await window.ipcRenderer.invoke(
-              "commit-project",
-              passedProject,
-              commitMessage,
-              selectedBranch,
-              username || "",
-            );
-            console.log("Commit created:", res);
-            setCommitMessage("");
-            setIsCreatingCommit(false);
-            await loadProjectLog(passedProject);
-          } catch (error: any) {
-            console.error("Error creating commit:", error);
-            const errorMessage = error?.message || String(error);
-            if (
-              errorMessage.includes("Storage limit exceeded") ||
-              errorMessage.includes("403")
-            ) {
-              setStorageWarningMessage(
-                "You don't have enough storage space for this action.",
-              );
-              setShowStorageWarning(true);
-            } else {
-              notify.error("Couldn't save the version", errorMessage);
-            }
-          }
-        }
-      }
-
-      if (pendingAction && pendingAction.type === "branch") {
-        console.log("Continuing with branch creation after path selection");
-        // Re-trigger branch creation
-        if (newBranchName.trim() && projectLog) {
-          try {
-            setIsCreatingBranch(true);
-            // fromCommit is not used here - we just commit current files
-            const createResult = await window.ipcRenderer.invoke(
-              "create-branch",
-              passedProject,
-              newBranchName.trim(),
-              undefined,
-              username || "",
-            );
-
-            if (!createResult.success) {
-              console.error("Failed to create branch:", createResult);
-              notify.error("Couldn't create the alternative");
-              return;
-            }
-            await window.ipcRenderer.invoke(
-              "switch-branch",
-              passedProject,
-              newBranchName.trim(),
-            );
-            await loadProjectLog(passedProject);
-            setSelectedBranch(newBranchName.trim());
-            setNewBranchName("");
-            setIsDropdownOpen(false);
-            console.log(`Created and switched to ${newBranchName.trim()}`);
-          } catch (err) {
-            console.error("Branch creation error:", err);
-          } finally {
-            setIsCreatingBranch(false);
-          }
-        }
-      }
-
-      setShowPathModal(false);
-      setPendingAction(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ============================================================================
-  // RENDER
-  // ============================================================================
+  const { visibleCommits, versionTagPopover } = tags;
 
   return (
     <div className="history-page px-6 pt-2 pb-6">
-      {/* Page Title */}
-
       <HistoryHeader
         projectName={passedProject || ""}
         alternative={selectedBranch || "main"}
         daw={projectLog.daw ?? undefined}
-        isSyncing={isSyncing}
+        isSyncing={log.isSyncing}
         showSettings={showSettings}
         access={access}
         syncStatus={access.folder ? sharing?.status[access.folder.folderId] : undefined}
@@ -1650,23 +237,22 @@ export const History: React.FC = () => {
           <BranchMenu
             branches={projectLog.branches}
             selectedBranch={selectedBranch}
-            onSwitchBranch={handleSwitchBranch}
+            onSwitchBranch={branches.handleSwitchBranch}
             onCreateBranch={(name) => {
-              setIsCreatingCommit(false);
-              handleCreateBranch(name);
+              commits.setIsCreatingCommit(false);
+              branches.handleCreateBranch(name);
             }}
             onClose={() => setIsDropdownOpen(false)}
-            error={branchError}
-            isCreating={isCreatingBranch}
+            error={branches.branchError}
+            isCreating={branches.isCreatingBranch}
           />
         )}
-        onSave={handleSaveButtonClick}
-        onOpenInDaw={handleIconDoubleClick}
+        onSave={commits.handleSaveButtonClick}
+        onOpenInDaw={handleOpenInDaw}
         onShare={() => passedProject && sharing?.shareProject(passedProject)}
         onToggleSettings={() => setShowSettings(!showSettings)}
       />
 
-      {/* Conditional: Show either Project Settings or Commit Graph */}
       {showSettings ? (
         <ProjectSettings
           projectId={projectId || ""}
@@ -1675,301 +261,90 @@ export const History: React.FC = () => {
         />
       ) : (
         <>
-          {/* ===== COMMIT GRAPH SECTION ===== */}
+          <VersionTagFilter
+            tags={tags.branchVersionTags}
+            tagColors={tags.tagColors}
+            activeTags={tags.activeVersionTags}
+            onToggle={tags.toggleVersionTagFilter}
+            effectiveFilterCount={tags.effectiveVersionFilter.length}
+            visibleCount={visibleCommits.length}
+            totalCount={tags.branchCommits.length}
+          />
 
-          {branchVersionTags.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 px-6 mb-2">
-              {branchVersionTags.map((tag) => (
-                <TagChip
-                  key={tag}
-                  tag={tag}
-                  color={tagColors[tag]}
-                  active={activeVersionTags.has(tag)}
-                  onClick={() =>
-                    setActiveVersionTags((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(tag)) next.delete(tag);
-                      else next.add(tag);
-                      return next;
-                    })
-                  }
-                />
-              ))}
-              {effectiveVersionFilter.length > 0 && (
-                <span className="text-xs text-gray-500">
-                  {visibleCommits.length} of {branchCommits.length} versions
-                </span>
-              )}
+          {visibleCommits.length > 0 ? (
+            <CommitGraph
+              commits={visibleCommits}
+              tagColors={tags.tagColors}
+              onEditTags={(commitId, x, y) => tags.setVersionTagPopover({ commitId, x, y })}
+              onCheckout={commits.handleCheckout}
+              onDeleteCommit={commits.handleDeleteCommitRequest}
+              onBranchCreate={branches.handleBranchFromCommit}
+              currentCommitId={projectLog.lastCheckout?.commitId}
+              selectedCommitId={focusedCommitId}
+              onCommitSelect={setFocusedCommitId}
+              lastCheckoutTimestamp={projectLog.lastCheckout?.timestamp}
+              hasUnsavedChanges={hasUnsavedChanges}
+              restoringCommitId={commits.restoringCommitId}
+              projectName={passedProject}
+              projectId={projectId || ""}
+              currentBranch={selectedBranch}
+              onSaveCommit={commits.handleSaveCommit}
+              onCancelSave={commits.cancelCommitForm}
+              isCommitting={commits.isCommitting}
+              isCreatingCommit={commits.isCreatingCommit}
+              readOnly={access.isListener}
+            />
+          ) : (
+            <div className="text-white text-center py-10">
+              {branches.isCreatingBranch
+                ? "Loading branch..."
+                : "No versions in this branch"}
             </div>
           )}
-
-          {(() => {
-            const commits = visibleCommits;
-
-            return commits.length > 0 ? (
-              <CommitGraph
-                commits={commits}
-                tagColors={tagColors}
-                onEditTags={(commitId, x, y) =>
-                  setVersionTagPopover({ commitId, x, y })
-                }
-                onCheckout={handleCheckout}
-                onDeleteCommit={handleDeleteCommitRequest}
-                onBranchCreate={handleBranchFromCommit}
-                currentCommitId={projectLog.lastCheckout?.commitId}
-                selectedCommitId={focusedCommitId}
-                onCommitSelect={setFocusedCommitId}
-                lastCheckoutTimestamp={projectLog.lastCheckout?.timestamp}
-                hasUnsavedChanges={hasUnsavedChanges}
-                restoringCommitId={restoringCommitId}
-                projectName={passedProject}
-                projectId={projectId || ""}
-                currentBranch={selectedBranch}
-                onSaveCommit={handleSaveCommit}
-                onCancelSave={() => {
-                  setIsCreatingCommit(false);
-                  setCommitMessage("");
-                }}
-                isCommitting={isCommitting}
-                isCreatingCommit={isCreatingCommit}
-                readOnly={access.isListener}
-              />
-            ) : (
-              <div className="text-white text-center py-10">
-                {isCreatingBranch
-                  ? "Loading branch..."
-                  : "No versions in this branch"}
-              </div>
-            );
-          })()}
         </>
       )}
 
-      {/* File Explorer + Plugin Section side-by-side (Desktop) / Tabbed (Mobile) */}
-      {!showSettings && projectLog && (
-        <div className="flex flex-col flex-1 min-h-0 px-6">
-          {/* Tab Picker (Visible only below 900px) */}
-          <div className="mb-8 min-[900px]:hidden">
-            <div className="flex gap-8 relative">
-              <button
-                onClick={() => setActiveMobileTab('files')}
-                className={`pb-4 text-base font-medium transition-colors relative z-10 !bg-transparent !border-none !p-0 !rounded-none ${
-                  activeMobileTab === 'files' ? 'text-white' : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                Files
-                {activeMobileTab === "files" && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#0094FF] shadow-[0_0_8px_rgba(0,148,255,0.5)]"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-              </button>
-              <button
-                onClick={() => setActiveMobileTab('plugins')}
-                className={`pb-4 text-base font-medium transition-colors relative z-10 !bg-transparent !border-none !p-0 !rounded-none ${
-                  activeMobileTab === 'plugins' ? 'text-white' : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                Plugins
-                {activeMobileTab === "plugins" && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#0094FF] shadow-[0_0_8px_rgba(0,148,255,0.5)]"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-              </button>
-              <button
-                onClick={() => setActiveMobileTab('comments')}
-                className={`pb-4 text-base font-medium transition-colors relative z-10 !bg-transparent !border-none !p-0 !rounded-none ${
-                  activeMobileTab === 'comments' ? 'text-white' : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                Comments
-                {activeMobileTab === "comments" && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#0094FF] shadow-[0_0_8px_rgba(0,148,255,0.5)]"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-              </button>
-            </div>
-          </div>
-
-          <div className="bottom-panels flex flex-col min-[900px]:flex-row gap-8 flex-1 min-h-0">
-            {/* File Explorer Section */}
-            <div
-              className={`
-              flex-1 min-h-0 
-              ${activeMobileTab === "files" ? "flex flex-col" : "hidden"} 
-              min-[900px]:flex min-[900px]:flex-col
-              overflow-y-auto
-            `}>
-              <FileExplorer 
-                projectName={passedProject}
-                commitId={
-                  activeCommit?.commit_id || projectLog.lastCheckout?.commitId
-                }
-                projectPath={projectPath}
-                onSelectPath={() => setShowPathModal(true)}
-              />
-            </div>
-
-            {/* Plugin Section */}
-            <div
-              className={`
-              flex-1 min-h-0
-              ${activeMobileTab === "plugins" ? "flex flex-col" : "hidden"}
-              min-[900px]:flex min-[900px]:flex-col
-              overflow-y-auto
-            `}
-            >
-              <PluginSection
-                plugins={(projectLog as any).metadata?.plugins || []}
-              />
-            </div>
-
-            {/* Comments on the active version (Tasks + Notepad are hidden for now) */}
-            <div
-              className={`
-              flex-1 min-h-0
-              ${activeMobileTab === "comments" ? "flex flex-col" : "hidden"}
-              min-[900px]:flex min-[900px]:flex-col
-            `}
-            >
-              <VersionComments
-                // Remount on entering/leaving full screen: flushes this panel's
-                // pending save before the overlay loads, and reloads after it.
-                key={`${activeCommit?.commit_id ?? "none"}-${feedbackSession ? "fs" : "docked"}`}
-                projectName={passedProject}
-                // Every version can be discussed; without a preview, comments simply have no time position.
-                commitId={activeCommit ? String(activeCommit.commit_id) : null}
-                username={username || "You"}
-                currentTime={currentTime}
-                onPlayFrom={playFrom}
-              />
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* Global Preview Dropzone at the bottom - Hidden in settings view */}
+      {/* Bottom panels and the preview dropzone are hidden in the settings view */}
       {!showSettings && (
-        <>
-          <div className={`preview-dropzone-container ${isDraggingFile ? 'dragging' : ''} ${isUploadingPreview ? 'uploading' : ''} ${activeCommit?.preview_file ? 'has-preview' : ''}`}>
-            <div
-              className="preview-dropzone"
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handlePreviewDrop}
-              onClick={(e) => {
-                // Only toggle if we have a preview file and we're not dragging
-                if (activeCommit?.preview_file && !isDraggingFile) {
-                  handleTogglePlay(e);
-                }
-              }}
-            >
-              {isUploadingPreview ? (
-                <span className="preview-uploading-label">Attaching preview...</span>
-              ) : activeCommit?.preview_file && !isDraggingFile ? (
-                <div className="preview-player-container">
-                  <div className="preview-player-content">
-                    <div className="player-controls">
-                      <button
-                        className="play-icon-container rewind-btn"
-                        onClick={handleRewind}
-                        title="Rewind 10s"
-                      >
-                        <Rewind size={20} strokeWidth={1.5} />
-                      </button>
-                      <button
-                        className="play-icon-container"
-                        onClick={handleTogglePlay}
-                      >
-                        {isPlaying ? (
-                          <Pause size={24} strokeWidth={1.5} />
-                        ) : (
-                          <Play size={24} strokeWidth={1.5} />
-                        )}
-                      </button>
-                    </div>
-                    <div className="player-info">
-                      <span className="version-label">
-                        Version {versionNumber}
-                      </span>
-                      <span className="commit-message-preview">
-                        {activeCommit.message}
-                      </span>
-                    </div>
-                    <button
-                      className="play-icon-container fullscreen-btn"
-                      onClick={handleOpenFeedback}
-                      title="Full screen feedback"
-                      aria-label="Open full screen feedback"
-                    >
-                      <Maximize2 size={18} strokeWidth={1.5} />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <span>
-                  {isDraggingFile
-                    ? "Drop to attach preview"
-                    : "Drag and drop audio file for preview"}
-                </span>
-              )}
-            </div>
-          </div>
+        <HistoryBottomPanels
+          activeTab={activeMobileTab}
+          onTabChange={setActiveMobileTab}
+          projectName={passedProject}
+          fileCommitId={activeCommit?.commit_id || projectLog.lastCheckout?.commitId}
+          projectPath={projectPath}
+          onSelectPath={pathPrompt.openPathModal}
+          plugins={(projectLog as any).metadata?.plugins || []}
+          commentsCommitId={activeCommit ? String(activeCommit.commit_id) : null}
+          commentsKey={`${activeCommit?.commit_id ?? "none"}-${feedback.feedbackSession ? "fs" : "docked"}`}
+          username={username || "You"}
+          currentTime={player.currentTime}
+          onPlayFrom={player.playFrom}
+        />
+      )}
 
-          {/* Audio Progress Bar and Element */}
-          {activeCommit?.preview_file && (
-            <>
-              <audio
-                ref={audioRef}
-                src={audioUrl}
-                preload="auto"
-                onTimeUpdate={onAudioTimeUpdate}
-                onLoadedMetadata={onAudioLoadedMetadata}
-                onDurationChange={onAudioLoadedMetadata}
-                onEnded={onAudioEnded}
-                onError={() => { if (audioUrl) setIsPlaying(false); }}
-                style={{ display: "none" }}
-              />
-              <div
-                className="audio-progress-container"
-                ref={progressContainerRef}
-                onMouseDown={handleProgressMouseDown}
-              >
-                <div
-                  className="audio-progress-bar"
-                  style={{
-                    width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-                  }}
-                />
-              </div>
-            </>
-          )}
-        </>
+      {!showSettings && (
+        <PreviewBar
+          activeCommit={activeCommit}
+          versionNumber={versionNumber}
+          player={player}
+          upload={upload}
+          onOpenFeedback={feedback.handleOpenFeedback}
+        />
       )}
 
       {/* Full-screen feedback over everything, including the app chrome */}
-      {feedbackSession && feedbackVersion && projectLog &&
+      {feedback.feedbackSession && feedback.feedbackVersion &&
         createPortal(
           <FeedbackView
-            key={feedbackVersion.commitId}
+            key={feedback.feedbackVersion.commitId}
             projectName={passedProject}
-            version={feedbackVersion}
-            versions={feedbackVersions}
+            version={feedback.feedbackVersion}
+            versions={feedback.feedbackVersions}
             username={username || "You"}
-            // Live position when loaded; otherwise where the player is parked.
-            getStartTime={() => (audioUrl && audioRef.current ? audioRef.current.currentTime : currentTime)}
-            autoPlay={feedbackSession.autoPlay}
-            onTakeover={handleFeedbackTakeover}
-            onClose={handleCloseFeedback}
+            getStartTime={feedback.getFeedbackStartTime}
+            autoPlay={feedback.feedbackSession.autoPlay}
+            onTakeover={feedback.handleFeedbackTakeover}
+            onClose={feedback.handleCloseFeedback}
           />,
           document.body,
         )}
@@ -1980,152 +355,31 @@ export const History: React.FC = () => {
           title="Version Tags"
           x={versionTagPopover.x}
           y={versionTagPopover.y}
-          tags={findCommitTags(versionTagPopover.commitId)}
-          tagColors={tagColors}
-          suggestions={versionTagSuggestions}
-          onAddTag={(tag, color) =>
-            handleAddVersionTag(versionTagPopover.commitId, tag, color)
-          }
-          onRemoveTag={(tag) =>
-            handleRemoveVersionTag(versionTagPopover.commitId, tag)
-          }
-          onClose={() => setVersionTagPopover(null)}
+          tags={tags.findCommitTags(versionTagPopover.commitId)}
+          tagColors={tags.tagColors}
+          suggestions={tags.versionTagSuggestions}
+          onAddTag={(tag, color) => tags.handleAddVersionTag(versionTagPopover.commitId, tag, color)}
+          onRemoveTag={(tag) => tags.handleRemoveVersionTag(versionTagPopover.commitId, tag)}
+          onClose={() => tags.setVersionTagPopover(null)}
         />
       )}
 
-      {/* Path Selection Modal */}
       <PathSelectionModal
-        isOpen={showPathModal}
-        onClose={() => {
-          setShowPathModal(false);
-          setPendingAction(null);
-        }}
+        isOpen={pathPrompt.showPathModal}
+        onClose={pathPrompt.closePathModal}
         onConfirm={handleConfirmPath}
       />
       <MergeModal
         isOpen={isMerging}
         onClose={() => setIsMerging(false)}
-        onSubmit={async (fromBranch, toBranch) => {
-          try {
-            await window.ipcRenderer.invoke(
-              "merge-branches",
-              passedProject, // projectName
-              projectId || "", // projectId
-              fromBranch,
-              toBranch,
-              username || "unknown", // author
-            );
-            console.log(`Successfully merged ${fromBranch} into ${toBranch}`);
-            setIsMerging(false);
-            // Reload project log or UI
-          } catch (error) {
-            console.error("Merge failed:", error);
-          }
-        }}
+        onSubmit={handleMerge}
         projectName={passedProject}
         projectId={projectId || ""}
       />
-      {/* Unsaved Changes Warning Modal */}
-      <WarningModal
-        isOpen={showUnsavedWarning}
-        warningType="unsaved-changes"
-        title="Unsaved Changes Detected"
-        message={
-          <>
-            You have unsaved changes in your project. Rolling back will lose
-            those changes.
-            <br />
-            <br />
-            Please save your changes first, or proceed anyway if you're sure.
-          </>
-        }
-        actions={[
-          { label: "Cancel", onClick: handleCancelCheckout, variant: "cancel" },
-          {
-            label: "Do It Anyway",
-            onClick: handleProceedAnyway,
-            variant: "warning",
-          },
-          {
-            label: "Save First",
-            onClick: handleCommitFirst,
-            variant: "primary",
-          },
-        ]}
-        onCancel={handleCancelCheckout}
-      />
-      {/* Duplicate Commit Warning Modal */}
-      <WarningModal
-        isOpen={showDuplicateWarning}
-        warningType="duplicate-commit"
-        title="No Changes Detected"
-        message={
-          <>
-            Your project files haven't changed since the last save.
-            <br />
-            <br />
-            This save will be identical to the previous one.
-          </>
-        }
-        actions={[
-          {
-            label: "Cancel",
-            onClick: handleCancelDuplicateCommit,
-            variant: "cancel",
-          },
-          {
-            label: "Save Anyway",
-            onClick: handleDuplicateCommitAnyway,
-            variant: "warning",
-          },
-        ]}
-        onCancel={handleCancelDuplicateCommit}
-      />
-      {/* Storage Warning Modal */}
-      <StorageWarningModal
-        isOpen={showStorageWarning}
-        onClose={() => {
-          setShowStorageWarning(false);
-          setPendingCheckoutStorageId(null);
-        }}
-        message={storageWarningMessage}
-        onManageSettings={() => {
-          setShowStorageWarning(false);
-          setPendingCheckoutStorageId(null);
-          navigate("/settings");
-        }}
-        onProceedAnyway={
-          pendingCheckoutStorageId ? handleProceedCheckoutAnyway : undefined
-        }
-      />
-      {/* Delete Commit Confirmation Modal */}
-      <WarningModal
-        isOpen={showDeleteConfirmation}
-        warningType="delete-commit"
-        title="Delete Version"
-        showDontAskAgain={false}
-        message={
-          <>
-            Are you sure you want to delete this version?
-            <br />
-            <br />
-            This action cannot be undone. Any files unique to this version will
-            be permanently removed.
-          </>
-        }
-        actions={[
-          {
-            label: "Cancel",
-            onClick: handleCancelDeleteCommit,
-            variant: "cancel",
-          },
-          {
-            label: isDeletingCommit ? "Deleting..." : "Delete Version",
-            onClick: handleConfirmDeleteCommit,
-            variant: "destructive",
-          },
-        ]}
-        onCancel={handleCancelDeleteCommit}
+      <HistoryWarningModals
+        commits={commits}
+        storage={storage}
+        onManageSettings={() => navigate("/settings")}
       />
     </div>
   );
