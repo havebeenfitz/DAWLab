@@ -143,7 +143,8 @@ describe('Shared folders', () => {
     editInvite = edit.code
     listenInvite = (await createInvite(aliceFolder, 'listen')).link
 
-    await expect(previewInvite(editInvite)).rejects.toThrow(/already in “Album”/)
+    // The owner is already in: the invite is recognised as their own folder.
+    expect((await previewInvite(editInvite)).alreadyIn?.folderId).toBe(aliceFolder)
 
     setUsername('bob')
     const preview = await previewInvite(editInvite)
@@ -338,11 +339,13 @@ describe('Shared folders', () => {
     expect(result.space.memberId).not.toBe(carolMemberId)
     expect(listLocalSpaces()).toHaveLength(1)
     for (const [name, n] of Object.entries(expected)) expect(versions(name)).toHaveLength(n)
-    // Still a member now, so the same folder can't be joined twice.
+    // Still a member now: another code finds the same folder instead of joining twice.
     setUsername('alice')
     const third = (await createInvite(aliceFolder, 'listen')).code
     setUsername('carol')
-    await expect(previewInvite(third)).rejects.toThrow(/already in/)
+    expect((await previewInvite(third)).alreadyIn?.folderId).toBe(carolFolder)
+    expect((await joinSpace(third, path.join(work, 'carol'))).folderId).toBe(carolFolder)
+    expect(listLocalSpaces()).toHaveLength(1)
   })
 
   it('lets a member leave; their copies stay', async () => {

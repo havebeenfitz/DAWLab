@@ -44,6 +44,8 @@ export interface InvitePreview {
   projectCount: number
   memberCount: number
   expiresAt: string
+  /** You are already in this folder: joining syncs it and doesn't use up the invite. */
+  alreadyIn?: { folderId: string; role: InviteRole | 'owner' }
 }
 
 export interface SyncNowResult {

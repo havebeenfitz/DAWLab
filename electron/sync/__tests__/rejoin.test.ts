@@ -165,11 +165,14 @@ describe('Joining a shared folder again', () => {
     expect(versions('Snow')).toEqual(aliceSnow)
   })
 
-  it('a new code sent to someone already in the folder is turned down without being used up', async () => {
+  it('a new code sent to someone already in the folder finds that folder and syncs it, without being used up', async () => {
     const inv = await invite('edit')
     setUsername('bob')
-    await expect(previewInvite(inv.code)).rejects.toThrow(/already in/)
-    await expect(joinSpace(inv.code, path.join(work, 'bob'))).rejects.toThrow(/already in/)
+    const preview = await previewInvite(inv.code)
+    expect(preview.alreadyIn?.folderId).toBe(albumBob)
+    const again = await joinSpace(inv.code, path.join(work, 'bob'))
+    expect(again.folderId).toBe(albumBob)
+    expect(listLocalSpaces()).toHaveLength(1)
     setUsername('alice')
     expect((await listInvites(albumAlice)).find((i) => i.id === inv.id)?.uses).toBe(0)
     expect((await getSpaceDetails(albumAlice)).members.filter((m) => m.name === 'bob')).toHaveLength(1)

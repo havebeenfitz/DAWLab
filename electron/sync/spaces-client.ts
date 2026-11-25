@@ -407,7 +407,13 @@ export function parseInvite(input: string): { hubUrl: string; code: string } {
 }
 
 /** What an invite opens, before joining. Doesn't use up the invite. */
-export async function previewInvite(input: string): Promise<InvitePreview & { hubUrl: string }> {
+export interface InvitePreviewResult extends InvitePreview {
+  hubUrl: string
+  /** You are already in this folder: joining just syncs it, without using up the invite. */
+  alreadyIn?: { folderId: string; role: SpaceRole }
+}
+
+export async function previewInvite(input: string): Promise<InvitePreviewResult> {
   const { hubUrl, code } = parseInvite(input)
   const res = await fetch(`${hubUrl}/api/invite/peek`, {
     method: 'POST',
@@ -418,7 +424,7 @@ export async function previewInvite(input: string): Promise<InvitePreview & { hu
   const preview = (await res.json()) as InvitePreview
   const joined = findJoined(hubUrl, preview.space.id)
   if (joined && (await stillMember(joined))) {
-    throw new Error(`You're already in “${preview.space.name}”. It's in the Shared section of your Library.`)
+    return { ...preview, hubUrl, alreadyIn: { folderId: joined.folderId, role: joined.role } }
   }
   return { ...preview, hubUrl }
 }
@@ -443,8 +449,13 @@ const findJoined = (hubUrl: string, spaceId: string) =>
 export async function joinSpace(input: string, parentDir: string, onProgress: SyncProgress = () => {}): Promise<SpaceSyncResult> {
   const { hubUrl, code } = parseInvite(input)
   onProgress('Checking the invite...')
-  // Don't spend an invite (or add yourself twice) for a folder you're already in.
-  await previewInvite(input)
+  // Already in this folder (say the old invite was revoked and a new one sent):
+  // don't spend the invite or add yourself twice, just bring the folder up to date.
+  const preview = await previewInvite(input)
+  if (preview.alreadyIn) {
+    const space = getLocalSpace(preview.alreadyIn.folderId)
+    if (space) return syncSpace(ensureLibraryFolder(space).folderId, onProgress)
+  }
   const res = await fetch(`${hubUrl}/api/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -458,7 +469,7 @@ export async function joinSpace(input: string, parentDir: string, onProgress: Sy
   const already = findJoined(hubUrl, joined.space.id)
   if (already) {
     writeSpace({ ...already, token: joined.token, memberId: joined.me.id, role: joined.me.role, name: joined.space.name, lastError: undefined })
-    return syncSpace(already.folderId, onProgress)
+    return syncSpace(ensureLibraryFolder(getLocalSpace(already.folderId)!).folderId, onProgress)
   }
 
   const access = { hubUrl, token: joined.token }
@@ -479,6 +490,25 @@ export async function joinSpace(input: string, parentDir: string, onProgress: Sy
     projects: {},
   })
   return syncSpace(folderId, onProgress)
+}
+
+/**
+ * The Library folder of a shared folder you deleted from the Library is made
+ * again, with the same name, and the folder's projects go back into it.
+ */
+function ensureLibraryFolder(space: LocalSpace): LocalSpace {
+  const manager = folderManager()
+  if (manager.getFolders().some((f) => f.id === space.folderId)) return space
+  const folder = manager.createFolder(space.name, null)
+  const registry = loadRegistry()
+  for (const name of Object.values(space.projects)) {
+    const id = registry[name]?.project_id
+    if (id) manager.moveProject(String(id), folder.id)
+  }
+  const moved = { ...space, folderId: folder.id }
+  const { [space.folderId]: _old, ...rest } = readSpaces()
+  writeJsonSync(spacesFile(), { ...rest, [folder.id]: moved })
+  return moved
 }
 
 // ------------------------------------------------------------- people

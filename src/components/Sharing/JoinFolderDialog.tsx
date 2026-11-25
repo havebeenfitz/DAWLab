@@ -64,9 +64,11 @@ export function JoinFolderDialog({ prefill, onClose, onJoined }: Props) {
   };
 
   const legacy = isLegacyLink(input);
+  const alreadyIn = !legacy && !!preview?.alreadyIn;
+  const needsDir = !alreadyIn;
 
   const join = async () => {
-    if ((!preview && !legacy) || !dir) return;
+    if ((!preview && !legacy) || (needsDir && !dir)) return;
     setBusy(true); setError('');
     try {
       if (legacy) {
@@ -98,8 +100,8 @@ export function JoinFolderDialog({ prefill, onClose, onJoined }: Props) {
       footer={
         <>
           <button type="button" className="ui-btn" onClick={onClose} disabled={busy}>Cancel</button>
-          <button type="button" className="ui-btn ui-btn-primary" onClick={join} disabled={busy || (!preview && !legacy) || !dir}>
-            {busy ? 'Joining…' : 'Join'}
+          <button type="button" className="ui-btn ui-btn-primary" onClick={join} disabled={busy || (!preview && !legacy) || (needsDir && !dir)}>
+            {alreadyIn ? (busy ? 'Syncing…' : 'Sync now') : (busy ? 'Joining…' : 'Join')}
           </button>
         </>
       }
@@ -126,7 +128,14 @@ export function JoinFolderDialog({ prefill, onClose, onJoined }: Props) {
         </div>
       )}
 
-      {preview && (
+      {preview?.alreadyIn && (
+        <div className="share-preview">
+          <strong>You're already in “{preview.space.name}”</strong>
+          <span>This invite opens a folder you already have. DAWLab brings it up to date and doesn't use up the invite.</span>
+        </div>
+      )}
+
+      {preview && !preview.alreadyIn && (
         <div className="share-preview">
           <strong>{preview.space.name}</strong>
           <span>
@@ -136,14 +145,14 @@ export function JoinFolderDialog({ prefill, onClose, onJoined }: Props) {
         </div>
       )}
 
-      <div className="ui-field">
+      {needsDir && <div className="ui-field">
         <label htmlFor="join-dir">Save projects in</label>
         <div className="ui-input-row">
           <input id="join-dir" className="ui-input" value={dir} readOnly onClick={pick} disabled={busy} />
           <button type="button" className="ui-btn" onClick={pick} disabled={busy}><FolderOpen size={14} /> Choose…</button>
         </div>
         <p className="ui-hint">A folder named after the shared folder is created inside it.</p>
-      </div>
+      </div>}
 
       <p className={`ui-status ${error ? 'ui-status-error' : ''}`} role={error ? 'alert' : 'status'}>
         {error || progress || (checking ? 'Checking the invite…' : '')}

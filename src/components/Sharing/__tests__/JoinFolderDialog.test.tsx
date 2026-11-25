@@ -291,4 +291,27 @@ describe('JoinFolderDialog: editing during a pending check', () => {
     expect(screen.queryByText('Album')).not.toBeInTheDocument();
     expect(joinButton()).toBeDisabled();
   });
+
+  describe('an invite to a folder you are already in', () => {
+    const already = { ...preview, alreadyIn: { folderId: 'lib-folder-1', role: 'edit' as const } };
+
+    it('says so, asks for no folder, and offers Sync now', async () => {
+      await renderJoin(CODE, { 'hub-preview-invite': () => already });
+      expect(await screen.findByText('You\'re already in “Album”')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Save projects in')).not.toBeInTheDocument();
+      expect(screen.queryByText(/You join as/)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Sync now' })).toBeEnabled();
+    });
+
+    it('syncs the folder it already has and goes there', async () => {
+      const { onJoined } = await renderJoin(CODE, {
+        'hub-preview-invite': () => already,
+        'hub-default-join-dir': () => { throw new Error('no default'); },
+        'hub-join-space': () => ({ folderId: 'lib-folder-1', addedProjects: [], failed: [] }),
+      });
+      fireEvent.click(await screen.findByRole('button', { name: 'Sync now' }));
+      await waitFor(() => expect(onJoined).toHaveBeenCalledWith('lib-folder-1'));
+      expect(invokeCalls('hub-join-space')).toEqual([[CODE, '']]);
+    });
+  });
 });
