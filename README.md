@@ -1,186 +1,104 @@
 # DAWLab
 
-**Version control for music producers.** DAWLab is a Git-like version control system for DAW project files, packaged as a cross-platform desktop app. Snapshot your sessions, browse their history, branch ideas, and roll back — all **100% local**, with no account, no cloud, and no internet connection required.
+**Version control for music producers.** DAWLab saves versions of your DAW projects, shows their history, lets you try ideas on alternatives and go back to any version. It works on your Mac with no account. When you want to work with others, share a folder through your own DAWLab Hub.
 
-Think of it as "Git for your Ableton / Logic / FL Studio projects," but built for how producers actually work.
+Works with Ableton Live, Logic Pro, FL Studio, Pro Tools and Reaper projects.
 
-![DAWLab project view: saved versions across the top, the project's files, instruments and effects, timestamped comments on the current mix, and the preview player](docs/images/dawlab-project.png)
-
----
-
-## Features
-
-- 🎛️ **DAW-aware versioning** — detects and tracks project files for Ableton Live, FL Studio, Logic Pro, Pro Tools, and Reaper.
-- 📸 **Commits & history** — save named versions of a project and browse the full timeline in a visual commit graph.
-- 🌱 **Branching & rollback** — explore alternate arrangements on a branch, then roll back to any previous version safely.
-- 🔍 **Content-addressable storage** — files are deduplicated with SHA-256 CAS, so repeated saves don't bloat your disk.
-- 🎧 **Previews & metadata** — extracts tempo, tracks, and plugin info, and can attach audio previews to versions.
-- 💬 **Feedback on your mixes** — leave timestamped comments on any version's preview, then open a full-screen waveform view to review them, loop sections, and A/B versions side by side.
-- 💾 **Local-first** — everything lives on your machine in a `.dawlabproject` store. Your work never leaves your computer.
-
-## Supported platforms
-
-Desktop builds are produced for **macOS**, **Windows**, and **Linux**.
+![A project in DAWLab: versions on a rail with a parallel version folded in, the Unsaved changes block, and the alternatives map](docs/screenshots/history-rail.jpg)
 
 ---
 
-## Installation
+## Install
 
-### Prerequisites
+1. Download `DAWLab-Mac-arm64-<version>-Installer.dmg`, open it and drag DAWLab to Applications.
+2. The app is not signed by Apple yet, so macOS blocks the first launch. Right-click DAWLab in Applications, choose **Open**, then **Open** again. If macOS says the app "is damaged", run this once in Terminal:
 
-- **Node.js ≥ 20.19** (or 22+) and **npm**
-- Git
-
-### Run from source (development)
-
-```bash
-# 1. Clone
-git clone <your-fork-url> dawlab
-cd dawlab
-
-# 2. Install dependencies
-npm install
-
-# 3. Launch the desktop app in dev mode (Vite + Electron with hot reload)
-npm run dev
-```
-
-That's it — no `.env` file, API keys, or sign-up needed. The app runs fully offline.
-
-> **Optional:** to enable Sentry error reporting during development, create a `.env` file with `VITE_SENTRY_DSN=<your-dsn>`. It is safe to leave unset.
-
-### Build a distributable app
-
-```bash
-# Type-check, bundle, and package installers for your current OS
-npm run build
-```
-
-Packaged installers are written to `release/<version>/` (a `.dmg` on macOS, an `.exe` setup on Windows, an `.AppImage` on Linux).
-
-To build only the renderer/main bundles without packaging an installer:
-
-```bash
-npm run build:renderer
-```
-
----
-
-## Running an unsigned build
-
-The packaged apps are **not code-signed or notarized** (`electron-builder.json5` sets `identity: null` and ships an unsigned DMG). Your OS will therefore block the app on first launch. You have two options: bypass the warning once, or sign the app yourself.
-
-### macOS
-
-macOS Gatekeeper blocks unsigned apps with either *"DAWLab can't be opened because Apple cannot check it for malicious software"* or, on Apple Silicon, *"DAWLab is damaged and can't be opened"* (the "damaged" message is Gatekeeper's misleading wording for an unsigned/quarantined app — the app is fine).
-
-**Option A — bypass Gatekeeper (quickest).** After moving `DAWLab.app` to `/Applications`, strip the quarantine attribute:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/DAWLab.app
-```
-
-Then open it normally. (Right-click → **Open** → **Open** also works for the "unidentified developer" case, but not for the "damaged" case — use the command above for that.)
-
-**Option B — ad-hoc sign it yourself (no Apple account needed).** An ad-hoc signature (`-` as the identity) satisfies the loader without any certificate. This is the simplest way to make an Apple Silicon build launchable:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/DAWLab.app
-codesign --force --deep --sign - /Applications/DAWLab.app
-```
-
-**Option C — sign with a real Apple Developer ID (for distribution).** If you have a paid Apple Developer account and a *Developer ID Application* certificate installed in your Keychain, you can produce a properly signed, notarizable app.
-
-1. Find your identity:
    ```bash
-   security find-identity -v -p codesigning
-   # e.g. "Developer ID Application: Your Name (TEAMID)"
-   ```
-2. Let electron-builder sign during packaging by editing `electron-builder.json5`:
-   ```json5
-   mac: {
-     identity: "Developer ID Application: Your Name (TEAMID)",
-     hardenedRuntime: true,        // required for notarization
-     gatekeeperAssess: false,
-     entitlements: "entitlements.mac.plist",
-     entitlementsInherit: "entitlements.mac.plist",
-   },
-   dmg: { sign: true },
-   ```
-   Then run `npm run build`.
-3. Or sign a build you already packaged, by hand:
-   ```bash
-   codesign --force --deep --options runtime \
-     --entitlements entitlements.mac.plist \
-     --sign "Developer ID Application: Your Name (TEAMID)" \
-     "release/<version>/mac/DAWLab.app"
-   codesign --verify --deep --strict --verbose=2 "release/<version>/mac/DAWLab.app"
-   ```
-4. **Notarize** so other machines don't warn (requires an app-specific password or API key):
-   ```bash
-   xcrun notarytool submit "DAWLab-Mac-arm64-<version>-Installer.dmg" \
-     --apple-id you@example.com --team-id TEAMID --password <app-specific-password> --wait
-   xcrun stapler staple "DAWLab-Mac-arm64-<version>-Installer.dmg"
+   xattr -dr com.apple.quarantine /Applications/DAWLab.app && codesign --force --deep --sign - /Applications/DAWLab.app
    ```
 
-### Windows
+## Projects and versions
 
-Unsigned installers trigger a **SmartScreen** warning. To run anyway: click **More info** → **Run anyway**.
+![The Library with a shared folder and two projects](docs/screenshots/library.jpg)
 
-To sign it yourself you need a code-signing certificate (`.pfx`). Sign the packaged `.exe` with `signtool` from the Windows SDK:
+- **Add a project**: click **+** in the Library and pick the project folder (or drag it in). DAWLab saves the first version.
+- **Save a version**: when the project folder changes, an **Unsaved changes** block appears at the top of the history with the number of changed files. Describe what changed and click **Save**.
+- **Discard**: the same block has **Discard**, which puts the folder back to the last saved version. Your current files go to the Trash first, in a folder named after the project, so you can still get them back.
+- **Restore**: click a version on the rail, then **Restore** in the bar below. The folder becomes an exact copy of that version. Files the version doesn't have go to the Trash.
+- **Nothing is lost when you switch**: before Restore, Make main or Discard changes the folder, DAWLab keeps any unsaved work as a version marked **Kept automatically**. **Bring back** on it returns everything as it was.
+- **Alternatives**: try an idea without touching the main line. Use **Alternatives** (or Cmd+K) to create or switch. The alternatives map shows every line and where it split off.
 
-```powershell
-signtool sign /fd SHA256 /f certificate.pfx /p <password> ^
-  /tr http://timestamp.digicert.com /td SHA256 ^
-  "release\<version>\DAWLab-Windows-x64-<version>-Setup.exe"
-```
+## Sharing a folder
 
-Or let electron-builder sign automatically by setting `CSC_LINK` (path/URL to the `.pfx`) and `CSC_KEY_PASSWORD` before running `npm run build`.
+![The Share dialog: invites as collaborator or listener, open invite codes (blurred here), server space and people](docs/screenshots/share-folder.jpg)
 
-### Linux
+1. Connect your hub once in **Settings > DAWLab server** (address and hub key).
+2. Right-click a Library folder and choose **Share**. Every project in it is uploaded with its versions.
+3. Create an invite as **Collaborator** (opens projects, saves versions, comments) or **Listener** (plays previews and comments). Send the code privately.
+4. The folder owner always sees the open invite codes in the Share dialog. **Revoke** cancels a code; people who already joined stay. To remove someone, use the button next to their name.
 
-No signing required. Make the AppImage executable and run it:
+### Joining with a code
+
+![Joining a shared folder with an invite code (blurred here)](docs/screenshots/join.jpg)
+
+Click **Join shared folder...** in the sidebar and paste the code. DAWLab shows what the folder contains, then downloads its projects with their full history. A new code for a folder you are already in syncs that folder instead of joining twice.
+
+### Pull and Sync
+
+![A shared folder syncing, with download progress](docs/screenshots/pull-progress.jpg)
+
+DAWLab syncs shared folders every few minutes and after you save. **Pull** in a project, or **Sync now** on the folder, gets everyone's latest versions right away. Large files show their progress: size done, percentage and the file name.
+
+If access to a folder is closed (you were removed, or the owner stopped sharing), the folder says so and keeps your copies. Enter a new code or stop syncing it.
+
+## Parallel versions
+
+When two people save on top of the same version, nothing is overwritten. The second save goes into a **parallel version**, an alternative named after its author, and DAWLab tells you where it went.
+
+![Previewing someone else's parallel version in its own folder](docs/screenshots/preview.jpg)
+
+- On the rail, a parallel version is folded into one outlined row where it split off. Open it to see its versions.
+- **Preview** lays the whole project out in a folder of its own next to yours and opens it in your DAW. Your folder is not touched. **Back to mine** moves the preview folder to the Trash.
+- **Make main** continues your line with their version. Your version stays in the history.
+- **Dismiss** hides the notice for you, with a short reason that the author sees as a comment. The alternative stays for everyone. A newer version in it brings the notice back.
+
+## Run your own hub
+
+The hub is a small server that stores shared folders. It has no web pages: without the hub key or a member's token every request gets an empty 404.
+
+**On Render:** create a Blueprint from this repository. `render.yaml` sets up the service with a disk at `/data` and generates `HUB_CREATE_KEY`. Keep the key in Render's environment settings or a secrets manager, never in the repository, and enter it once in DAWLab's settings. On the free instance the disk is wiped on restart, so use an S3-compatible bucket instead.
+
+**Elsewhere:**
 
 ```bash
-chmod +x release/<version>/DAWLab-Linux-<version>.AppImage
-./release/<version>/DAWLab-Linux-<version>.AppImage
+HUB_CREATE_KEY=<your-secret> docker compose up -d
 ```
-
----
-
-## Sharing projects (DAWLab Hub)
-
-DAWLab stays local-first: nothing leaves your machine unless you share a project. To work with other people, run a **DAWLab Hub**, a small self-hosted server that acts as a "remote" for your projects (like GitHub for git).
-
-- **Share** (button in a project's header): uploads the project's versions and gives you two links.
-  - **Collaborator link**: others choose *Add > Open Shared Project* in DAWLab, paste it, and get the full project with history. **Sync now** sends your new versions and fetches theirs.
-  - **Listener link**: also opened in DAWLab. It brings in the version list, each version's preview and the comments, and lets the listener comment. It never exposes the project files or lets anyone change history.
-- Only missing files are transferred (files are addressed by SHA-256, the same hashes DAWLab's local storage uses).
-- History and comments merge, never overwrite: versions are matched by id, so two people can work offline and sync later.
-
-### Run a hub
-
-```bash
-# Docker / any VPS
-HUB_CREATE_KEY=choose-a-secret docker compose up -d     # http://localhost:8080
-
-# Without Docker (Node >= 22.18)
-cd server && npm install && HUB_CREATE_KEY=choose-a-secret npm start
-```
-
-**Render:** create a new Blueprint from your fork; `render.yaml` sets up the service with a persistent disk and generates `HUB_CREATE_KEY` (find it in the service's Environment tab). On Render's free instance the disk is wiped on restart, so remove the `disk` block and point the hub at an S3-compatible bucket instead (Cloudflare R2's free tier works).
 
 | Variable | Meaning |
 | --- | --- |
-| `HUB_CREATE_KEY` | Required, 12+ characters. Password for creating projects on the hub (entered once in DAWLab's Share dialog). |
-| `DATA_DIR` | Where projects are stored on disk (default `./data`, `/data` in Docker). |
-| `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_PREFIX`, `S3_FORCE_PATH_STYLE` | Store projects in an S3-compatible bucket instead of on disk. Credentials come from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. |
-| `PUBLIC_URL` | Public address used in share links, if the hub sits behind a proxy that changes the Host header. |
+| `HUB_CREATE_KEY` | Required, 12+ characters. Lets DAWLab create shared folders on the hub. |
+| `DATA_DIR` | Where data is stored (`/data` on Render and in Docker). |
+| `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_PREFIX`, `S3_FORCE_PATH_STYLE` | Store data in an S3-compatible bucket instead. Credentials come from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. |
+| `PUBLIC_URL` | Public address, if a proxy changes the Host header. |
 | `MAX_UPLOAD_MB` | Largest single file accepted (default 2048). |
 
-The hub is private by design: it has no web pages and no public endpoints. Without the hub key or a valid project token, every request gets the same empty 404, so a scanner can't even tell it is a DAWLab hub. Creating a project needs `HUB_CREATE_KEY` (the hub won't start without one); after that, access is by link: whoever has a link has its rights, there are no accounts or invite confirmations, so send links privately.
-
 ---
+
+## Build from source
+
+Requires Node.js 22 or newer (DAWLab uses [mise](https://mise.jdx.dev) to pin it) and npm.
+
+```bash
+npm install
+npm run dev        # the app with hot reload
+npm run build      # installers in release/<version>/
+```
+
+On macOS, build an unsigned DMG with:
+
+```bash
+npm run build:renderer && CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --arm64
+```
 
 ## Development
 
@@ -198,11 +116,11 @@ The hub is private by design: it has no web pages and no public endpoints. Witho
 
 ### Tech stack
 
-- **[Electron](https://www.electronjs.org/) 40** — desktop shell
-- **[React](https://react.dev/) 18** + **[TypeScript](https://www.typescriptlang.org/)** — UI
-- **[Vite](https://vite.dev/) 7** — build tooling (via `vite-plugin-electron`)
-- **[Tailwind CSS](https://tailwindcss.com/)** — styling
-- **[Vitest](https://vitest.dev/)** — testing
+- **[Electron](https://www.electronjs.org/) 40**: desktop shell
+- **[React](https://react.dev/) 18** + **[TypeScript](https://www.typescriptlang.org/)**: UI
+- **[Vite](https://vite.dev/) 7**: build tooling (via `vite-plugin-electron`)
+- **[Tailwind CSS](https://tailwindcss.com/)**: styling
+- **[Vitest](https://vitest.dev/)**: testing
 
 ### Project structure
 
@@ -221,7 +139,7 @@ src/                 React renderer (no Node.js access)
   types/             Shared TypeScript types
 ```
 
-The renderer never touches the filesystem directly — all disk and VCS work happens in the main process and is reached through typed IPC calls.
+The renderer never touches the filesystem directly: all disk and VCS work happens in the main process and is reached through typed IPC calls.
 
 ---
 
@@ -233,7 +151,7 @@ Contributions are welcome. Please run `npm run lint` and `npm run test:unit` bef
 
 Licensed under the **[PolyForm Noncommercial License 1.0.0](LICENSE)**.
 
-You are free to **use, modify, and share** DAWLab for any **noncommercial** purpose — personal projects, learning, research, education, and nonprofit or government use. **Commercial use is not permitted**: you may not sell DAWLab, offer it as a paid product or service, or otherwise use it to make money. See the [LICENSE](LICENSE) file for the full terms.
+You are free to **use, modify, and share** DAWLab for any **noncommercial** purpose: personal projects, learning, research, education, and nonprofit or government use. **Commercial use is not permitted**: you may not sell DAWLab, offer it as a paid product or service, or otherwise use it to make money. See the [LICENSE](LICENSE) file for the full terms.
 
 > Note: this is a *source-available*, noncommercial license, not an OSI-approved open-source license (open-source licenses must permit commercial use).
 
