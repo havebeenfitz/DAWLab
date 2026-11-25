@@ -69,7 +69,7 @@ export function HistoryHeader(p: Props) {
               onClick={p.onToggleAlternatives}
               aria-haspopup="menu"
               title="Switch or create an alternative (⌘K)"
-              className="bg-[#1C1C1C] text-white px-8 h-[48px] rounded-[15px] flex items-center gap-2 cursor-pointer border border-transparent hover:border-gray-600 transition-all shadow-sm text-md font-medium"
+              className="bg-[#1C1C1C] text-white px-5 h-[48px] rounded-[15px] flex items-center gap-2 cursor-pointer border border-transparent hover:border-gray-600 transition-all shadow-sm text-md font-medium"
             >
               <GalleryHorizontalEnd size={18} aria-hidden />
               <span>Alternatives</span>
@@ -81,19 +81,19 @@ export function HistoryHeader(p: Props) {
       )}
 
       {/* Actions */}
-      <div className="flex gap-3 justify-center min-[900px]:justify-end shrink-0 items-center flex-1 min-w-[200px] w-full min-[900px]:w-auto">
+      <div className="flex flex-wrap gap-2 justify-center min-[900px]:justify-end items-center flex-[1.6] min-w-[200px] w-full min-[900px]:w-auto">
         {!p.showSettings && !p.access.isListener && (
           <>
-            <ActionButton variant="save" onClick={p.onSave} className="btn-pill">
+            <ActionButton variant="save" onClick={p.onSave} className="btn-pill px-5">
               Save version
             </ActionButton>
-            <button type="button" className="btn-pill group" onClick={p.onOpenInDaw} title={`Open in ${daw.name}`}>
+            <button type="button" className="btn-pill group px-5" onClick={p.onOpenInDaw} title={`Open in ${daw.name}`}>
               <span className="text-gray-400 group-hover:text-white">Open in</span>
               {daw.logo ? <img src={daw.logo} alt={daw.name} className="w-[18px] h-[18px] object-contain" /> : <span>{daw.name}</span>}
             </button>
           </>
         )}
-        <button type="button" className="btn-pill group" onClick={p.onShare} disabled={!p.projectName}>
+        <button type="button" className="btn-pill group px-5" onClick={p.onShare} disabled={!p.projectName}>
           <Share2 size={16} aria-hidden className="text-gray-400 group-hover:text-white" />
           <span>{shared ? 'Sharing' : 'Share'}</span>
         </button>

@@ -46,7 +46,10 @@ export interface SpaceSyncResult {
   folderId: string
   pushedVersions: number
   pulledVersions: number
+  /** Projects that arrived from other people. */
   addedProjects: string[]
+  /** Projects of yours that were shared for the first time. */
+  uploadedProjects: string[]
   failed: Array<{ project: string; error: string }>
   space: LocalSpace
 }
@@ -160,7 +163,7 @@ export async function syncSpace(folderId: string, onProgress: SyncProgress = () 
     const remote = await call<SpaceResponse>(space, '/space')
     space = { ...space, name: remote.space.name, role: remote.me.role, members: remote.members }
 
-    const result: SpaceSyncResult = { folderId, pushedVersions: 0, pulledVersions: 0, addedProjects: [], failed: [], space }
+    const result: SpaceSyncResult = { folderId, pushedVersions: 0, pulledVersions: 0, addedProjects: [], uploadedProjects: [], failed: [], space }
     space = await uploadNewLocalProjects(space, onProgress, result)
     space = await downloadNewRemoteProjects(space, remote.projects, onProgress, result)
 
@@ -201,7 +204,7 @@ async function uploadNewLocalProjects(
     onProgress(`Adding ${name} to the shared folder...`)
     const { project } = await call<{ project: SpaceProject }>(space, '/space/projects', 'POST', { log: toSharedLog(log) })
     projects = { ...projects, [project.id]: name }
-    result.addedProjects.push(name)
+    result.uploadedProjects.push(name)
   }
   const next = { ...space, projects }
   writeSpace(next)

@@ -11,7 +11,7 @@ vi.mock('../spaces-client', () => spaces)
 import { requestSpaceSync, requestProjectSync, syncAllSpaces, startAutoSync, stopAutoSync, type SyncStatus } from '../auto-sync'
 
 const okResult = (folderId: string, extra: Record<string, unknown> = {}) => ({
-  folderId, pushedVersions: 1, pulledVersions: 2, addedProjects: ['Lodge'], failed: [],
+  folderId, pushedVersions: 1, pulledVersions: 2, addedProjects: ['Lodge'], uploadedProjects: [], failed: [],
   space: { folderId, lastSync: '2026-02-01T10:00:00.000Z' }, ...extra,
 })
 

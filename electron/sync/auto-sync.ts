@@ -14,7 +14,7 @@ export interface SyncStatus {
   message?: string
   lastSync?: string
   error?: string
-  result?: Pick<SpaceSyncResult, 'pushedVersions' | 'pulledVersions' | 'addedProjects' | 'failed'>
+  result?: Pick<SpaceSyncResult, 'pushedVersions' | 'pulledVersions' | 'addedProjects' | 'uploadedProjects' | 'failed'>
 }
 
 type Emit = (status: SyncStatus) => void
@@ -75,6 +75,7 @@ async function runSync(folderId: string): Promise<SpaceSyncResult | null> {
         pushedVersions: result.pushedVersions,
         pulledVersions: result.pulledVersions,
         addedProjects: result.addedProjects,
+        uploadedProjects: result.uploadedProjects,
         failed: result.failed,
       },
     })

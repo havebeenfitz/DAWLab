@@ -52,7 +52,7 @@ export interface SyncStatus {
   message?: string
   lastSync?: string
   error?: string
-  result?: { pushedVersions: number; pulledVersions: number; addedProjects: string[]; failed: Array<{ project: string; error: string }> }
+  result?: { pushedVersions: number; pulledVersions: number; addedProjects: string[]; uploadedProjects?: string[]; failed: Array<{ project: string; error: string }> }
 }
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => window.ipcRenderer.invoke(channel, ...args)

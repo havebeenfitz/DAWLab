@@ -115,14 +115,15 @@ describe('Shared folders', () => {
 
     const result = await shareFolder(aliceFolder)
     expect(result.failed).toEqual([])
-    expect(result.addedProjects.sort()).toEqual(['Intro', 'Snow'])
+    expect(result.uploadedProjects.sort()).toEqual(['Intro', 'Snow'])
+    expect(result.addedProjects).toEqual([])
     expect(result.pushedVersions).toBe(2)
     expect(result.space.role).toBe('owner')
     expect(getSpaceForProject('Snow')?.folderId).toBe(aliceFolder)
 
     const again = await syncSpace(aliceFolder)
     expect(again.pushedVersions).toBe(0)
-    expect(again.addedProjects).toEqual([])
+    expect(again.uploadedProjects).toEqual([])
   })
 
   it('creates invites that show what they open without using them up', async () => {
@@ -186,7 +187,7 @@ describe('Shared folders', () => {
     fs.writeFileSync(path.join(dir, 'Lodge.als'), 'Lodge v1')
     await initProject('Lodge', dir, { storageMode: 'project', author: 'bob' })
     getUserConfigManager('bob').moveProject(projectId('Lodge'), bobFolder)
-    expect((await syncSpace(bobFolder)).addedProjects).toEqual(['Lodge'])
+    expect((await syncSpace(bobFolder)).uploadedProjects).toEqual(['Lodge'])
 
     setUsername('alice')
     const result = await syncSpace(aliceFolder)
@@ -254,7 +255,7 @@ describe('Shared folders', () => {
     fs.writeFileSync(path.join(dir, 'Mine.als'), 'mine')
     await initProject('Mine', dir, { storageMode: 'project', author: 'dave' })
     getUserConfigManager('dave').moveProject(projectId('Mine'), joined.folderId)
-    expect((await syncSpace(joined.folderId)).addedProjects).toEqual([])
+    expect((await syncSpace(joined.folderId)).uploadedProjects).toEqual([])
     expect(getSpaceForProject('Mine')?.folderId).toBe(joined.folderId)
   })
 
@@ -266,7 +267,7 @@ describe('Shared folders', () => {
     await initProject('Old', dir, { storageMode: 'project', author: 'alice' })
     saveProjectRemote('Old', { hubUrl, token: 'x'.repeat(32), role: 'edit', editUrl: `${hubUrl}/s/${'x'.repeat(32)}` })
     getUserConfigManager('alice').moveProject(projectId('Old'), aliceFolder)
-    expect((await syncSpace(aliceFolder)).addedProjects).toEqual([])
+    expect((await syncSpace(aliceFolder)).uploadedProjects).toEqual([])
     expect(getSpaceForProject('Nope')).toBeNull()
   })
 
