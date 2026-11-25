@@ -92,10 +92,13 @@ function pluginsOfBlob(hash: string, kind: 'logic' | 'ableton', casDir: string):
  * as many times as the alternative that uses it most. Ableton sets are merged
  * the same way.
  */
-export function pluginsOfVersion(fileMap: FileMapEntry[], daw: string, casDir: string): DiffPlugin[] | null {
+export function pluginsOfVersion(fileMap: FileMapEntry[], daw: string, casDir: string, alternative?: string | null): DiffPlugin[] | null {
   const kind = /logic/i.test(daw) ? 'logic' : /ableton/i.test(daw) ? 'ableton' : null
   if (!kind) return null
-  const sources = projectFilesForPlugins(fileMap, daw)
+  const all = projectFilesForPlugins(fileMap, daw)
+  // A Logic project opens one alternative: count only its plugins when we know which one.
+  const picked = alternative ? all.filter((e) => alternativeOf(e.path) === alternative) : []
+  const sources = picked.length ? picked : all
   if (sources.length === 0) return null
   const merged = new Map<string, DiffPlugin>()
   let readAny = false
@@ -115,6 +118,21 @@ export function pluginsOfVersion(fileMap: FileMapEntry[], daw: string, casDir: s
     }
   }
   return readAny ? [...merged.values()] : null
+}
+
+const alternativeOf = (p: string) => p.match(/\.logicx\/(Alternatives\/[^/]+)\/ProjectData$/)?.[1] ?? ''
+
+/**
+ * The Logic alternative a version was worked on: the one whose ProjectData
+ * changed since `previous`, else the newest-numbered one. Null for one alternative.
+ */
+export function workedOnAlternative(current: FileMapEntry[], previous: FileMapEntry[] | null): string | null {
+  const datas = current.filter((e) => e.hash !== 'empty' && /\.logicx\/Alternatives\/[^/]+\/ProjectData$/.test(e.path))
+  if (datas.length < 2) return null
+  const before = new Map((previous ?? []).map((e) => [e.path, e.hash]))
+  const changed = datas.filter((e) => before.get(e.path) !== e.hash)
+  const pool = changed.length ? changed : datas
+  return alternativeOf([...pool].sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true })).pop()!.path)
 }
 
 /** What changed in `commitId` compared with the version before it. */
@@ -137,8 +155,9 @@ export function getVersionChanges(projectName: string, commitId: string, baseId?
   }
 
   const daw = String(log.daw ?? '')
-  const currentPlugins = pluginsOfVersion(current, daw, casDir)
-  const previousPlugins = previous ? pluginsOfVersion(previous, daw, casDir) : null
+  const alternative = /logic/i.test(daw) ? workedOnAlternative(current, previous) : null
+  const currentPlugins = pluginsOfVersion(current, daw, casDir, alternative)
+  const previousPlugins = previous ? pluginsOfVersion(previous, daw, casDir, alternative) : null
 
   const song = songInfoOfVersion(current, daw, casDir, previous)
   const previousSong = previous ? songInfoOfVersion(previous, daw, casDir) : null

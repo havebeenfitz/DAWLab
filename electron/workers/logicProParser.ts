@@ -94,6 +94,41 @@ let auCache: { at: number; index: Map<string, AUComponentInfo> } | null = null;
 
 // ─── Logic Pro Parser ────────────────────────────────────────────────────────
 
+/**
+ * ProjectData is a header followed by chunks: a reversed 4-letter tag
+ * ("UCuA" = AuCU), header fields, a little-endian 64-bit length at +28, and
+ * the data from +36. Channel strip settings, with their plugins, are in AuCU
+ * chunks; USEl chunks hold undo history, which still names plugins that were
+ * removed. Returns the data ranges of the AuCU chunks, or null when the file
+ * doesn't have this layout (then nothing is filtered).
+ */
+export function channelStripRanges(data: Buffer): Array<[number, number]> | null {
+  const HEADER = 36;
+  const ranges: Array<[number, number]> = [];
+  let pos = 24;
+  while (pos + HEADER <= data.length) {
+    const tag = data.subarray(pos, pos + 4).toString('latin1');
+    const len = Number(data.readBigUInt64LE(pos + 28));
+    if (!/^[\x20-\x7e]{4}$/.test(tag) || !Number.isSafeInteger(len) || pos + HEADER + len > data.length) return null;
+    if (tag === 'UCuA') ranges.push([pos + HEADER, pos + HEADER + len]);
+    pos += HEADER + len;
+  }
+  return pos === data.length && ranges.length ? ranges : null;
+}
+
+function inRanges(ranges: Array<[number, number]> | null, offset: number): boolean {
+  if (!ranges) return true;
+  let lo = 0;
+  let hi = ranges.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (offset < ranges[mid][0]) hi = mid - 1;
+    else if (offset >= ranges[mid][1]) lo = mid + 1;
+    else return true;
+  }
+  return false;
+}
+
 export class LogicProParser implements MetadataParser {
   constructor() {
     console.log('[LogicProParser] Initialized (binary extraction engine)');
@@ -128,7 +163,10 @@ export class LogicProParser implements MetadataParser {
 
     // Step 3: Extract unique plugins from plist XML fragments (Method 1)
     // Step 4: Logic's own plugins (Channel EQ, ChromaVerb, Alchemy…) from their instance records
-    const plugins = [...this.extractFromPlistFragments(text, auIndex, binaryIndex), ...this.extractBuiltins(data)];
+    // Only plugins on channel strips count: ProjectData also keeps undo history and
+    // other saved states that mention plugins the song no longer uses.
+    const live = channelStripRanges(data);
+    const plugins = [...this.extractFromPlistFragments(text, auIndex, binaryIndex, live), ...this.extractBuiltins(data, live)];
 
     return {
       daw_version: 'Logic Pro X',
@@ -180,6 +218,7 @@ export class LogicProParser implements MetadataParser {
     text: string,
     auIndex: Map<string, AUComponentInfo>,
     binaryIndex: Map<string, string>,
+    live: Array<[number, number]> | null = null,
   ): PluginInfo[] {
     const seen = new Map<string, PluginInfo>();
     const plugins: PluginInfo[] = [];
@@ -189,6 +228,7 @@ export class LogicProParser implements MetadataParser {
 
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(text)) !== null) {
+      if (!inRanges(live, match.index)) continue;
       const mfr = parseInt(match[1]);
       if (mfr === APPLE_MFR) continue; // skip Apple built-ins
 
@@ -232,13 +272,14 @@ export class LogicProParser implements MetadataParser {
    * Logic's built-in plugins are stored as records whose label is followed by
    * zero padding and the tag "GAME". Each record is one plugin instance.
    */
-  private extractBuiltins(data: Buffer): PluginInfo[] {
+  private extractBuiltins(data: Buffer, live: Array<[number, number]> | null = null): PluginInfo[] {
     const byName = new Map<string, PluginInfo>();
     const tag = Buffer.from('GAME');
     for (let at = data.indexOf(tag); at !== -1; at = data.indexOf(tag, at + tag.length)) {
       let end = at;
       while (end > 0 && data[end - 1] === 0 && at - end < 24) end--;
       if (end === at) continue; // a label is always followed by zero padding
+      if (!inRanges(live, at)) continue;
       let start = end;
       while (start > 0 && data[start - 1] >= 0x20 && data[start - 1] <= 0x7e && end - start < 48) start--;
       const label = data.subarray(start, end).toString('latin1').trim();

@@ -117,3 +117,14 @@ describe('pluginsOfVersion', () => {
     expect(pluginsOfVersion([{ path: 'x.rpp', hash: '1' }], 'Reaper', cas)).toBeNull()
   })
 })
+
+describe('which Logic alternative a version was worked on', async () => {
+  const { workedOnAlternative } = await import('../version-changes')
+  const pd = (alt: string, hash: string) => ({ path: `S.logicx/Alternatives/${alt}/ProjectData`, hash })
+  it('is the one whose ProjectData changed, else the newest-numbered, and none for a single alternative', () => {
+    expect(workedOnAlternative([pd('000', 'a')], null)).toBeNull()
+    expect(workedOnAlternative([pd('000', 'a2'), pd('001', 'b')], [pd('000', 'a'), pd('001', 'b')])).toBe('Alternatives/000')
+    expect(workedOnAlternative([pd('000', 'a'), pd('001', 'b'), pd('010', 'c')], [pd('000', 'a'), pd('001', 'b'), pd('010', 'c')])).toBe('Alternatives/010')
+    expect(workedOnAlternative([pd('000', 'a'), pd('002', 'n')], [pd('000', 'a')])).toBe('Alternatives/002')
+  })
+})

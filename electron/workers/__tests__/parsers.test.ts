@@ -130,3 +130,41 @@ describe('plugin helpers', () => {
     expect(abletonDeviceName('SomeNewDevice2')).toBe('Some New Device 2')
   })
 })
+
+describe('LogicProParser: only plugins on channel strips', () => {
+  // A ProjectData-like file: 24-byte header, then chunks (reversed tag, fields, u64 length at +28, data at +36).
+  const chunk = (tag: string, body: Buffer | string) => {
+    const data = Buffer.isBuffer(body) ? body : Buffer.from(body, 'latin1')
+    const head = Buffer.alloc(36)
+    head.write(tag.split('').reverse().join(''), 0, 'latin1')
+    head.writeBigUInt64LE(BigInt(data.length), 28)
+    return Buffer.concat([head, data])
+  }
+  const builtin = (label: string) => `\0${label}\0\0\0\0GAME....`
+  const au = (mfr: string, sub: string) =>
+    `<key>manufacturer</key><integer>${Buffer.from(mfr).readUInt32BE()}</integer><key>name</key><string>Untitled</string><key>subtype</key><integer>${Buffer.from(sub).readUInt32BE()}</integer><key>type</key><integer>${Buffer.from('aumu').readUInt32BE()}</integer>`
+  const project = (...chunks: Buffer[]) => Buffer.concat([Buffer.from('#G\xc0\xab' + '\0'.repeat(20), 'latin1'), ...chunks])
+
+  it('ignores plugins named only in undo history (USEl), like a removed Piano V3 or Alchemy', () => {
+    const data = project(
+      chunk('Song', 'song'),
+      chunk('AuCU', builtin('Channel EQ')),
+      chunk('AuCU', au('Zzzz', 'Qqq1') + builtin('ChromaVerb')),
+      chunk('USEl', au('Zzzz', 'Qqq2') + builtin('Alchemy') + builtin('Channel EQ')),
+      chunk('AuCU', builtin('Channel EQ')),
+    )
+    const { plugins } = new LogicProParser().parseBuffer(data)
+    const names = plugins.map((p) => `${p.name}×${p.count}`).sort()
+    expect(names).toEqual(['Qqq1×1', 'Channel EQ×2', 'ChromaVerb×1'].sort())
+  })
+
+  it('finds the channel strip chunks, and gives up on files without that layout', async () => {
+    const { channelStripRanges } = await import('../logicProParser')
+    const data = project(chunk('Song', 'x'), chunk('AuCU', 'abc'), chunk('USEl', 'd'))
+    expect(channelStripRanges(data)).toEqual([[24 + 37 + 36, 24 + 37 + 36 + 3]])
+    expect(channelStripRanges(Buffer.concat([data, Buffer.from('junk')]))).toBeNull()
+    expect(channelStripRanges(Buffer.from(builtin('Alchemy')))).toBeNull()
+    // Without the layout every record still counts (older files, tests above).
+    expect(new LogicProParser().parseBuffer(Buffer.from(builtin('Alchemy'), 'latin1')).plugins.map((p) => p.name)).toEqual(['Alchemy'])
+  })
+})
