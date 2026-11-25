@@ -28,8 +28,8 @@ describe('CommitGraph', () => {
             />
         );
 
-        expect(screen.getByText('Initial commit')).toBeInTheDocument();
-        expect(screen.getByText('Update')).toBeInTheDocument();
+        expect(screen.getAllByText('Initial commit').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Update').length).toBeGreaterThan(0);
     });
 
     it('handles checkout click', () => {

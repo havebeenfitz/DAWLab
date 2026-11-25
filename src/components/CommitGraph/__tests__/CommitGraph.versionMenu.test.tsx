@@ -21,8 +21,11 @@ function renderGraph(props: Partial<CommitGraphProps> = {}) {
   return { props: all, ...utils };
 }
 
-const card = (message: string) => screen.getByText(message).closest('.commit-card') as HTMLElement;
-const moreButton = (message: string) => within(card(message)).getByRole('button', { name: 'More actions for this version' });
+/** The rail row of a version (the selected version's title also shows in the bar below). */
+const row = (message: string) => screen.getAllByRole('listitem').find((li) => li.classList.contains('rail-row') && within(li).queryByText(message)) as HTMLElement;
+const bar = () => screen.getByLabelText('Selected version');
+const select = (message: string) => fireEvent.click(row(message));
+const moreButton = () => within(bar()).getByRole('button', { name: 'More actions for this version' });
 const menu = () => document.querySelector('.context-menu') as HTMLElement | null;
 const menuLabels = () => Array.from(menu()?.querySelectorAll('button') ?? []).map((b) => b.textContent?.trim());
 
@@ -33,122 +36,103 @@ beforeEach(() => {
 });
 afterEach(() => { quiet.forEach((s) => s.mockRestore()); });
 
-describe('CommitGraph version actions', () => {
-  it('every version has a labelled ⋯ button that announces a menu', () => {
+describe('CommitGraph version rail', () => {
+  it('shows one row per version, newest first, and marks the current one', () => {
     renderGraph();
-    const buttons = screen.getAllByRole('button', { name: 'More actions for this version' });
-    expect(buttons).toHaveLength(3);
-    for (const b of buttons) {
-      expect(b).toHaveAttribute('aria-haspopup', 'menu');
-      expect(b).toHaveAttribute('title', 'More actions');
-    }
+    const rows = screen.getAllByRole('listitem').filter((li) => li.classList.contains('rail-row'));
+    expect(rows.map((r) => r.querySelector('.rail-msg')!.textContent)).toEqual(['Mixdown', 'Added drums', 'First idea']);
+    expect(row('Added drums')).toHaveAttribute('aria-current', 'true');
+    expect(within(row('Added drums')).getByText('current')).toBeInTheDocument();
+    expect(within(row('Mixdown')).queryByText('current')).not.toBeInTheDocument();
   });
 
-  it('⋯ opens the version menu with every action', () => {
-    renderGraph({ onDeleteCommit: vi.fn(), onEditTags: vi.fn() });
-    expect(menu()).toBeNull();
-    fireEvent.click(moreButton('Added drums'));
+  it('clicking a row selects it and shows it in the bar below, and so does Enter', () => {
+    const onCommitSelect = vi.fn();
+    renderGraph({ onCommitSelect });
+    select('First idea');
+    expect(onCommitSelect).toHaveBeenCalledWith('c1');
+    fireEvent.keyDown(row('Mixdown'), { key: 'Enter' });
+    expect(onCommitSelect).toHaveBeenCalledWith('c3');
+  });
+
+  it('the selected version has a labelled ⋯ button that opens every action', () => {
+    renderGraph({ onDeleteCommit: vi.fn(), onEditTags: vi.fn(), selectedCommitId: 'c2' });
+    expect(moreButton()).toHaveAttribute('aria-haspopup', 'menu');
+    fireEvent.click(moreButton());
     expect(menuLabels()).toEqual(['Preview this version', 'New alternative from here', 'Edit tags', 'Delete this version']);
   });
 
-  it('⋯ does not select the version', () => {
-    const onCommitSelect = vi.fn();
-    renderGraph({ onCommitSelect });
-    fireEvent.click(moreButton('First idea'));
-    expect(onCommitSelect).not.toHaveBeenCalled();
-  });
-
   it('leaves out actions the parent does not support', () => {
-    renderGraph();
-    fireEvent.click(moreButton('Mixdown'));
+    renderGraph({ selectedCommitId: 'c3' });
+    fireEvent.click(moreButton());
     expect(menuLabels()).toEqual(['Preview this version', 'New alternative from here']);
   });
 
-  it('right-click opens the same menu', () => {
-    renderGraph();
-    fireEvent.contextMenu(card('Mixdown'));
-    expect(menuLabels()).toContain('Preview this version');
-  });
-
-  it('runs the action for the version whose ⋯ was clicked', () => {
+  it('right-click on a row opens the same menu for that version', () => {
     const onDeleteCommit = vi.fn();
-    const onEditTags = vi.fn();
-    renderGraph({ onDeleteCommit, onEditTags });
-
-    fireEvent.click(moreButton('First idea'));
+    renderGraph({ onDeleteCommit });
+    fireEvent.contextMenu(row('First idea'));
     fireEvent.click(within(menu()!).getByText('Delete this version'));
     expect(onDeleteCommit).toHaveBeenCalledWith('c1');
     expect(menu()).toBeNull();
-
-    fireEvent.click(moreButton('Mixdown'));
-    fireEvent.click(within(menu()!).getByText('Edit tags'));
-    expect(onEditTags).toHaveBeenCalledWith('c3', expect.any(Number), expect.any(Number));
   });
 
   it('Preview this version asks the main process to preview it', async () => {
-    renderGraph();
-    fireEvent.click(moreButton('Added drums'));
+    renderGraph({ selectedCommitId: 'c2' });
+    fireEvent.click(moreButton());
     fireEvent.click(within(menu()!).getByText('Preview this version'));
     await waitFor(() => expect(window.ipcRenderer.invoke).toHaveBeenCalledWith('preview-project', 'Song', 'c2', 'main'));
-    expect(menu()).toBeNull();
   });
 
   it('New alternative from here opens the naming dialog', () => {
-    renderGraph();
-    fireEvent.click(moreButton('Added drums'));
+    renderGraph({ selectedCommitId: 'c2' });
+    fireEvent.click(moreButton());
     fireEvent.click(within(menu()!).getByText('New alternative from here'));
     expect(screen.getByRole('button', { name: 'Create alternative' })).toBeInTheDocument();
-    expect(screen.getByText('Name of the alternative')).toBeInTheDocument();
   });
 
-  describe('restore button wording', () => {
+  it('shows other people\'s names but not yours', () => {
+    renderGraph({ me: 'Ann' });
+    expect(within(row('Added drums')).getByText(/^Bob · /)).toBeInTheDocument();
+    expect(within(row('Mixdown')).queryByText(/Ann/)).not.toBeInTheDocument();
+  });
+
+  describe('restore button wording (in the bar, for the selected version)', () => {
     it('says "On this Mac" for the version on this Mac and disables it', () => {
-      renderGraph();
-      const btn = within(card('Added drums')).getByRole('button', { name: /On this Mac/ });
-      expect(btn).toBeDisabled();
+      renderGraph({ selectedCommitId: 'c2' });
+      expect(within(bar()).getByRole('button', { name: /On this Mac/ })).toBeDisabled();
     });
 
     it('still says "On this Mac" with unsaved changes, but it can be clicked to go back', () => {
-      const { props } = renderGraph({ hasUnsavedChanges: true });
-      const btn = within(card('Added drums')).getByRole('button', { name: /On this Mac/ });
+      const { props } = renderGraph({ hasUnsavedChanges: true, selectedCommitId: 'c2' });
+      const btn = within(bar()).getByRole('button', { name: /On this Mac/ });
       expect(btn).toBeEnabled();
       fireEvent.click(btn);
       expect(props.onCheckout).toHaveBeenCalledWith('c2');
     });
 
     it('says "Restore" for older versions and restores on click', () => {
-      const { props } = renderGraph();
-      const btn = within(card('First idea')).getByRole('button', { name: /^Restore/ });
-      fireEvent.click(btn);
+      const { props } = renderGraph({ selectedCommitId: 'c1' });
+      fireEvent.click(within(bar()).getByRole('button', { name: /^Restore/ }));
       expect(props.onCheckout).toHaveBeenCalledWith('c1');
     });
 
     it('says "Get this version" for versions newer than the last restore', () => {
-      renderGraph({ lastCheckoutTimestamp: '20260102120000' });
-      expect(within(card('Mixdown')).getByRole('button', { name: /Get this version/ })).toBeEnabled();
-      expect(within(card('First idea')).getByRole('button', { name: /^Restore/ })).toBeInTheDocument();
+      renderGraph({ lastCheckoutTimestamp: '20260102120000', selectedCommitId: 'c3' });
+      expect(within(bar()).getByRole('button', { name: /Get this version/ })).toBeEnabled();
     });
 
     it('says "Restoring" and disables while restoring', () => {
-      renderGraph({ restoringCommitId: 'c1' });
-      expect(within(card('First idea')).getByRole('button', { name: /Restoring/ })).toBeDisabled();
+      renderGraph({ restoringCommitId: 'c1', selectedCommitId: 'c1' });
+      expect(within(bar()).getByRole('button', { name: /Restoring/ })).toBeDisabled();
     });
   });
 
   describe('readOnly (listeners)', () => {
-    it('hides Restore and On this Mac buttons', () => {
-      renderGraph({ readOnly: true });
-      expect(screen.queryByRole('button', { name: /Restore/ })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /On this Mac/ })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Get this version/ })).not.toBeInTheDocument();
-      expect(screen.getAllByRole('button', { name: 'More actions for this version' })).toHaveLength(3);
-    });
-
-    it('menu offers only "Preview this version"', () => {
-      renderGraph({ readOnly: true, onDeleteCommit: vi.fn(), onEditTags: vi.fn() });
-      fireEvent.click(moreButton('Added drums'));
-      expect(menuLabels()).toEqual(['Preview this version']);
-      fireEvent.contextMenu(card('Mixdown'));
+    it('hides Restore and On this Mac, keeps the menu with only Preview', () => {
+      renderGraph({ readOnly: true, onDeleteCommit: vi.fn(), onEditTags: vi.fn(), selectedCommitId: 'c2' });
+      expect(screen.queryByRole('button', { name: /Restore|On this Mac|Get this version/ })).not.toBeInTheDocument();
+      fireEvent.click(moreButton());
       expect(menuLabels()).toEqual(['Preview this version']);
     });
   });
@@ -157,13 +141,48 @@ describe('CommitGraph version actions', () => {
     renderGraph({
       commits: [...commits, { commit_id: 'c4', timestamp: '20260104120000', message: 'Unsaved work before switching to “First idea”', author: 'Ann', auto: true }],
       currentCommitId: 'c1',
+      selectedCommitId: 'c4',
     });
-    const kept = card('Unsaved work before switching to “First idea”');
-    expect(kept).toHaveClass('auto-snapshot');
-    expect(within(kept).getByText('Kept automatically')).toBeInTheDocument();
-    expect(within(kept).getByRole('button', { name: /Bring back/ })).toBeEnabled();
-    expect(within(card('Mixdown')).getByRole('button', { name: /Restore/ })).toBeInTheDocument();
-    expect(within(card('Mixdown')).queryByText('Kept automatically')).not.toBeInTheDocument();
+    const kept = row('Unsaved work before switching to “First idea”');
+    expect(kept).toHaveClass('is-auto');
+    expect(within(kept).getByLabelText('Kept automatically')).toBeInTheDocument();
+    expect(within(bar()).getByRole('button', { name: /Bring back/ })).toBeEnabled();
+  });
+
+  it('reads "Created branch X from commit Y" as the start of an alternative', () => {
+    renderGraph({ commits: [{ commit_id: 'b1', timestamp: '20260105120000', message: 'Created branch drums from commit c2', author: 'Ann' }] });
+    expect(within(row('Started the alternative “drums”')).getByText('Started the alternative “drums”')).toBeInTheDocument();
+  });
+
+  describe('parallel versions folded into the rail', () => {
+    const forks = [{ branch: 'bob · 25 Nov', author: 'bob', parent: 'c2', commits: [
+      { commit_id: 'b1', timestamp: '20260102130000', message: 'bob drums', author: 'bob' },
+      { commit_id: 'b2', timestamp: '20260102140000', message: 'bob drums 2', author: 'bob' },
+    ] }];
+
+    it('shows one folded row where it split, with Preview and Dismiss', () => {
+      const onPreviewFork = vi.fn();
+      const onDismissFork = vi.fn();
+      renderGraph({ forks, onPreviewFork, onDismissFork });
+      const items = screen.getAllByRole('listitem').map((li) => li.classList.contains('rail-fold-item') ? 'fold' : li.querySelector('.rail-msg')?.textContent);
+      expect(items).toEqual(['Mixdown', 'fold', 'Added drums', 'First idea']);
+      expect(screen.getByRole('button', { name: /bob · 2 versions/ })).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByText('bob drums')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Preview/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Dismiss/ }));
+      expect(onPreviewFork).toHaveBeenCalledWith('bob · 25 Nov');
+      expect(onDismissFork).toHaveBeenCalledWith('bob · 25 Nov');
+    });
+
+    it('opens to show its versions on a second lane, which can be selected', () => {
+      const onCommitSelect = vi.fn();
+      renderGraph({ forks, onCommitSelect });
+      fireEvent.click(screen.getByRole('button', { name: /bob · 2 versions/ }));
+      const lane = screen.getByRole('list', { name: 'Versions in bob · 25 Nov' });
+      expect(within(lane).getAllByRole('listitem').map((li) => li.querySelector('.rail-msg')!.textContent)).toEqual(['bob drums 2', 'bob drums']);
+      fireEvent.click(within(lane).getByText('bob drums'));
+      expect(onCommitSelect).toHaveBeenCalledWith('b1');
+    });
   });
 
   describe('the unsaved-changes tile', () => {

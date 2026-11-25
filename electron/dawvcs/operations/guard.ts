@@ -39,7 +39,8 @@ export async function saveUnsavedWork(projectName: string, target: string, autho
   const branch = log.current_branch || 'main'
   let commitId: string
   try {
-    ;({ commitId } = await commitProject(projectName, `${AUTO_SNAPSHOT_PREFIX} ${target}`, branch, author || 'DAWLab', { auto: true }))
+    const saved = await commitProject(projectName, `${AUTO_SNAPSHOT_PREFIX} ${target}`, branch, author || 'DAWLab', { auto: true })
+    commitId = saved.commitId
   } catch (err) {
     throw new Error(`Couldn't save your unsaved work first, so nothing was switched. ${(err as Error)?.message ?? ''}`.trim())
   }

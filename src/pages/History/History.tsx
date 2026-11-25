@@ -20,12 +20,12 @@ import { ProjectSettings } from "@/components/ProjectSettings/ProjectSettings";
 import { useOptionalSharing } from "@/components/Sharing";
 import { useProjectAccess } from "@/hooks/useProjectAccess";
 import { useSharedProjectSync } from "@/hooks/useSharedProjectSync";
-import { ParallelVersionBanner } from "./components/ParallelVersionBanner";
+import { ParallelVersionBanner, DismissDialog } from "./components/ParallelVersionBanner";
 import { ForkNotice } from "./components/ForkNotice";
 import { PreviewingBar, type ActivePreview } from "./components/PreviewingBar";
 import { BranchGraph } from "./components/BranchGraph";
 import { dawInfo } from "@/lib/daw";
-import { openParallelVersions, dismissalOf } from "../../../shared/forks";
+import { openParallelVersions, dismissalOf, type ParallelVersion } from "../../../shared/forks";
 import FeedbackView from "@/components/Feedback/FeedbackView";
 import { BranchMenu } from "@/components/BranchMenu/BranchMenu";
 import { TagManagerPopover } from "@/components/TagManagerPopover/TagManagerPopover";
@@ -147,6 +147,14 @@ export const History: React.FC = () => {
 
   // "Discard changes": shown only when the folder differs from the last saved version of this alternative.
   const [showDiscard, setShowDiscard] = useState(false);
+  const [dismissTarget, setDismissTarget] = useState<ParallelVersion | null>(null);
+  // Parallel versions of this alternative, folded into the rail where they split (dismissed ones stay hidden).
+  const railForks = openParallelVersions(projectLog ?? {}, selectedBranch || "main", username || undefined).map((p) => ({
+    branch: p.branch,
+    author: p.author,
+    parent: p.parent,
+    commits: ((projectLog?.branches ?? []).find((b: any) => b.name === p.branch)?.commits ?? []) as any[],
+  }));
 
   // "Preview whole project": someone else's version laid out next to yours.
   const [preview, setPreview] = useState<ActivePreview | null>(null);
@@ -320,6 +328,13 @@ export const History: React.FC = () => {
         onToggleSettings={() => setShowSettings(!showSettings)}
         sync={access.folder ? { incoming: sharedSync.incoming, pulling: sharedSync.pulling, transfer: sharedSync.transfer, pull: () => { void sharedSync.pull(); } } : undefined}
       />
+      <DismissDialog
+        projectName={passedProject || ""}
+        version={dismissTarget}
+        username={username || "You"}
+        onClose={() => setDismissTarget(null)}
+        onDone={async () => { setDismissTarget(null); await log.refreshProjectLog(); }}
+      />
       <DiscardChangesDialog
         open={showDiscard && working.changes.length > 0}
         projectName={passedProject || ""}
@@ -425,6 +440,10 @@ export const History: React.FC = () => {
               unsavedCount={working.changes.length}
               onDiscard={() => setShowDiscard(true)}
               readOnly={access.isListener}
+              me={username}
+              forks={railForks}
+              onPreviewFork={access.isListener ? undefined : (b) => { void startPreview(b); }}
+              onDismissFork={(b) => setDismissTarget(openParallelVersions(projectLog, selectedBranch || "main", username || undefined).find((p) => p.branch === b) ?? null)}
             />
           ) : (
             <div className="text-white text-center py-10">

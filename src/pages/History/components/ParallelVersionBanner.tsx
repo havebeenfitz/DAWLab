@@ -173,7 +173,7 @@ function CompareDialog({ projectName, version, baseId, onClose }: {
 }
 
 /** Dismissing needs a reason: it becomes a comment on their version, so they know. */
-function DismissDialog({ projectName, version, username, onClose, onDone }: {
+export function DismissDialog({ projectName, version, username, onClose, onDone }: {
   projectName: string; version: ParallelVersion | null; username: string; onClose: () => void; onDone: () => Promise<void>;
 }) {
   const [text, setText] = useState('');

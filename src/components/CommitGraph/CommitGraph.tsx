@@ -7,9 +7,10 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { notify } from "@/lib/notify";
-import { motion } from "motion/react";
 import "./CommitGraph.css";
-import { Bookmark, Check, RotateCcw, Music, MoreHorizontal, LifeBuoy } from "lucide-react";
+import { VersionRail } from "./VersionRail";
+import { railMessage, type RailFork } from "./rail";
+import { Bookmark, Check, RotateCcw, MoreHorizontal } from "lucide-react";
 import { ContextMenu, createCommitMenuItems } from "@/components/ContextMenu";
 import { InputModal } from "@/components/InputModal";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -58,6 +59,12 @@ export interface CommitGraphProps {
   onEditTags?: (commitId: string, x: number, y: number) => void;
   /** Listeners: versions can be played and previewed, never restored, changed or branched from. */
   readOnly?: boolean;
+  /** Parallel versions split from this alternative, folded into the rail where they split. */
+  forks?: RailFork[];
+  /** You: other people's names show next to their versions, yours don't. */
+  me?: string | null;
+  onPreviewFork?: (branch: string) => void;
+  onDismissFork?: (branch: string) => void;
 }
 
 // ============================================================================
@@ -131,42 +138,6 @@ const getDayWithSuffix = (day: number): string => {
   }
 };
 
-/**
- * Parse commit message and render with clickable links for branch creation messages
- * Pattern: "Created branch X from Y" where Y is a commit ID
- */
-const renderCommitMessage = (
-  message: string,
-  onCommitClick: (commitId: string) => void,
-): React.ReactNode => {
-  // Pattern to match "Created branch <name> from <commitId>"
-  const branchPattern = /^Created branch (.+?) from (?:commit )?([A-Za-z0-9_-]+)$/;
-  const match = message.match(branchPattern);
-
-  if (match) {
-    const branchName = match[1];
-    const commitId = match[2];
-
-    return (
-      <span>
-        Alternative <strong>{branchName}</strong> started from{" "}
-        <span
-          className="commit-link"
-          onClick={(e) => {
-            e.stopPropagation();
-            onCommitClick(commitId);
-          }}
-          title="Show that version"
-        >
-          {commitId}
-        </span>
-      </span>
-    );
-  }
-
-  // Default: return message as-is
-  return message || "No message";
-};
 
 // ============================================================================
 // MAIN COMPONENT
@@ -194,6 +165,10 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   tagColors = {},
   onEditTags,
   readOnly = false,
+  forks = [],
+  me,
+  onPreviewFork,
+  onDismissFork,
 }) => {
   const [selectedCommitId, setSelectedCommitId] = useState<string | null>(null);
   const [_currentPage, _setCurrentPage] = useState<number>(0); // Keeping state for now but layout is horizontal
@@ -481,13 +456,24 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
     );
   }
 
+  const selected = sortedCommits.find((c) => String(c.commit_id) === String(effectiveSelectedCommitId)) ?? null;
+  const selectedStatus = selected ? getCommitStatus(selected, currentCommitId, lastCheckoutTimestamp, hasUnsavedChanges) : null;
+  const isRestoringSelected = !!selected && String(restoringCommitId) === String(selected.commit_id);
+
   return (
     <div className="commit-graph-wrapper">
-      <div
-        className="commit-graph-container horizontal-scroll"
-        ref={scrollContainerRef}
-      >
-        <div className="commit-cards-list">
+      <VersionRail
+        commits={sortedCommits}
+        forks={forks}
+        currentCommitId={currentCommitId}
+        selectedCommitId={effectiveSelectedCommitId}
+        me={me}
+        onSelect={handleRowClick}
+        onContextMenu={handleCommitContextMenu}
+        onPreviewFork={onPreviewFork}
+        onDismissFork={onDismissFork}
+        head={
+          <div className="commit-cards-list rail-head">
           {/* New Commit / Save Card - show if unsaved changes OR user explicitly clicked save */}
           {(hasUnsavedChanges || isCreatingCommit || isExiting) &&
             onSaveCommit && (
@@ -564,139 +550,59 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
               </div>
             )}
 
-          {sortedCommits.map((commit) => {
-            const isSelected = effectiveSelectedCommitId === commit.commit_id;
-            const status = getCommitStatus(
-              commit,
-              currentCommitId,
-              lastCheckoutTimestamp,
-              hasUnsavedChanges,
-            );
-            const isRestoring =
-              String(restoringCommitId) === String(commit.commit_id);
+          </div>
+        }
+      />
 
-            return (
-              <motion.div
-                key={commit.commit_id}
-                layout
-                initial={false}
-                animate={{
-                  scale: isSelected ? 1.02 : 1,
-                  boxShadow: isSelected
-                    ? "0 10px 30px -10px rgba(0,0,0,0.5)"
-                    : "0 4px 12px -2px rgba(0,0,0,0.1)",
-                }}
-                transition={{
-                  type: "spring",
-                  stiffness: 300,
-                  damping: 30,
-                }}
-                className={`commit-card ${status} ${isSelected ? "selected" : ""} ${commit.auto ? "auto-snapshot" : ""}`}
-                onClick={() => handleRowClick(commit.commit_id)}
-                onContextMenu={(e) =>
-                  handleCommitContextMenu(e, commit.commit_id)
-                }
+      {selected && (
+        <div className="selected-version" aria-label="Selected version">
+          <div className="selected-version-text">
+            <strong>{railMessage(selected.message)}</strong>
+            <span>{selected.author || "Unknown"} · {formatTimestamp(selected.timestamp)}{selected.auto ? " · kept automatically before a switch" : ""}</span>
+          </div>
+          <div className="selected-version-actions">
+            {(selected.tags || []).length > 0 && (
+              <TagChip
+                tag={selected.tags![0]}
+                color={tagColors[selected.tags![0]]}
+                onClick={onEditTags ? (e) => { e.stopPropagation(); onEditTags(selected.commit_id, e.clientX, e.clientY); } : undefined}
+              />
+            )}
+            <button
+              type="button"
+              className="card-more"
+              aria-label="More actions for this version"
+              title="More actions"
+              aria-haspopup="menu"
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setContextMenu({ x: r.left, y: r.bottom + 4, commitId: selected.commit_id });
+              }}
+            >
+              <MoreHorizontal size={18} />
+            </button>
+            {!readOnly && (
+              <button
+                className={`status-button ${isRestoringSelected ? "restoring" : selectedStatus}`}
+                onClick={(e) => handleCheckoutClick(e, selected.commit_id)}
+                disabled={isRestoringSelected || selectedStatus === "current"}
               >
-                <div className="card-content">
-                  <div className="commit-message-full">
-                    {commit.auto && (
-                      <span className="auto-snapshot-badge" title="DAWLab kept your unsaved work before switching. It stays on this Mac until you build on it.">
-                        <LifeBuoy size={13} aria-hidden /> Kept automatically
-                      </span>
-                    )}
-                    {renderCommitMessage(commit.message, (id) =>
-                      handleRowClick(id),
-                    )}
-                  </div>
-
-                  <div className="card-footer">
-                    <div className="flex items-center gap-2">
-                      <span className="timestamp">
-                        {formatTimestamp(commit.timestamp).split(",")[0]}
-                      </span>
-                      {commit.preview_file && (
-                        <Music size={12} className="text-blue-400" />
-                      )}
-                      {(commit.tags || []).length > 0 && (
-                        <>
-                          <TagChip
-                            tag={commit.tags![0]}
-                            color={tagColors[commit.tags![0]]}
-                            onClick={
-                              onEditTags
-                                ? (e) => {
-                                    e.stopPropagation();
-                                    onEditTags(commit.commit_id, e.clientX, e.clientY);
-                                  }
-                                : undefined
-                            }
-                          />
-                          {commit.tags!.length > 1 && (
-                            <span className="text-xs text-gray-500">
-                              +{commit.tags!.length - 1}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    <span className="author">{commit.author || "Unknown"}</span>
-                  </div>
-                </div>
-
-                <div className="card-action">
-                  <button
-                    type="button"
-                    className="card-more"
-                    aria-label="More actions for this version"
-                    title="More actions"
-                    aria-haspopup="menu"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const r = e.currentTarget.getBoundingClientRect();
-                      setContextMenu({ x: r.left, y: r.bottom + 4, commitId: commit.commit_id });
-                    }}
-                  >
-                    <MoreHorizontal size={18} />
-                  </button>
-                  {!readOnly && (
-                  <button
-                    className={`status-button ${isRestoring ? "restoring" : status}`}
-                    onClick={(e) => handleCheckoutClick(e, commit.commit_id)}
-                    disabled={isRestoring || status === "current"}
-                  >
-                    {isRestoring ? (
-                      <>
-                        <RotateCcw
-                          className="animate-spin-reverse mr-2"
-                          size={18}
-                        />{" "}
-                        Restoring
-                      </>
-                    ) : status === "current" || status === "modified" ? (
-                      <>
-                        On this Mac <Check className="ml-2" size={18} />
-                      </>
-                    ) : status === "sync" ? (
-                      <>
-                        Get this version <RotateCcw className="ml-2" size={18} />
-                      </>
-                    ) : commit.auto ? (
-                      <>
-                        Bring back <RotateCcw className="ml-2" size={18} />
-                      </>
-                    ) : (
-                      <>
-                        Restore <RotateCcw className="ml-2" size={18} />
-                      </>
-                    )}
-                  </button>
-                  )}
-                </div>
-              </motion.div>
-            );
-          })}
+                {isRestoringSelected ? (
+                  <><RotateCcw className="animate-spin-reverse mr-2" size={16} /> Restoring</>
+                ) : selectedStatus === "current" || selectedStatus === "modified" ? (
+                  <>On this Mac <Check className="ml-2" size={16} /></>
+                ) : selectedStatus === "sync" ? (
+                  <>Get this version <RotateCcw className="ml-2" size={16} /></>
+                ) : selected.auto ? (
+                  <>Bring back <RotateCcw className="ml-2" size={16} /></>
+                ) : (
+                  <>Restore <RotateCcw className="ml-2" size={16} /></>
+                )}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Commit Context Menu */}
       {contextMenu && (

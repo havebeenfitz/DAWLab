@@ -140,7 +140,6 @@ export default function WaveformCanvas({
   hoveredEdge,
   loopRange,
   height = 300,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   globalDuration: _globalDuration,
   trackLabel,
   isActiveTrack = true,
