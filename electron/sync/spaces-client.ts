@@ -13,14 +13,14 @@ import path from 'path'
 import { getUserDir, getUsername } from '../dawvcs/core/constants'
 import { getUserConfigManager } from '../dawvcs/core/config'
 import { loadLocalProjectLog } from '../dawvcs/core/log'
-import { loadRegistry } from '../dawvcs/core/registry'
+import { loadRegistry, getProjectPath } from '../dawvcs/core/registry'
 import { getProjectStorageDirs } from '../dawvcs/core/storage-location'
 import { commitExists } from '../dawvcs/core/commits'
 import { writeJsonSync } from '../dawvcs/core/fs-utils'
 import {
   allCommits, parseFullInvite, buildFullInvite, parseJoinLink, toSharedLog,
   type CreatedInvite, type InviteInfo, type InvitePreview, type JoinResponse, type SpaceMember, type SpaceProject,
-  type SpaceResponse, type SpaceRole,
+  type SpaceResponse, type SpaceRole, type SharedLog,
 } from '../../shared/hub-protocol'
 import {
   HubClient, checkOutLatest, createLocalProject, getHubSettings, getProjectRemote, hubError,
@@ -167,6 +167,7 @@ export async function syncSpace(folderId: string, onProgress: SyncProgress = () 
     space = { ...space, name: remote.space.name, role: remote.me.role, members: remote.members }
 
     const result: SpaceSyncResult = { folderId, pushedVersions: 0, pulledVersions: 0, addedProjects: [], uploadedProjects: [], failed: [], space }
+    space = await linkKeptCopies(space, remote.projects)
     space = await uploadNewLocalProjects(space, onProgress, result)
     space = await downloadNewRemoteProjects(space, remote.projects, onProgress, result)
 
@@ -177,6 +178,11 @@ export async function syncSpace(folderId: string, onProgress: SyncProgress = () 
         const counts = await syncProjectWith(projectName, projectClient(space, projectId), writeRole(space.role), onProgress)
         result.pushedVersions += counts.pushed
         result.pulledVersions += counts.pulled
+        // A listener made a collaborator has versions but no files yet: lay out the newest.
+        const projectPath = getProjectPath(projectName)
+        if (writeRole(space.role) === 'edit' && projectPath && isEmptyWorkingCopy(projectPath)) {
+          await checkOutLatest(projectName, projectPath, 'edit', onProgress)
+        }
       } catch (err) {
         result.failed.push({ project: projectName, error: messageOf(err) })
       }
@@ -189,6 +195,33 @@ export async function syncSpace(folderId: string, onProgress: SyncProgress = () 
     writeSpace({ ...space, lastError: messageOf(err) })
     throw err
   }
+}
+
+/**
+ * Copies kept on this Mac from an earlier time in this folder (you left, were
+ * removed, or the owner stopped sharing and shared again) are linked back to
+ * their hub projects by project id, so they are synced, not uploaded or
+ * downloaded a second time. Runs before anything is uploaded.
+ */
+async function linkKeptCopies(space: LocalSpace, remoteProjects: SpaceProject[]): Promise<LocalSpace> {
+  let projects = { ...space.projects }
+  const unlinked = remoteProjects.filter((p) => !(projects[p.id] && loadLocalProjectLog(projects[p.id])))
+  if (unlinked.length === 0) return space
+  for (const project of unlinked) {
+    let log: SharedLog
+    try {
+      log = (await projectClient(space, project.id).getProject()).log
+    } catch {
+      continue // the download step reports it
+    }
+    const kept = localCopyOf(log.id, new Set(Object.values(projects)))
+    if (!kept) continue
+    folderManager().moveProject(kept.projectId, space.folderId)
+    projects = { ...projects, [project.id]: kept.projectName }
+  }
+  const next = { ...space, projects }
+  writeSpace(next)
+  return next
 }
 
 async function uploadNewLocalProjects(
@@ -237,6 +270,74 @@ async function downloadNewRemoteProjects(
     }
   }
   return { ...space, projects }
+}
+
+/** True when a project folder holds no files of its own (DAWLab's storage folder doesn't count). */
+export function isEmptyWorkingCopy(projectPath: string): boolean {
+  try {
+    return fs.readdirSync(projectPath).every((n) => n === '.dawlabproject' || n === '.DS_Store')
+  } catch {
+    return true
+  }
+}
+
+/** A local project with the same project id as a hub project's log, not yet linked to another hub project. */
+function localCopyOf(id: unknown, taken: Set<string>): { projectName: string; projectId: string } | null {
+  if (typeof id !== 'string' || !id) return null
+  for (const [name, entry] of Object.entries<any>(loadRegistry())) {
+    if (entry?.project_id !== id || taken.has(name)) continue
+    if (findSharedProject(name)) continue // already linked to a shared folder
+    if (loadLocalProjectLog(name)) return { projectName: name, projectId: id }
+  }
+  return null
+}
+
+/** The project ids (log ids) behind a space's hub projects; unreadable ones are skipped. */
+async function remoteLogIds(access: Pick<LocalSpace, 'hubUrl' | 'token'>, hubProjectIds: string[]): Promise<string[]> {
+  const ids: string[] = []
+  for (const id of hubProjectIds) {
+    try {
+      const { log } = await new HubClient(access.hubUrl, access.token, `/space/projects/${encodeURIComponent(id)}`).getProject()
+      if (typeof log.id === 'string' && log.id) ids.push(log.id)
+    } catch {
+      /* decided by the others */
+    }
+  }
+  return ids
+}
+
+/**
+ * Local links to shares on this hub that no longer let you in (you were removed,
+ * or the owner stopped sharing and shared again) and that hold copies of the
+ * projects being joined. They can never sync again, so they are let go and the
+ * copies are picked up by the new share instead of being downloaded twice.
+ */
+async function releaseDeadLinks(hubUrl: string, joiningSpaceId: string, logIds: string[]) {
+  const wanted = new Set(logIds)
+  const registry = loadRegistry()
+  for (const space of listLocalSpaces()) {
+    if (space.hubUrl !== hubUrl || space.spaceId === joiningSpaceId) continue
+    const holdsCopies = Object.values(space.projects).some((name) => wanted.has(String(registry[name]?.project_id)))
+    if (holdsCopies && !(await stillMember(space))) forgetSpace(space.folderId)
+  }
+}
+
+/**
+ * The Library folder that already holds local copies of the projects being
+ * joined, when they all sit in one folder that isn't linked to a share. Joining
+ * again then reuses it instead of making a second folder with the same name.
+ */
+function folderOfKeptCopies(logIds: string[]): string | null {
+  const folderMap = folderManager().getProjectFolderMap()
+  const folders = new Set<string | null>()
+  for (const id of logIds) {
+    const kept = localCopyOf(id, new Set())
+    if (kept) folders.add(folderMap[kept.projectId] ?? null)
+  }
+  if (folders.size !== 1) return null
+  const [folderId] = [...folders]
+  if (!folderId || getLocalSpace(folderId)) return null
+  return folderManager().getFolders().some((f: { id: string }) => f.id === folderId) ? folderId : null
 }
 
 // ------------------------------------------------------------- one project
@@ -360,9 +461,14 @@ export async function joinSpace(input: string, parentDir: string, onProgress: Sy
     return syncSpace(already.folderId, onProgress)
   }
 
-  const folder = folderManager().createFolder(joined.space.name, null)
+  const access = { hubUrl, token: joined.token }
+  const { projects: remoteProjects } = await call<SpaceResponse>(access, '/space')
+  const logIds = await remoteLogIds(access, remoteProjects.map((p) => p.id))
+  await releaseDeadLinks(hubUrl, joined.space.id, logIds)
+  const reused = folderOfKeptCopies(logIds)
+  const folderId = reused ?? folderManager().createFolder(joined.space.name, null).id
   writeSpace({
-    folderId: folder.id,
+    folderId,
     hubUrl,
     spaceId: joined.space.id,
     token: joined.token,
@@ -372,7 +478,7 @@ export async function joinSpace(input: string, parentDir: string, onProgress: Sy
     localRoot: path.join(parentDir, safeFolderName(joined.space.name)),
     projects: {},
   })
-  return syncSpace(folder.id, onProgress)
+  return syncSpace(folderId, onProgress)
 }
 
 // ------------------------------------------------------------- people

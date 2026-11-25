@@ -383,7 +383,19 @@ async function pullInto(
   assertSafeLog(remoteLog)
   const { casDir, commitsDir } = getProjectStorageDirs(projectName)
   ensureCasDir(casDir)
-  const newCommits = allCommits(remoteLog).filter((c) => !commitExists(projectName, c.commit_id, commitsDir))
+  const isNew = (id: string) => !commitExists(projectName, id, commitsDir)
+  // Versions kept from a time as a listener have no files. Someone who can now
+  // edit gets them filled in, so any of those versions can be opened.
+  const isHollow = (id: string) => {
+    if (opts.previewsOnly || isNew(id)) return false
+    try {
+      return getCommitFileMap(projectName, id, commitsDir).length === 0
+    } catch {
+      return false
+    }
+  }
+  const newCommits = allCommits(remoteLog).filter((c) => isNew(c.commit_id) || isHollow(c.commit_id))
+  const reallyNew = newCommits.filter((c) => isNew(c.commit_id)).length
 
   const need = new Set<string>()
   const filemaps = new Map<string, Array<{ path: string; hash: string }>>()
@@ -410,7 +422,7 @@ async function pullInto(
   // Versions the hub moved into a parallel alternative leave the one they were saved on here too.
   const local = adoptHubPlacement(loadLocalProjectLog(projectName), remoteLog)
   saveProjectLog(projectName, mergeLogs(local, remoteLog))
-  return { versions: newCommits.length, files: need.size }
+  return { versions: reallyNew, files: need.size }
 }
 
 async function syncComments(projectName: string, commitId: string, client: HubClient, commitsDir: string) {
