@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FileDiff, PluginDiff } from '../../shared/version-diff';
+import type { SongDiff, SongInfo } from '../../shared/song-diff';
 
 export interface VersionChanges {
   commitId: string;
@@ -7,6 +8,8 @@ export interface VersionChanges {
   parentMessage: string | null;
   files: FileDiff;
   plugins: PluginDiff | null;
+  song?: SongInfo | null;
+  songChanges?: SongDiff | null;
 }
 
 /** What a version changed compared with the one before it (files and plugins). */

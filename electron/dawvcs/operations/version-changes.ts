@@ -8,6 +8,8 @@ import type { FileMapEntry } from '../types'
 import { diffFileMaps, diffPlugins, type FileDiff, type PluginDiff, type DiffPlugin } from '../../../shared/version-diff'
 import { AbletonParser } from '../../workers/parser'
 import { LogicProParser } from '../../workers/logicProParser'
+import { diffSong, type SongDiff, type SongInfo } from '../../../shared/song-diff'
+import { songInfoOfVersion } from './song-info'
 
 export interface VersionChanges {
   commitId: string
@@ -17,6 +19,10 @@ export interface VersionChanges {
   files: FileDiff
   /** null when the DAW's project file can't be read for plugins. */
   plugins: PluginDiff | null
+  /** Tempo, tracks, key… of this version; null when unreadable. */
+  song: SongInfo | null
+  /** What changed in the song since the previous version; null without a readable song. */
+  songChanges: SongDiff | null
 }
 
 interface LogCommit { commit_id: string; timestamp: string; message: string }
@@ -125,8 +131,13 @@ export function getVersionChanges(projectName: string, commitId: string): Versio
   const currentPlugins = pluginsOfVersion(current, daw, casDir)
   const previousPlugins = previous ? pluginsOfVersion(previous, daw, casDir) : null
 
+  const song = songInfoOfVersion(current, daw, casDir, previous)
+  const previousSong = previous ? songInfoOfVersion(previous, daw, casDir) : null
+
   return {
     commitId,
+    song,
+    songChanges: song ? diffSong(previousSong, song) : null,
     parentId: parent?.commit_id ?? null,
     parentMessage: parent?.message ?? null,
     files: diffFileMaps(previous, current),

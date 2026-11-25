@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>AudioFiles</key><array><string>Audio Files/kick.wav</string><string>Audio Files/Хз.wav</string></array>
+<key>BeatsPerMinute</key><integer>86</integer>
+<key>HasARAPlugins</key><false/>
+<key>NumberOfTracks</key><integer>48</integer>
+<key>SampleRate</key><integer>48000</integer>
+<key>SongGenderKey</key><string>major</string>
+<key>SongKey</key><string>C</string>
+<key>SongSignatureDenominator</key><integer>4</integer>
+<key>SongSignatureNumerator</key><integer>4</integer>
+<key>Ratio</key><real>1.5</real>
+<key>Big</key><integer>5000000000</integer>
+</dict></plist>

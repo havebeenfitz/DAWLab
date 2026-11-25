@@ -390,3 +390,9 @@
 .tree-change-mark.change-added { background: none; color: #3fb950; }
 .tree-change-mark.change-modified { color: #d29922; }
 .tree-change-mark.change-renamed { color: #58a6ff; }
+
+/* Song-level facts and their changes, above the file changes */
+.song-changes { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-muted); }
+.song-facts { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 0.85rem; color: var(--text-secondary); }
+.song-label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.song-change-list { margin-top: 8px; }

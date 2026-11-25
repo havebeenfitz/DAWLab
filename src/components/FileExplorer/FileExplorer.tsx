@@ -4,6 +4,7 @@ import dawlabLogo from '@/assets/logo.png';
 import './FileExplorer.css';
 import type { VersionChanges } from '@/hooks/useVersionChanges';
 import { VersionChangesList, CHANGE_MARK, CHANGE_WORD } from './VersionChangesList';
+import { SongChanges } from './SongChanges';
 
 interface FileMapEntry {
   path: string;
@@ -349,7 +350,10 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
           {changesLoading && !changes ? (
             <div className="file-tree-loading">Comparing with the previous version...</div>
           ) : changes ? (
-            <VersionChangesList diff={changes.files} hasParent={!!changes.parentId} parentMessage={changes.parentMessage} />
+            <>
+              {changes.song && <SongChanges song={changes.song} diff={changes.parentId ? changes.songChanges ?? null : null} />}
+              <VersionChangesList diff={changes.files} hasParent={!!changes.parentId} parentMessage={changes.parentMessage} />
+            </>
           ) : (
             <div className="file-tree-empty">Changes for this version aren't available</div>
           )}
