@@ -17,6 +17,7 @@ import { loadRegistry, getProjectPath } from '../dawvcs/core/registry'
 import { getProjectStorageDirs } from '../dawvcs/core/storage-location'
 import { commitExists } from '../dawvcs/core/commits'
 import { writeJsonSync } from '../dawvcs/core/fs-utils'
+import { isPreviewFolder } from '../dawvcs/operations/scan'
 import {
   allCommits, parseFullInvite, buildFullInvite, parseJoinLink, toSharedLog,
   type CreatedInvite, type InviteInfo, type InvitePreview, type JoinResponse, type SpaceMember, type SpaceProject,
@@ -44,6 +45,8 @@ export interface LocalSpace {
   lastError?: string
   /** The hub no longer lets this Mac in: you were removed, or the owner stopped sharing. Copies stay. */
   accessClosed?: boolean
+  /** Hub projects removed from this Mac's library: sync leaves them alone. */
+  ignoredProjects?: string[]
 }
 
 export interface SpaceSyncResult {
@@ -174,7 +177,7 @@ export async function syncSpace(folderId: string, onProgress: SyncProgress = () 
     space = await downloadNewRemoteProjects(space, remote.projects, onProgress, result)
 
     for (const [projectId, projectName] of Object.entries(space.projects)) {
-      if (!loadLocalProjectLog(projectName)) continue
+      if (isPreviewFolder(projectName) || !loadLocalProjectLog(projectName)) continue
       onProgress(`Syncing ${projectName}...`)
       try {
         const counts = await syncProjectWith(projectName, projectClient(space, projectId), writeRole(space.role), onProgress)
@@ -241,6 +244,8 @@ async function uploadNewLocalProjects(
   let projects = { ...space.projects }
   for (const [name, entry] of Object.entries<any>(registry)) {
     if (folderMap[entry.project_id] !== space.folderId || mapped.has(name)) continue
+    // A parallel-version preview is a look at someone's version, never a project of its own.
+    if (isPreviewFolder(name) || (entry.path && isPreviewFolder(entry.path))) continue
     const remote = getProjectRemote(name)
     if (remote && !sharedFromThisMac(remote)) {
       // Opened from someone else's single-project link: it isn't ours to add to the folder.
@@ -270,7 +275,13 @@ async function downloadNewRemoteProjects(
   space: LocalSpace, remoteProjects: SpaceProject[], onProgress: SyncProgress, result: SpaceSyncResult,
 ): Promise<LocalSpace> {
   let projects = { ...space.projects }
+  const ignored = new Set(space.ignoredProjects ?? [])
   for (const project of remoteProjects) {
+    if (ignored.has(project.id)) continue
+    if (isPreviewFolder(project.name)) {
+      projects = await dropRemotePreview(space, project, projects)
+      continue
+    }
     if (projects[project.id] && loadLocalProjectLog(projects[project.id])) continue
     onProgress(`Downloading ${project.name}...`)
     try {
@@ -289,6 +300,22 @@ async function downloadNewRemoteProjects(
     }
   }
   return { ...space, projects }
+}
+
+/**
+ * A preview an older DAWLab uploaded by mistake ("<song> (preview · name)"):
+ * never downloaded. The owner takes it off the hub so nobody gets it.
+ */
+async function dropRemotePreview(space: LocalSpace, project: SpaceProject, projects: Record<string, string>): Promise<Record<string, string>> {
+  if (space.role === 'owner') {
+    try {
+      await call<void>(space, `/space/projects/${encodeURIComponent(project.id)}`, 'DELETE')
+    } catch (err) {
+      console.warn(`[spaces] Could not take the preview ${project.name} off the hub:`, messageOf(err))
+    }
+  }
+  const { [project.id]: _gone, ...rest } = projects
+  return rest
 }
 
 /** True when a project folder holds no files of its own (DAWLab's storage folder doesn't count). */
@@ -363,10 +390,56 @@ function folderOfKeptCopies(logIds: string[]): string | null {
 
 /** The shared folder and hub project id behind a local project, if it is in a shared folder. */
 export function findSharedProject(projectName: string): { space: LocalSpace; projectId: string } | null {
+  const idIn = (space: LocalSpace) => Object.entries(space.projects).find(([, name]) => name === projectName)?.[0]
   const space = getSpaceForProject(projectName)
-  if (!space) return null
-  const projectId = Object.entries(space.projects).find(([, name]) => name === projectName)?.[0]
-  return projectId ? { space, projectId } : null
+  const projectId = space && idIn(space)
+  if (space && projectId) return { space, projectId }
+  // Its library entry may already be gone (a folder deleted in Finder): look in every shared folder.
+  for (const other of listLocalSpaces()) {
+    const id = idIn(other)
+    if (id) return { space: other, projectId: id }
+  }
+  return null
+}
+
+/** A shared folder's projects on the hub, with when each one's history was last written. No files. */
+export async function listSpaceProjects(folderId: string): Promise<SpaceProject[]> {
+  const space = getLocalSpace(folderId)
+  if (!space || space.accessClosed) return []
+  const ignored = new Set(space.ignoredProjects ?? [])
+  return (await call<SpaceResponse>(space, '/space')).projects.filter((p) => !ignored.has(p.id) && !isPreviewFolder(p.name))
+}
+
+/** One shared project's version history on the hub (no files). */
+export async function readSpaceProjectLog(folderId: string, hubProjectId: string): Promise<SharedLog> {
+  const space = getLocalSpace(folderId)
+  if (!space) throw new Error('This folder is not shared.')
+  return (await projectClient(space, hubProjectId).getProject()).log
+}
+
+/** The name a shared folder's project has on this Mac, if it is here. */
+export function localNameOf(folderId: string, hubProjectId: string): string | null {
+  return getLocalSpace(folderId)?.projects[hubProjectId] ?? null
+}
+
+/** Names of every project listed in this Mac's shared folders. */
+export function sharedProjectNames(): string[] {
+  return listLocalSpaces().flatMap((space) => Object.values(space.projects))
+}
+
+/**
+ * Stops syncing a shared project on this Mac after it is removed from the
+ * library: the folder sync never downloads it again. It stays on the hub for
+ * everyone else. Returns false when the project isn't shared.
+ */
+export function forgetSharedProject(projectName: string): boolean {
+  const found = findSharedProject(projectName)
+  if (!found) return false
+  const { space, projectId } = found
+  const { [projectId]: _gone, ...projects } = space.projects
+  const ignoredProjects = [...new Set([...(space.ignoredProjects ?? []), projectId])]
+  writeSpace({ ...space, projects, ignoredProjects })
+  return true
 }
 
 export interface ProjectSyncResult {

@@ -5,6 +5,7 @@ import logo from '@/assets/logo.png';
 import { facetKey, FACET_GROUP_LABELS } from '@/lib/facets';
 import type { useLibraryFilters } from '../hooks/useLibraryFilters';
 import { FacetChip } from './ItemParts';
+import { NotificationBell } from '@/components/Notifications/NotificationBell';
 
 type ViewMode = 'grid' | 'list';
 type Filters = ReturnType<typeof useLibraryFilters>;
@@ -205,6 +206,7 @@ export function LibraryHeader(p: Props) {
           onToggle={p.onToggleFilterMenu}
           menuRef={p.filterMenuRef}
         />
+        <NotificationBell />
         <AddMenu {...p.addMenu} />
       </div>
     </header>

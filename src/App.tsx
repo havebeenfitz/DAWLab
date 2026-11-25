@@ -15,6 +15,7 @@ import { History } from "./pages/History";
 import CleanStorage from "./pages/Settings/CleanStorage";
 import DitherLab from "./pages/DitherLab/DitherLab";
 import { SharingProvider } from "./components/Sharing";
+import { useVersionNotices } from "./components/Notifications/useVersionNotices";
 import "./App.css";
 
 const DeepLinkHandler: React.FC<{ children: React.ReactNode }> = ({
@@ -42,6 +43,12 @@ const DeepLinkHandler: React.FC<{ children: React.ReactNode }> = ({
   }, [navigate]);
 
   return <>{children}</>;
+};
+
+/** Collaborators' new versions as toasts while DAWLab is in front (macOS shows them otherwise). */
+const VersionAlertToasts: React.FC = () => {
+  useVersionNotices({ toasts: true });
+  return null;
 };
 
 type AppPhase = "loading" | "onboarding" | "app";
@@ -90,6 +97,7 @@ function App() {
       {phase === "onboarding" && <Onboarding onComplete={finishOnboarding} />}
       {phase === "app" && (
         <DeepLinkHandler>
+          <VersionAlertToasts />
           <SharingProvider>
           <Routes>
             <Route

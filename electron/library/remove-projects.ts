@@ -8,6 +8,8 @@ export interface RemoveProjectsDeps {
   removeFromFolders: (projectId: string | number) => void
   /** Stops watched-folder scans from suggesting this path again. */
   ignorePath: (projectPath: string) => void
+  /** Stops a shared folder from bringing the project back on its next sync. */
+  leaveShared?: (name: string) => Promise<unknown> | unknown
 }
 
 export interface RemoveTarget {
@@ -35,6 +37,11 @@ export async function removeProjectsFromLibrary(targets: RemoveTarget[], deps: R
       const projectPath = deps.getProjectPath(t.name)
       await deps.deleteProject(t.name)
       deps.removeFromFolders(t.id)
+      try {
+        await deps.leaveShared?.(t.name)
+      } catch (err) {
+        console.warn(`[remove-projects] ${t.name} is out of the library, but its shared folder could not be updated:`, err)
+      }
       if (projectPath && projectPath !== 'NA') deps.ignorePath(path.resolve(projectPath))
       result.removed.push(t.name)
     } catch (err) {

@@ -64,9 +64,10 @@ import { scanForProjects, getDefaultScanRoots, isPreviewFolder } from "./dawvcs/
 import { getInstalledPlugins, rescanPlugins } from "./workers/pluginScanner";
 import { startDraftWatch, stopDraftWatch, stopAllDraftWatches } from "./watchers/draftWatcher";
 import { registerHubIpc } from "./sync/ipc";
+import { registerNotificationIpc } from "./notify/ipc";
 import { removeProjectsFromLibrary, type RemoveTarget } from "./library/remove-projects";
 import { cleanUpPreviewProjects } from "./library/preview-cleanup";
-import { removeProjectFromSpace } from "./sync/spaces-client";
+import { removeProjectFromSpace, forgetSharedProject, sharedProjectNames } from "./sync/spaces-client";
 import { getVersionChanges } from "./dawvcs/operations/version-changes";
 import { getWorkingChanges, discardWorkingChanges } from "./dawvcs/operations/discard";
 import { runningDawApp } from "./dawvcs/core/daw-running";
@@ -264,6 +265,22 @@ function createWindow() {
   }
 }
 
+/** Brings the window forward, opening it again if it was closed, once its page is ready. */
+async function showMainWindow(): Promise<BrowserWindow> {
+  if (!win || win.isDestroyed()) {
+    createWindow();
+    const fresh = win!;
+    await new Promise<void>((resolve) => fresh.webContents.once("did-finish-load", () => resolve()));
+    // Give the app a moment to load the user and its routes before it is asked to open something.
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  const w = win!;
+  if (w.isMinimized()) w.restore();
+  w.show();
+  w.focus();
+  return w;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -304,6 +321,7 @@ app.whenReady().then(() => {
     const manager = getUserConfigManager(getUsername());
     cleanUpPreviewProjects({
       projects: () => Object.entries(loadRegistry() as Record<string, any>).map(([name, info]) => ({ id: String(info?.project_id ?? ""), name, path: info?.path ?? null })),
+      sharedProjects: sharedProjectNames,
       removeFromSpace: (name) => removeProjectFromSpace(name),
       removeFromLibrary: (targets) => removeProjectsFromLibrary(targets, {
         deleteProject,
@@ -377,6 +395,8 @@ app.whenReady().then(() => {
 
 // file dialogs
 registerHubIpc(ipcMain, () => win);
+// New versions from collaborators: checked about once a minute while DAWLab runs, even with its window closed.
+registerNotificationIpc(ipcMain, () => win, showMainWindow);
 
 ipcMain.handle("hub-take-pending-join", () => {
   const link = pendingJoinLink;
@@ -1651,6 +1671,8 @@ ipcMain.handle("remove-projects-from-library", async (_ev, targets: RemoveTarget
     getProjectPath,
     removeFromFolders: (id) => manager.removeProject(id),
     ignorePath: (p) => manager.addIgnoredProjectPath(p),
+    // A stray preview goes from the shared folder for everyone; any other shared project only stops syncing here.
+    leaveShared: (name) => (isPreviewFolder(name) ? removeProjectFromSpace(name) : forgetSharedProject(name)),
   });
 });
 

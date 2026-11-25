@@ -115,7 +115,15 @@ export const History: React.FC = () => {
   const tags = useVersionTags({ passedProject, projectLog, setProjectLog: log.setProjectLog, selectedBranch });
 
   /** Currently focused commit for preview/actions (independent of checkout) */
-  const [focusedCommitId, setFocusedCommitId] = useState<string | null>(null);
+  const [focusedCommitId, setFocusedCommitId] = useState<string | null>(location.state?.focusedCommitId ?? null);
+  // Opened from a notification or a link: show that version. Opening the project reads its notices.
+  useEffect(() => {
+    const target = location.state?.focusedCommitId;
+    if (target) setFocusedCommitId(String(target));
+  }, [location.state?.focusedCommitId, location.key]);
+  useEffect(() => {
+    if (passedProject) window.ipcRenderer.invoke("notifications-mark-read", passedProject).catch((err: unknown) => console.warn("[History] Could not mark notices read:", err));
+  }, [passedProject]);
   /** Mobile tab state for Files/Plugins/Comments toggle */
   const [activeMobileTab, setActiveMobileTab] = useState<BottomPanelTab>("files");
   /** Alternatives menu open/close state */

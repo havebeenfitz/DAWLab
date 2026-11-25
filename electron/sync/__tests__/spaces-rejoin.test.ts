@@ -62,7 +62,11 @@ import { openParallelVersions, dismissalOf } from '../../../shared/forks'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, listLocalSpaces, getLocalSpace,
   removeMember, previewInvite, leaveSpace, revokeInvite, listInvites, changeMemberRole, stopSharing, describeFailures,
+  forgetSharedProject, sharedProjectNames, listSpaceProjects, readSpaceProjectLog,
 } from '../spaces-client'
+import { checkForNewVersions, feedStore } from '../../notify/version-watcher'
+import { toSharedLog } from '../../../shared/hub-protocol'
+import { deleteProject } from '../../dawvcs/operations/delete'
 import { createHub } from '../../../server/src/app.ts'
 import { FsStorage } from '../../../server/src/storage.ts'
 
@@ -631,3 +635,89 @@ describe('a preview open while the folder syncs', () => {
   })
 })
 
+
+describe('a preview an older DAWLab uploaded to the shared folder', () => {
+  /** What 1.4.0 and older did: the preview folder sat in the shared folder and went up as a project. */
+  async function uploadPreviewLikeOldDawlab(w: Awaited<ReturnType<typeof world>>, tag: string) {
+    as(w.owner)
+    const dir = path.join(work, tag, w.owner, 'Snow (preview · bob)')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'Snow.als'), 'bob take')
+    await initProject('Snow (preview · bob)', dir, { storageMode: 'project', author: w.owner })
+    const space = getLocalSpace(w.folderId)!
+    const res = await fetch(`${space.hubUrl}/api/space/projects`, {
+      method: 'POST',
+      headers: { 'X-Hub-Token': space.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ log: toSharedLog(loadLocalProjectLog('Snow (preview · bob)')) }),
+    })
+    expect(res.ok).toBe(true)
+    await deleteProject('Snow (preview · bob)')
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+  const hubNames = async (folderId: string) => (await getSpaceDetails(folderId)).projects.map((p: any) => p.name).sort()
+
+  it('is never downloaded, and the owner takes it off the hub on the next sync', async () => {
+    const w = await world('pvhub')
+    const bob = w.u('bob')
+    const joined = await w.join(bob, (await w.invite()).code)
+    await uploadPreviewLikeOldDawlab(w, 'pvhub')
+
+    as(bob)
+    expect((await syncSpace(joined.folderId)).addedProjects).toEqual([])
+    expect(projectNames()).toEqual(['Intro', 'Snow'])
+
+    as(w.owner)
+    expect(await hubNames(w.folderId)).toContain('Snow (preview · bob)')
+    expect((await syncSpace(w.folderId)).addedProjects).toEqual([])
+    expect(projectNames()).toEqual(['Intro', 'Snow'])
+    expect(await hubNames(w.folderId)).toEqual(['Intro', 'Snow'])
+    expect(sharedProjectNames().sort()).toEqual(['Intro', 'Snow'])
+  })
+})
+
+describe('removing a shared project from the library', () => {
+  it('stays removed: its folder is gone from disk and the next sync does not bring it back', async () => {
+    const w = await world('rmshared')
+    const bob = w.u('bob')
+    const joined = await w.join(bob, (await w.invite()).code)
+    as(bob)
+    const dir = getProjectPath('Intro')
+    fs.rmSync(dir, { recursive: true, force: true })
+    await deleteProject('Intro')
+    expect(forgetSharedProject('Intro')).toBe(true)
+
+    expect((await syncSpace(joined.folderId)).addedProjects).toEqual([])
+    expect(projectNames()).toEqual(['Snow'])
+    expect(fs.existsSync(dir)).toBe(false)
+    // Only this Mac stopped syncing it: it is still in the folder for everyone else.
+    as(w.owner)
+    expect((await getSpaceDetails(w.folderId)).projects.map((p: any) => p.name).sort()).toEqual(['Intro', 'Snow'])
+  })
+})
+
+describe('hearing about a collaborator\'s new version', () => {
+  it('tells the owner once, by who and where, and never about their own versions', async () => {
+    const w = await world('notify')
+    const bob = w.u('bob')
+    const joined = await w.join(bob, (await w.invite()).code)
+    const store = feedStore(() => path.join(MOCK_HOME, 'notify-feed'))
+    const check = () => {
+      as(w.owner)
+      return checkForNewVersions({
+        spaces: () => [{ folderId: w.folderId, name: 'Album' }],
+        listProjects: async (id) => (await listSpaceProjects(id)).map((p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt })),
+        readLog: readSpaceProjectLog,
+        me: () => w.owner,
+        ...store,
+      })
+    }
+    expect((await check()).added).toEqual([])
+    await w.save(bob, joined.folderId, 'Snow', 'bob take')
+    const r = await check()
+    expect(r.alerts.map((a) => [a.title, a.body])).toEqual([[`${bob} saved a version`, '“bob take” in Snow · Album']])
+    expect(r.changedFolders).toEqual([w.folderId])
+    // Your own new version is never announced to you.
+    await w.save(w.owner, w.folderId, 'Intro', 'owner idea')
+    expect((await check()).added).toEqual([])
+  })
+})

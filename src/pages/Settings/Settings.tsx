@@ -17,6 +17,7 @@ import {
 import './Settings.css';
 import '@/components/ui/Dialog.css';
 import { ServerSettings } from './ServerSettings';
+import { NotificationSettings } from './NotificationSettings';
 
 // A folder DAWLab re-scans for new projects (mirrors the main-process shape).
 interface WatchedDir {
@@ -563,6 +564,8 @@ export const Settings: React.FC = () => {
         </div>
 
         <ServerSettings />
+
+        <NotificationSettings />
 
         {/* Audio Section */}
         <div className="form-field">

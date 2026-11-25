@@ -1179,3 +1179,14 @@
   color: #999;
   font-variant-numeric: tabular-nums;
 }
+
+/* Notifications */
+.notification-settings { display: flex; flex-direction: column; gap: 10px; }
+.notification-settings .ui-check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #e5e7eb; cursor: pointer; }
+.notification-settings .ui-check input { width: 16px; height: 16px; accent-color: #0094ff; cursor: pointer; }
+.notification-settings .ui-check input:disabled + span { color: #6b7280; }
+.notification-folders { display: flex; flex-direction: column; gap: 8px; padding-left: 24px; }
+.notification-settings .field-hint { margin: 0; }
+.notification-sound { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; color: #e5e7eb; }
+.notification-sound label { min-width: 48px; }
+.notification-sound .ui-btn { display: inline-flex; align-items: center; gap: 6px; }

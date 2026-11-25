@@ -69,4 +69,19 @@ describe('removeProjectsFromLibrary', () => {
     const res = await removeProjectsFromLibrary([{ id: '1', name: 'A' }], d)
     expect(res.failed).toEqual([{ name: 'A', error: 'nope' }])
   })
+
+  it('takes each removed project out of its shared folder so sync does not bring it back', async () => {
+    const leaveShared = vi.fn()
+    const res = await removeProjectsFromLibrary([{ id: '1', name: 'A' }], { ...deps(), leaveShared })
+    expect(res.removed).toEqual(['A'])
+    expect(leaveShared).toHaveBeenCalledWith('A')
+  })
+
+  it('still removes it when the shared folder cannot be updated', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const res = await removeProjectsFromLibrary([{ id: '1', name: 'A' }], { ...deps(), leaveShared: async () => { throw new Error('offline') } })
+    expect(res).toEqual({ removed: ['A'], failed: [] })
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
 })

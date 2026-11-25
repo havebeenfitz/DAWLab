@@ -160,6 +160,13 @@ export const onSyncStatus = (cb: Listener<SyncStatus>) => subscribe<SyncStatus>(
 export const onParallelPlacement = (cb: Listener<{ projectName: string; moves: ParallelPlacement[] }>) =>
   subscribe<{ projectName: string; moves: ParallelPlacement[] }>('hub-parallel-placed', cb)
 
+/** The list of collaborators' new versions changed (main process keeps it). */
+export const onNoticesChanged = <T,>(cb: Listener<T>) => subscribe<T>('notifications-changed', cb)
+
+/** New versions arrived while DAWLab is in front: shown as toasts. */
+export const onVersionAlerts = (cb: Listener<Array<{ title: string; body: string }>>) =>
+  subscribe<Array<{ title: string; body: string }>>('version-alerts', cb)
+
 /** A dawlab://join link opened while the app was running. */
 export const onJoinLink = (cb: Listener<string>) => subscribe<string>('join-shared', cb)
 

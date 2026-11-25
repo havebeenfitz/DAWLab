@@ -34,4 +34,18 @@ describe('cleaning up previews added as projects', () => {
     expect(await cleanUpPreviewProjects({ projects: () => [{ id: '1', name: 'song', path: '/s' }], removeFromSpace: vi.fn(), removeFromLibrary })).toEqual([])
     expect(removeFromLibrary).not.toHaveBeenCalled()
   })
+
+  it("also catches a preview that is only in a shared folder's list, with no library entry left", async () => {
+    const removeFromSpace = vi.fn(async () => ({ removedOnHub: true }))
+    const removeFromLibrary = vi.fn()
+    const removed = await cleanUpPreviewProjects({
+      projects: () => [{ id: '1', name: 'test', path: '/Music/Chigura/test' }],
+      sharedProjects: () => ['test', 'test (preview · elenadanilova)'],
+      removeFromSpace,
+      removeFromLibrary,
+    })
+    expect(removed).toEqual(['test (preview · elenadanilova)'])
+    expect(removeFromSpace).toHaveBeenCalledWith('test (preview · elenadanilova)')
+    expect(removeFromLibrary).not.toHaveBeenCalled()
+  })
 })
