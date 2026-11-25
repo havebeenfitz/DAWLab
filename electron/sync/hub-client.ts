@@ -21,7 +21,7 @@ import { writeJsonSync } from '../dawvcs/core/fs-utils'
 import { rollbackProject } from '../dawvcs/operations/rollback'
 import { parseCommentsFile, serializeComments } from '../feedback/comments-file'
 import {
-  allCommits, isCommitId, isHash, mergeComments, mergeLogs, parseShareLink, toSharedLog,
+  allCommits, isCommitId, isHash, mergeComments, mergeLogs, parseShareLink, toSharedLog, privateSnapshotIds,
   type CreateProjectResponse, type HubRole, type ProjectResponse, type SharedComment, type SharedLog,
 } from '../../shared/hub-protocol'
 import { adoptHubPlacement, placementMoves, type ParallelPlacement } from '../../shared/forks'
@@ -257,8 +257,9 @@ export async function syncProjectWith(
   // ---- push
   const before = await client.getProject()
   const remoteIds = new Set(allCommits(before.log).map((c) => c.commit_id))
+  const hidden = privateSnapshotIds(local)
   const toPush = allCommits(local).filter(
-    (c) => !remoteIds.has(String(c.commit_id)) && commitExists(projectName, String(c.commit_id), commitsDir),
+    (c) => !remoteIds.has(String(c.commit_id)) && !hidden.has(String(c.commit_id)) && commitExists(projectName, String(c.commit_id), commitsDir),
   )
 
   const blobFiles = new Map<string, string>()

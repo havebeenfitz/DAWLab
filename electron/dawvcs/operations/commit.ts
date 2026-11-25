@@ -90,7 +90,7 @@ export async function commitProject(
   message = 'No message',
   branch_name: string = 'main',
   author: string,
-  opts: { previewFile?: string } = {}
+  opts: { previewFile?: string; auto?: boolean } = {}
 ) {
   if (!message || message.trim() === '') throw new Error('Commit message cannot be empty')
 
@@ -119,7 +119,9 @@ export async function commitProject(
     message,
     author,
     ...(parent ? { parent } : {}),
-    ...(previewHash ? { preview_file: previewHash } : {})
+    ...(previewHash ? { preview_file: previewHash } : {}),
+    // Saved by DAWLab itself before a switch, not by you: kept, shown, but private until you build on it.
+    ...(opts.auto ? { auto: true } : {}),
   })
 
   // A real commit supersedes any pending auto-captured draft.

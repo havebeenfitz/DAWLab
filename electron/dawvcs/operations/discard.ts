@@ -14,6 +14,7 @@ import { getProjectStorageDirs } from '../core/storage-location'
 import { getAllFiles } from '../core/fs-utils'
 import { isNoisePath } from '../core/noise'
 import { parentForNewVersion } from './commit'
+import { saveUnsavedWork } from './guard'
 
 export type WorkingChangeKind = 'added' | 'modified' | 'deleted'
 
@@ -56,13 +57,14 @@ async function hashFile(full: string, stat: fs.Stats): Promise<string> {
 
 const byPath = (a: WorkingChange, b: WorkingChange) => a.path.localeCompare(b.path)
 
-function savedState(projectName: string) {
+/** The project, its folder and storage, and the files of version `baseCommitId` (noise and folders left out). */
+function projectState(projectName: string, pickBase: (log: any) => string | null) {
   const log = loadLocalProjectLog(projectName)
   if (!log) throw new Error(`Project '${projectName}' not found`)
   const projectPath = getProjectPath(projectName)
   if (!projectPath || projectPath === 'NA' || projectPath === '/') throw new Error(`'${projectName}' has no project folder on this Mac.`)
   const { casDir, commitsDir } = getProjectStorageDirs(projectName)
-  const baseCommitId = parentForNewVersion(log, log.current_branch || 'main') ?? null
+  const baseCommitId = pickBase(log)
   const files = new Map<string, string>()
   if (baseCommitId) {
     for (const e of getCommitFileMap(projectName, baseCommitId, commitsDir)) {
@@ -73,13 +75,22 @@ function savedState(projectName: string) {
   return { log, projectPath, casDir, commitsDir, baseCommitId, files }
 }
 
-/** What differs between the project folder and the last saved version, ignoring noise. */
-export async function getWorkingChanges(projectName: string): Promise<WorkingChanges> {
-  const { log, projectPath, casDir, baseCommitId, files } = savedState(projectName)
-  if (!baseCommitId) return { baseCommitId: null, changes: [] }
-  const working = fs.existsSync(projectPath) ? await getAllFiles(projectPath, log.ignoredFiles || []) : {}
-  const changes: WorkingChange[] = []
+/** The last saved version of the alternative you are on: what Discard goes back to. */
+const lastSaved = (log: any) => parentForNewVersion(log, log.current_branch || 'main') ?? null
 
+/** The version the folder was last put on (any alternative), else the last saved one: what "unsaved" means. */
+export const checkedOutVersion = (log: any): string | null => {
+  const id = log.lastCheckout?.commitId ? String(log.lastCheckout.commitId) : null
+  const known = id && (log.branches ?? []).some((b: any) => (b.commits ?? []).some((c: any) => String(c.commit_id) === id))
+  return known ? id : lastSaved(log)
+}
+
+const savedState = (projectName: string) => projectState(projectName, lastSaved)
+
+/** Files that differ between the folder and `files` (a version's), ignoring noise. */
+async function compare(projectPath: string, ignored: string[], casDir: string, files: Map<string, string>): Promise<WorkingChange[]> {
+  const working = fs.existsSync(projectPath) ? await getAllFiles(projectPath, ignored) : {}
+  const changes: WorkingChange[] = []
   for (const [rel, full] of Object.entries(working)) {
     if (full === 'empty' || isNoisePath(rel)) continue
     const saved = files.get(rel)
@@ -94,7 +105,20 @@ export async function getWorkingChanges(projectName: string): Promise<WorkingCha
   for (const rel of files.keys()) {
     if (!(rel in working)) changes.push({ path: rel, kind: 'deleted' })
   }
-  return { baseCommitId, changes: changes.sort(byPath) }
+  return changes.sort(byPath)
+}
+
+/** What differs between the project folder and the last saved version, ignoring noise. */
+export async function getWorkingChanges(projectName: string): Promise<WorkingChanges> {
+  const { log, projectPath, casDir, baseCommitId, files } = savedState(projectName)
+  if (!baseCommitId) return { baseCommitId: null, changes: [] }
+  return { baseCommitId, changes: await compare(projectPath, log.ignoredFiles || [], casDir, files) }
+}
+
+/** What differs from the version the folder was put on; with no version yet, every file counts. */
+export async function getUnsavedChanges(projectName: string): Promise<WorkingChanges> {
+  const { log, projectPath, casDir, baseCommitId, files } = projectState(projectName, checkedOutVersion)
+  return { baseCommitId, changes: await compare(projectPath, log.ignoredFiles || [], casDir, files) }
 }
 
 const stamp = () => {
@@ -131,6 +155,12 @@ export async function discardWorkingChanges(projectName: string, expectedBaseId:
       throw new Error(`The saved copy of ${c.path} is missing, so it can't be restored. Nothing was changed.`)
     }
   }
+
+  // Like any switch: your current files are kept as a version too, so Discard can be undone from History.
+  await saveUnsavedWork(projectName, 'the last saved version')
+  // That version is not where the folder goes back to.
+  const restoreTo = loadLocalProjectLog(projectName)
+  saveProjectLog(projectName, { ...restoreTo, lastCheckout: log.lastCheckout ?? null })
 
   const replaced = changes.filter((c) => c.kind !== 'deleted').map((c) => c.path)
   let trashedAs: string | null = null
@@ -173,7 +203,7 @@ export async function discardWorkingChanges(projectName: string, expectedBaseId:
   if (log.draft?.commit_id) {
     try { fs.rmSync(getCommitPath(projectName, log.draft.commit_id, commitsDir), { recursive: true, force: true }) } catch { /* ignore */ }
   }
-  const next = { ...log, draft: null, lastCheckout: { commitId: baseCommitId, timestamp: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14) } }
+  const next = { ...loadLocalProjectLog(projectName), draft: null, lastCheckout: { commitId: baseCommitId, timestamp: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14) } }
   saveProjectLog(projectName, next)
 
   return { baseCommitId, restored, removed: changes.filter((c) => c.kind === 'added').length, trashedAs }

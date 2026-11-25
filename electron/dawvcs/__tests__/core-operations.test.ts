@@ -66,6 +66,10 @@ vi.mock('electron', () => ({
   },
 }));
 
+// CAS is faked below, so the real "keep unsaved work" guard can't store anything here;
+// it is tested against real storage in operations/__tests__/switch-guard.test.ts.
+vi.mock('../operations/guard', () => ({ saveUnsavedWork: vi.fn(async () => null), AUTO_SNAPSHOT_PREFIX: 'Unsaved work before switching to' }));
+
 // Mock the CAS and network modules
 vi.mock("../core/cas", () => ({
   CAS_DIR: "/mock/cas",

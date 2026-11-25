@@ -9,7 +9,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { notify } from "@/lib/notify";
 import { motion } from "motion/react";
 import "./CommitGraph.css";
-import { Bookmark, Check, RotateCcw, Music, MoreHorizontal } from "lucide-react";
+import { Bookmark, Check, RotateCcw, Music, MoreHorizontal, LifeBuoy } from "lucide-react";
 import { ContextMenu, createCommitMenuItems } from "@/components/ContextMenu";
 import { InputModal } from "@/components/InputModal";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -26,6 +26,8 @@ export interface CommitData {
   author: string;
   preview_file?: string;
   tags?: string[];
+  /** Unsaved work DAWLab kept before a switch. */
+  auto?: boolean;
 }
 
 export interface CommitGraphProps {
@@ -566,7 +568,7 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
                   stiffness: 300,
                   damping: 30,
                 }}
-                className={`commit-card ${status} ${isSelected ? "selected" : ""}`}
+                className={`commit-card ${status} ${isSelected ? "selected" : ""} ${commit.auto ? "auto-snapshot" : ""}`}
                 onClick={() => handleRowClick(commit.commit_id)}
                 onContextMenu={(e) =>
                   handleCommitContextMenu(e, commit.commit_id)
@@ -574,6 +576,11 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
               >
                 <div className="card-content">
                   <div className="commit-message-full">
+                    {commit.auto && (
+                      <span className="auto-snapshot-badge" title="DAWLab kept your unsaved work before switching. It stays on this Mac until you build on it.">
+                        <LifeBuoy size={13} aria-hidden /> Kept automatically
+                      </span>
+                    )}
                     {renderCommitMessage(commit.message, (id) =>
                       handleRowClick(id),
                     )}
@@ -649,6 +656,10 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
                     ) : status === "sync" ? (
                       <>
                         Get this version <RotateCcw className="ml-2" size={18} />
+                      </>
+                    ) : commit.auto ? (
+                      <>
+                        Bring back <RotateCcw className="ml-2" size={18} />
                       </>
                     ) : (
                       <>

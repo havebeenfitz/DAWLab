@@ -152,4 +152,18 @@ describe('CommitGraph version actions', () => {
       expect(menuLabels()).toEqual(['Preview this version']);
     });
   });
+
+  it('marks unsaved work DAWLab kept and offers to bring it back', () => {
+    renderGraph({
+      commits: [...commits, { commit_id: 'c4', timestamp: '20260104120000', message: 'Unsaved work before switching to “First idea”', author: 'Ann', auto: true }],
+      currentCommitId: 'c1',
+    });
+    const kept = card('Unsaved work before switching to “First idea”');
+    expect(kept).toHaveClass('auto-snapshot');
+    expect(within(kept).getByText('Kept automatically')).toBeInTheDocument();
+    expect(within(kept).getByRole('button', { name: /Bring back/ })).toBeEnabled();
+    expect(within(card('Mixdown')).getByRole('button', { name: /Restore/ })).toBeInTheDocument();
+    expect(within(card('Mixdown')).queryByText('Kept automatically')).not.toBeInTheDocument();
+  });
 });
+

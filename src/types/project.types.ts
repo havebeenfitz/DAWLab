@@ -43,6 +43,10 @@ export interface Commit {
   author: string;
   preview_file?: string;
   tags?: string[];    // Version tags, e.g. "Rough Mix", "Master"
+  /** Kept by DAWLab before a switch ("Unsaved work before switching to …"); private until built on. */
+  auto?: boolean;
+  parent?: string;
+  merged_from?: string;
 }
 
 /**

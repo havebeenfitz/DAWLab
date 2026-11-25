@@ -87,14 +87,34 @@ export const isHash = (value: unknown): value is string => typeof value === 'str
 export const isCommitId = (value: unknown): value is string => typeof value === 'string' && COMMIT_ID_RE.test(value)
 
 /** Strips a local project log down to what is safe and useful to share. */
+/**
+ * Versions DAWLab saved on its own before a switch ("Unsaved work before …")
+ * stay on this Mac until you build on one: save on top of it, or make it main.
+ */
+export function privateSnapshotIds(log: any): Set<string> {
+  const all = (log?.branches ?? []).flatMap((b: any) => b.commits ?? [])
+  const priv = new Set<string>(all.filter((c: any) => c?.auto).map((c: any) => String(c.commit_id)))
+  for (let changed = true; changed;) {
+    changed = false
+    for (const c of all) {
+      if (priv.has(String(c.commit_id))) continue
+      for (const ref of [c.parent, c.merged_from]) {
+        if (ref && priv.delete(String(ref))) changed = true
+      }
+    }
+  }
+  return priv
+}
+
 export function toSharedLog(log: any): SharedLog {
   const out: any = {}
   for (const field of SHARED_LOG_FIELDS) {
     if (log?.[field] !== undefined) out[field] = log[field]
   }
+  const hidden = privateSnapshotIds(log)
   out.branches = (log?.branches ?? []).map((b: any) => ({
     name: String(b.name),
-    commits: (b.commits ?? []).map((c: any) => {
+    commits: (b.commits ?? []).filter((c: any) => !hidden.has(String(c.commit_id))).map((c: any) => {
       const commit: SharedCommit = {
         commit_id: String(c.commit_id),
         timestamp: String(c.timestamp ?? ''),

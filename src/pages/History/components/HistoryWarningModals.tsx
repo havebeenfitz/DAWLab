@@ -17,20 +17,21 @@ export function HistoryWarningModals({ commits, storage, onManageSettings }: Pro
       <WarningModal
         isOpen={commits.showUnsavedWarning}
         warningType="unsaved-changes"
-        title="Unsaved Changes Detected"
+        title="You have unsaved changes"
         message={
           <>
-            You have unsaved changes in your project. Rolling back will lose
-            those changes.
+            Nothing will be lost: if you restore now, DAWLab first keeps your
+            current files as a version marked “Kept automatically”, and you can
+            bring it back from the history.
             <br />
             <br />
-            Please save your changes first, or proceed anyway if you're sure.
+            Or save them as a version with a name first, then restore.
           </>
         }
         actions={[
           { label: "Cancel", onClick: commits.handleCancelCheckout, variant: "cancel" },
           {
-            label: "Do It Anyway",
+            label: "Restore",
             onClick: commits.handleProceedAnyway,
             variant: "warning",
           },

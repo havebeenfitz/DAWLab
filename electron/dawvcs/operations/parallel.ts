@@ -9,10 +9,15 @@ import { getCommitFileMap, saveCommit } from '../core/commits'
 import { getProjectStorageDirs } from '../core/storage-location'
 import { newVersionId } from '../core/version-id'
 import { rollbackProject } from './rollback'
+import { saveUnsavedWork } from './guard'
 
 const stamp = () => new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)
 
 export async function makeParallelVersionMain(projectName: string, forkBranch: string, author: string) {
+  // The folder is about to get their version: keep yours first, or don't go on.
+  const before = loadLocalProjectLog(projectName)
+  const forkAuthor = (before?.branches ?? []).find((b: any) => b.name === forkBranch)?.forkOf?.author
+  await saveUnsavedWork(projectName, `${forkAuthor ? `${forkAuthor}’s` : 'the parallel'} version`, author)
   const log = loadLocalProjectLog(projectName)
   if (!log) throw new Error(`Project '${projectName}' not found`)
   const fork = (log.branches ?? []).find((b: any) => b.name === forkBranch)
