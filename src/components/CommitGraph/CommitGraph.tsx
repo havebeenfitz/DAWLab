@@ -6,9 +6,10 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { notify } from "@/lib/notify";
 import { motion } from "motion/react";
 import "./CommitGraph.css";
-import { Bookmark, Check, RotateCcw, Music } from "lucide-react";
+import { Bookmark, Check, RotateCcw, Music, MoreHorizontal } from "lucide-react";
 import { ContextMenu, createCommitMenuItems } from "@/components/ContextMenu";
 import { InputModal } from "@/components/InputModal";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -49,6 +50,8 @@ export interface CommitGraphProps {
   tagColors?: Record<string, string>;
   /** Open the version-tag editor for a commit, anchored at a screen point. */
   onEditTags?: (commitId: string, x: number, y: number) => void;
+  /** Listeners: versions can be played and previewed, never restored, changed or branched from. */
+  readOnly?: boolean;
 }
 
 // ============================================================================
@@ -140,14 +143,14 @@ const renderCommitMessage = (
 
     return (
       <span>
-        Created branch <strong>{branchName}</strong> from{" "}
+        Alternative <strong>{branchName}</strong> started from{" "}
         <span
           className="commit-link"
           onClick={(e) => {
             e.stopPropagation();
             onCommitClick(commitId);
           }}
-          title={`Jump to commit ${commitId}`}
+          title="Show that version"
         >
           {commitId}
         </span>
@@ -182,6 +185,7 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   onCommitSelect,
   tagColors = {},
   onEditTags,
+  readOnly = false,
 }) => {
   const [selectedCommitId, setSelectedCommitId] = useState<string | null>(null);
   const [_currentPage, _setCurrentPage] = useState<number>(0); // Keeping state for now but layout is horizontal
@@ -393,7 +397,7 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
       );
     } catch (error: any) {
       console.error("[CommitGraph] Preview failed:", error);
-      alert(`Preview failed: ${error?.message || "Unknown error"}`);
+      notify.error("Couldn't preview this version", error);
 
       // Dispatch failure event to hide notification
       window.dispatchEvent(new CustomEvent("preview-complete"));
@@ -611,6 +615,21 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
 
                 <div className="card-action">
                   <button
+                    type="button"
+                    className="card-more"
+                    aria-label="More actions for this version"
+                    title="More actions"
+                    aria-haspopup="menu"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setContextMenu({ x: r.left, y: r.bottom + 4, commitId: commit.commit_id });
+                    }}
+                  >
+                    <MoreHorizontal size={18} />
+                  </button>
+                  {!readOnly && (
+                  <button
                     className={`status-button ${isRestoring ? "restoring" : status}`}
                     onClick={(e) => handleCheckoutClick(e, commit.commit_id)}
                     disabled={isRestoring || status === "current"}
@@ -623,17 +642,13 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
                         />{" "}
                         Restoring
                       </>
-                    ) : status === "current" ? (
+                    ) : status === "current" || status === "modified" ? (
                       <>
-                        On Device <Check className="ml-2" size={18} />
-                      </>
-                    ) : status === "modified" ? (
-                      <>
-                        On Device <Check className="ml-2" size={18} />
+                        On this Mac <Check className="ml-2" size={18} />
                       </>
                     ) : status === "sync" ? (
                       <>
-                        Sync <RotateCcw className="ml-2" size={18} />
+                        Get this version <RotateCcw className="ml-2" size={18} />
                       </>
                     ) : (
                       <>
@@ -641,6 +656,7 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
                       </>
                     )}
                   </button>
+                  )}
                 </div>
               </motion.div>
             );
@@ -656,9 +672,9 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
           y={contextMenu.y}
           items={createCommitMenuItems(
             handlePreviewCommit,
-            handleBranchFromCommit,
-            onDeleteCommit ? handleDeleteCommit : undefined,
-            onEditTags ? handleEditTags : undefined,
+            readOnly ? undefined : handleBranchFromCommit,
+            onDeleteCommit && !readOnly ? handleDeleteCommit : undefined,
+            onEditTags && !readOnly ? handleEditTags : undefined,
           )}
         />
       )}
@@ -666,17 +682,17 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
       {/* Branch From Commit Modal */}
       <InputModal
         isOpen={showBranchModal}
-        title="Create Branch"
-        label="Branch Name"
+        title="New alternative"
+        label="Name of the alternative"
         value={branchName}
         onChange={setBranchName}
         onSubmit={handleCreateBranch}
         onClose={handleCloseBranchModal}
-        placeholder="Enter branch name..."
-        submitText="Create Branch"
+        placeholder="e.g. louder chorus"
+        submitText="Create alternative"
         cancelText="Cancel"
         isLoading={isCreatingBranch}
-        loadingText="Creating branch..."
+        loadingText="Creating…"
       />
     </div>
   );

@@ -16,7 +16,7 @@ import "./Feedback.css";
 
 interface VersionCommentsProps {
   projectName: string;
-  /** Version whose comments to show; null when it has no preview. */
+  /** Version whose comments to show; null when no version is selected. */
   commitId: string | null;
   username: string;
   /** The History player's playhead, for highlighting and new comments. */
@@ -82,7 +82,7 @@ export function VersionComments({ projectName, commitId, username, currentTime, 
           />
         ) : (
           <div className="version-comments__empty">
-            Attach a preview to this version to comment on it.
+            Select a version to see and add comments.
           </div>
         )}
       </div>

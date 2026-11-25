@@ -5,6 +5,7 @@ import './Layout.css';
 // import { Header } from '../Header';
 import { ActivityPanel } from '../ActivityPanel';
 import { PreviewNotification } from '../PreviewNotification';
+import { Toaster } from '../ui/Toaster';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -48,6 +49,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       </motion.div>
       {!isLibraryPage && <ActivityPanel />}
       <PreviewNotification />
+      <Toaster />
     </div>
   );
 };

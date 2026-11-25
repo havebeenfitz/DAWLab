@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { notify } from "@/lib/notify";
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { Link, useLocation, useParams, useNavigate } from "react-router-dom";
@@ -25,18 +26,10 @@ import { PluginSection } from "@/components/PluginSection/PluginSection";
 import { PathSelectionModal } from "@/components/PathSelectionModal";
 import { MergeModal } from "@/components/MergeModal/MergeModal";
 import { ProjectSettings } from "@/components/ProjectSettings/ProjectSettings";
-import { ShareModal } from "@/components/Sharing";
-import { ActionButton } from "@/components/ui/ActionButton";
-import {
-  Settings,
-  Play,
-  Pause,
-  Rewind,
-  ChevronLeft,
-  GalleryHorizontalEnd,
-  Maximize2,
-  Share2,
-} from "lucide-react";
+import { useOptionalSharing } from "@/components/Sharing";
+import { useProjectAccess } from "@/hooks/useProjectAccess";
+import { HistoryHeader } from "./components/HistoryHeader";
+import { Play, Pause, Rewind, Maximize2 } from "lucide-react";
 import {
   WarningModal,
   shouldSkipWarning,
@@ -44,12 +37,6 @@ import {
 import { StorageWarningModal } from "../../components/ui/StorageWarningModal";
 import FeedbackView, { type FeedbackHandoff, type FeedbackVersion } from "@/components/Feedback/FeedbackView";
 import { VersionComments } from "@/components/Feedback/VersionComments";
-import logo from "@/assets/logo.png";
-import logicLogo from "@/assets/logic_logo.png";
-import abletonLogo from "@/assets/ableton_logo.png";
-import flLogo from "@/assets/fl_logo.png";
-import reaperLogo from "@/assets/reaper_logo.png";
-import protoolsLogo from "@/assets/protools_logo.svg";
 import { BranchMenu } from "@/components/BranchMenu/BranchMenu";
 import { TagChip } from "@/components/ui/TagChip";
 import { TagManagerPopover } from "@/components/TagManagerPopover/TagManagerPopover";
@@ -65,6 +52,8 @@ export const History: React.FC = () => {
   const navigate = useNavigate();
   const passedProject = location.state?.projectName;
   const { projectId } = useParams();
+  const sharing = useOptionalSharing();
+  const access = useProjectAccess(passedProject);
   /** Version control log for the selected project (contains all branches and commits) */
   const [projectLog, setProjectLog] = useState<ProjectLog | null>(null);
 
@@ -106,7 +95,6 @@ export const History: React.FC = () => {
   } | null>(null);
 
   // Project Settings State
-  const [showShare, setShowShare] = useState(false);
   const [showSettings, setShowSettings] = useState<boolean>(
     location.state?.openSettings === true,
   );
@@ -310,7 +298,7 @@ export const History: React.FC = () => {
       }
     } catch (error: any) {
       console.error("Failed to add preview:", error);
-      alert(`Failed to add preview: ${error.message || error}`);
+      notify.error("Couldn't add the preview", error);
     } finally {
       setIsUploadingPreview(false);
     }
@@ -333,7 +321,7 @@ export const History: React.FC = () => {
 
     const targetCommitId = activeCommit?.commit_id;
     if (!targetCommitId) {
-      alert("You must have a version checked out to add a preview to it.");
+      notify.info("Pick a version first", "Select the version you want to attach this preview to, then drop the audio again.");
       return;
     }
 
@@ -882,7 +870,8 @@ export const History: React.FC = () => {
    * captured against the branch the user is on.
    */
   useEffect(() => {
-    if (!passedProject || !projectPath || projectPath === "/" || projectPath === "NA") {
+    // Listeners have no project files here, so there is nothing to snapshot.
+    if (access.isListener || !passedProject || !projectPath || projectPath === "/" || projectPath === "NA") {
       return;
     }
 
@@ -895,7 +884,7 @@ export const History: React.FC = () => {
         .invoke("stop-draft-watch", passedProject)
         .catch((err) => console.warn("[History] Failed to stop draft watch:", err));
     };
-  }, [passedProject, projectPath, selectedBranch, username]);
+  }, [passedProject, projectPath, selectedBranch, username, access.isListener]);
 
   /**
    * Keyboard shortcuts
@@ -986,7 +975,7 @@ export const History: React.FC = () => {
         setPendingCheckoutStorageId(commitId);
         setShowStorageWarning(true);
       } else {
-        alert(`Failed to restore version: ${errorMessage}`);
+        notify.error("Couldn't restore this version", errorMessage);
       }
     } finally {
       // Clear restoring state
@@ -1158,7 +1147,7 @@ export const History: React.FC = () => {
   const handleSaveCommit = async (customMessage?: string) => {
     const messageToUse = customMessage || commitMessage;
     if (!messageToUse.trim()) {
-      alert("Please enter some version notes");
+      notify.info("Add a short note", "Describe what changed in this version, then save.");
       return;
     }
 
@@ -1213,7 +1202,7 @@ export const History: React.FC = () => {
         );
         setShowStorageWarning(true);
       } else {
-        alert(`Failed to create commit: ${errorMessage}`);
+        notify.error("Couldn't save the version", errorMessage);
       }
     } finally {
       setIsCommitting(false);
@@ -1288,11 +1277,11 @@ export const History: React.FC = () => {
       );
       console.log("Open project result:", result);
       if (!result.success) {
-        alert(`Failed to open project: ${result.error}`);
+        notify.error("Couldn't open the project", result.error);
       }
     } catch (error) {
       console.error("Error opening project:", error);
-      alert("Failed to open project");
+      notify.error("Couldn't open the project", "Check that the project folder still exists, or set its location in Project settings.");
     }
   };
 
@@ -1332,11 +1321,11 @@ export const History: React.FC = () => {
         );
         await loadProjectLog(passedProject);
       } else {
-        alert(`Failed to delete version: ${result.error || "Unknown error"}`);
+        notify.error("Couldn't delete the version", result.error);
       }
     } catch (error: any) {
       console.error("[handleConfirmDeleteCommit] Error:", error);
-      alert(`Failed to delete version: ${error?.message || "Unknown error"}`);
+      notify.error("Couldn't delete the version", error);
     } finally {
       setIsDeletingCommit(false);
       setShowDeleteConfirmation(false);
@@ -1588,7 +1577,7 @@ export const History: React.FC = () => {
               );
               setShowStorageWarning(true);
             } else {
-              alert(`Failed to create commit: ${errorMessage}`);
+              notify.error("Couldn't save the version", errorMessage);
             }
           }
         }
@@ -1611,7 +1600,7 @@ export const History: React.FC = () => {
 
             if (!createResult.success) {
               console.error("Failed to create branch:", createResult);
-              alert("Failed to create branch");
+              notify.error("Couldn't create the alternative");
               return;
             }
             await window.ipcRenderer.invoke(
@@ -1647,189 +1636,34 @@ export const History: React.FC = () => {
     <div className="history-page px-6 pt-2 pb-6">
       {/* Page Title */}
 
-      {/* Header Bar */}
-      {/* breadcrumb added again */}
-      {/* Header Bar */}
-      {/* Header Bar */}
-      {/* Header Bar */}
-      <div className="px-6 py-2 mb-2 relative z-10 bg-transparent flex flex-col min-[900px]:flex-row items-center gap-4 min-[900px]:gap-0 min-[900px]:justify-between">
-        {/* Left: Back + Logo + Project Name */}
-        <div className="flex items-center gap-4 shrink-0 flex-1 min-w-[200px] justify-center min-[900px]:justify-start w-full min-[900px]:w-auto">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity no-underline text-white bg-transparent border-0 p-0 cursor-pointer"
-          >
-            <ChevronLeft size={24} className="text-gray-400" />
-            <img src={logo} alt="DAWLab" className="w-8 h-8 rounded-lg" />
-          </button>
-          <div className="flex flex-col">
-            <h2 className="flex items-center m-0 leading-tight">
-              <span className="text-white text-xl font-bold">
-                {passedProject || "Project Name"}
-              </span>
-              <span className="text-[#444] mx-2 text-xl font-normal">/</span>
-              <span className="text-gray-400 text-base font-medium mt-1">
-                {selectedBranch || 'main'}
-              </span>
-            </h2>
-          </div>
-          {isSyncing && <div className="background-sync-spinner" />}
-        </div>
-
-        {/* Center: Project Alternatives (Branch Selector) */}
-        {!showSettings && (
-          <div className="flex justify-center flex-1 w-full min-[900px]:w-auto">
-            <div className="relative">
-              <div
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="bg-[#1C1C1C] text-white px-8 h-[48px] rounded-[15px] flex items-center gap-2 cursor-pointer border border-transparent hover:border-gray-600 transition-all shadow-sm text-md font-medium"
-              >
-                <GalleryHorizontalEnd size={18} />
-                <span>Project Alternatives</span>
-              </div>
-
-              {/* Branch Menu */}
-              {isDropdownOpen && (
-                <BranchMenu
-                  branches={projectLog.branches}
-                  selectedBranch={selectedBranch}
-                  onSwitchBranch={handleSwitchBranch}
-                  onCreateBranch={(name) => {
-                    setIsCreatingCommit(false);
-                    handleCreateBranch(name);
-                  }}
-                  onClose={() => setIsDropdownOpen(false)}
-                  error={branchError}
-                  isCreating={isCreatingBranch}
-                />
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Right Side: Action Buttons */}
-        <div className="flex gap-3 justify-center min-[900px]:justify-end shrink-0 items-center flex-1 min-w-[200px] w-full min-[900px]:w-auto">
-          {!showSettings && (
-            <>
-              <ActionButton
-                variant="save"
-                onClick={handleSaveButtonClick}
-                className="btn-pill"
-              >
-                Save
-              </ActionButton>
-              <button
-                className="btn-pill group"
-                onClick={handleIconDoubleClick}
-                title="Open in DAW"
-              >
-                <span className="text-gray-400 group-hover:text-white">
-                  Open
-                </span>
-                {(() => {
-                  const dawLower = projectLog.daw?.toLowerCase();
-                  if (
-                    dawLower === "logic" ||
-                    dawLower === "logic pro" ||
-                    dawLower === "logic pro x"
-                  ) {
-                    return (
-                      <img
-                        src={logicLogo}
-                        alt="Logic Pro"
-                        className="w-[18px] h-[18px] object-contain"
-                      />
-                    );
-                  } else if (
-                    dawLower === "ableton" ||
-                    dawLower === "ableton live"
-                  ) {
-                    return (
-                      <img
-                        src={abletonLogo}
-                        alt="Ableton Live"
-                        className="w-[18px] h-[18px] object-contain"
-                      />
-                    );
-                  } else if (dawLower === "fl" || dawLower === "fl studio") {
-                    return (
-                      <img
-                        src={flLogo}
-                        alt="FL Studio"
-                        className="w-[18px] h-[18px] object-contain"
-                      />
-                    );
-                  } else if (dawLower === "reaper") {
-                    return (
-                      <img
-                        src={reaperLogo}
-                        alt="Reaper"
-                        className="w-[18px] h-[18px] object-contain"
-                      />
-                    );
-                  } else if (dawLower === "pro tools") {
-                    return (
-                      <img
-                        src={protoolsLogo}
-                        alt="Pro Tools"
-                        className="w-[18px] h-[18px] object-contain"
-                      />
-                    );
-                  }
-                  return null;
-                })()}
-              </button>
-            </>
-          )}
-
-          {/* Share button */}
-          <button
-            className="btn-pill-icon"
-            onClick={() => setShowShare(true)}
-            title="Share project"
-            disabled={!passedProject}
-          >
-            <Share2 size={18} />
-          </button>
-
-          {/* Settings button */}
-          <button
-            className="btn-pill-icon"
-            onClick={() => setShowSettings(!showSettings)}
-            title={showSettings ? "Back to Project" : "Project Settings"}
-          >
-            <Settings size={18} />
-          </button>
-        </div>
-      </div>
-      {/* **How this works:**
-
-        1. **`flex-wrap`** - Allows items to wrap to new lines
-        2. **`min-w-[200px]`** on left and right - Forces them to wrap when they can't fit
-        3. **`flex-1`** on left and right - Makes them grow to fill space
-        4. **`flex-shrink-0`** on center - Prevents the dropdown from shrinking
-        5. **`gap-4`** - Adds consistent spacing between all items
-
-        **The progressive behavior:**
-
-        - **Wide screen**: All three in one row: `[Left -------- Center -------- Right]`
-        - **Medium screen** (left gets too squished): Left wraps to top, center and right stay together:
-        ```
-          [Left breadcrumb takes full width]
-          [        Center        Right]
-        ```
-        - **Small screen** (all items can't fit): Everything stacks:
-        ```
-          [Left breadcrumb]
-          [Center dropdown]
-          [Right buttons] */}
-
-      <ShareModal
-        isOpen={showShare}
+      <HistoryHeader
         projectName={passedProject || ""}
-        onClose={() => setShowShare(false)}
-        onSynced={() => { refreshProjectLog(); }}
+        alternative={selectedBranch || "main"}
+        daw={projectLog.daw ?? undefined}
+        isSyncing={isSyncing}
+        showSettings={showSettings}
+        access={access}
+        syncStatus={access.folder ? sharing?.status[access.folder.folderId] : undefined}
+        onBack={handleBack}
+        onToggleAlternatives={() => setIsDropdownOpen(!isDropdownOpen)}
+        alternativesMenu={isDropdownOpen && (
+          <BranchMenu
+            branches={projectLog.branches}
+            selectedBranch={selectedBranch}
+            onSwitchBranch={handleSwitchBranch}
+            onCreateBranch={(name) => {
+              setIsCreatingCommit(false);
+              handleCreateBranch(name);
+            }}
+            onClose={() => setIsDropdownOpen(false)}
+            error={branchError}
+            isCreating={isCreatingBranch}
+          />
+        )}
+        onSave={handleSaveButtonClick}
+        onOpenInDaw={handleIconDoubleClick}
+        onShare={() => passedProject && sharing?.shareProject(passedProject)}
+        onToggleSettings={() => setShowSettings(!showSettings)}
       />
 
       {/* Conditional: Show either Project Settings or Commit Graph */}
@@ -1898,6 +1732,7 @@ export const History: React.FC = () => {
                 }}
                 isCommitting={isCommitting}
                 isCreatingCommit={isCreatingCommit}
+                readOnly={access.isListener}
               />
             ) : (
               <div className="text-white text-center py-10">
@@ -2010,7 +1845,8 @@ export const History: React.FC = () => {
                 // pending save before the overlay loads, and reloads after it.
                 key={`${activeCommit?.commit_id ?? "none"}-${feedbackSession ? "fs" : "docked"}`}
                 projectName={passedProject}
-                commitId={activeCommit?.preview_file ? String(activeCommit.commit_id) : null}
+                // Every version can be discussed; without a preview, comments simply have no time position.
+                commitId={activeCommit ? String(activeCommit.commit_id) : null}
                 username={username || "You"}
                 currentTime={currentTime}
                 onPlayFrom={playFrom}

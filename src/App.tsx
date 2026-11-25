@@ -14,6 +14,7 @@ import { Settings } from "./pages/Settings";
 import { History } from "./pages/History";
 import CleanStorage from "./pages/Settings/CleanStorage";
 import DitherLab from "./pages/DitherLab/DitherLab";
+import { SharingProvider } from "./components/Sharing";
 import "./App.css";
 
 const DeepLinkHandler: React.FC<{ children: React.ReactNode }> = ({
@@ -89,6 +90,7 @@ function App() {
       {phase === "onboarding" && <Onboarding onComplete={finishOnboarding} />}
       {phase === "app" && (
         <DeepLinkHandler>
+          <SharingProvider>
           <Routes>
             <Route
               element={
@@ -103,6 +105,7 @@ function App() {
               <Route path="/history/:projectId" element={<History />} />
             </Route>
           </Routes>
+          </SharingProvider>
         </DeepLinkHandler>
       )}
     </Router>

@@ -39,8 +39,21 @@
   
   --color-success: #22c55e;
   --color-warning: #eab308;
-  --color-info: #3b82f6;
   --color-error: #ef4444;
+
+  /* One accent for the whole app (links, primary buttons, selection, focus). */
+  --brand: #0094ff;
+  --brand-hover: #2ba5ff;
+  --brand-pressed: #0078d0;
+  --brand-soft: rgba(0, 148, 255, 0.14);
+  --color-info: var(--brand);
+  --focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--brand);
+
+  /* Surfaces, lowest to highest */
+  --surface-1: #1c1c1c;
+  --surface-2: #232323;
+  --surface-3: #2c2c2c;
+  --text-on-accent: #ffffff;
 
   --radius: 0.625rem;
   --card: oklch(1 0 0);
@@ -82,12 +95,18 @@
 
 a {
   font-weight: 500;
-  color: #007bff;
+  color: var(--brand);
   text-decoration: inherit;
 }
 
 a:hover {
-  color: #535bf2;
+  color: var(--brand-hover);
+}
+
+/* Keyboard focus is always visible; mouse clicks don't draw it. */
+:where(button, a, input, select, textarea, [role="button"], [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 html,
@@ -133,11 +152,10 @@ h1 {
   }
 
   button:hover {
-    border-color: #007bff;
+    border-color: var(--brand);
   }
 
-  button:focus,
-  button:focus-visible {
+  button:focus {
     outline: none;
   }
 }

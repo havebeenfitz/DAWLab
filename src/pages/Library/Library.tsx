@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { notify } from "@/lib/notify";
 import { useNavigate } from 'react-router-dom';
 import './Library.css';
 import { Plus, FolderPlus, Search, LayoutGrid, List, Music, User, Loader2, ArrowUpRight, FileMusic, Filter, X, Play, Square, AudioLines, Pencil, Trash2, Link2 } from 'lucide-react';
@@ -41,7 +42,10 @@ import type { QuickLookDetail } from '@/components/QuickLook';
 import { DitherGradient, EMPTY_LIBRARY_DITHER } from '@/components/ui/DitherGradient';
 import { FoundProjectsBanner, FoundProjectsPanel } from '@/components/FoundProjects';
 import type { FoundProject } from '@/components/FoundProjects';
-import { OpenSharedModal } from '@/components/Sharing';
+import { useSharing } from '@/components/Sharing';
+import { LibrarySidebar } from './components/LibrarySidebar';
+import { SharedFolderBar } from './components/SharedFolderBar';
+import { Users, Share2, ExternalLink } from 'lucide-react';
 
 // Runs the watched-folder scan for new projects at most once per app session, so
 // navigating away from the Library and back doesn't re-walk the disk each time.
@@ -104,7 +108,7 @@ export const Library: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
-  const [showOpenSharedModal, setShowOpenSharedModal] = useState(false);
+  const sharing = useSharing();
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -395,6 +399,18 @@ export const Library: React.FC = () => {
   // =======================
 
   const navigateToFolder = (folderId: string | null) => setCurrentFolderId(folderId);
+
+  // Sharing changes the Library from outside this page (joining, new projects from others).
+  useEffect(() => {
+    const onChange = (e: Event) => {
+      const folderId = (e as CustomEvent<{ folderId?: string }>).detail?.folderId;
+      loadMyProjects();
+      if (folderId) setCurrentFolderId(folderId);
+    };
+    window.addEventListener('dawlab:library-changed', onChange);
+    return () => window.removeEventListener('dawlab:library-changed', onChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Stop any playing preview when the visible folder changes.
   useEffect(() => { stopPreview(); }, [currentFolderId, stopPreview]);
@@ -852,7 +868,7 @@ export const Library: React.FC = () => {
     const hasSubfolders = folders.some(f => f.parentId === folderId);
     const hasAudio = audioItems.some(a => a.folderId === folderId);
     if (hasProjects || hasSubfolders || hasAudio) {
-      alert('Cannot delete folder that contains items. Move or delete its contents first.');
+      notify.info('This folder isn\'t empty', 'Move or delete what\'s inside first, then delete the folder.');
       return;
     }
     if (folder) {
@@ -916,13 +932,34 @@ export const Library: React.FC = () => {
   const getContextMenuItems = (): ContextMenuItem[] => {
     if (!contextMenu) return [];
     if (contextMenu.type === 'folder') {
-      return createFolderMenuItems(
-        () => { initiateRename(); setContextMenu(null); },
-        () => { initiateDelete(); setContextMenu(null); }
-      );
+      const folderId = contextMenu.folderId!;
+      const folder = folders.find(f => f.id === folderId);
+      const isShared = Boolean(sharing.folders[folderId]);
+      return [
+        {
+          label: isShared ? 'Sharing…' : 'Share Folder…',
+          icon: <Users size={14} />,
+          onClick: () => { setContextMenu(null); if (folder) sharing.shareFolder(folder.id, folder.name); },
+        },
+        ...createFolderMenuItems(
+          () => { initiateRename(); setContextMenu(null); },
+          () => { initiateDelete(); setContextMenu(null); }
+        ),
+      ];
     }
     if (contextMenu.type === 'project') {
+      const project = projects.find(p => p.id === contextMenu.projectId);
       return [
+        {
+          label: 'Open',
+          icon: <ExternalLink size={14} />,
+          onClick: () => { setContextMenu(null); if (project) openProject(project.id, project.name); },
+        },
+        {
+          label: 'Share…',
+          icon: <Share2 size={14} />,
+          onClick: () => { setContextMenu(null); if (project) sharing.shareProject(project.name); },
+        },
         {
           label: 'Manage Tags',
           icon: <Tag size={14} />,
@@ -1249,6 +1286,8 @@ export const Library: React.FC = () => {
   // Render
   // =======================
   return (
+    <div className="library-shell">
+    <LibrarySidebar folders={folders} currentFolderId={currentFolderId} onNavigate={navigateToFolder} />
     <div
       className="library-container"
       onDragEnter={handleFileDragEnter}
@@ -1394,7 +1433,7 @@ export const Library: React.FC = () => {
           </div>
 
           <div className="add-btn-wrapper" ref={addMenuRef}>
-            <button className="icon-btn add-btn" onClick={() => setShowAddMenu(!showAddMenu)}>
+            <button className="icon-btn add-btn" onClick={() => setShowAddMenu(!showAddMenu)} aria-label="Add" title="Add a project, folder or audio" aria-haspopup="menu" aria-expanded={showAddMenu}>
               <Plus size={18} />
             </button>
             {showAddMenu && (
@@ -1411,9 +1450,9 @@ export const Library: React.FC = () => {
                   <AudioLines size={14} />
                   Add Audio
                 </button>
-                <button className="add-dropdown-item" onClick={() => { setShowOpenSharedModal(true); setShowAddMenu(false); }}>
+                <button className="add-dropdown-item" onClick={() => { sharing.join(); setShowAddMenu(false); }}>
                   <Link2 size={14} />
-                  Open Shared Project
+                  Join Shared Folder…
                 </button>
               </div>
             )}
@@ -1532,6 +1571,8 @@ export const Library: React.FC = () => {
             </div>
           )}
 
+          {currentFolderId && sharing.folders[currentFolderId] && <SharedFolderBar folderId={currentFolderId} />}
+
           {loading ? (
              <div className="loading-state"><Loader2 className="animate-spin" /> Loading...</div>
           ) : (
@@ -1567,6 +1608,10 @@ export const Library: React.FC = () => {
                           onDragEnd={handleDragEnd}
                           onClick={(e) => handleFolderClick(e, folder.id)}
                           onDoubleClick={() => enterFolder(folder.id)}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`${folder.name}, folder`}
+                          onKeyDown={(e) => { if (e.key === 'Enter') enterFolder(folder.id); }}
                           onContextMenu={(e) => handleContextMenu(e, folder.id)}
                         >
                           <div className="item-icon-wrapper folder-wrapper">
@@ -1593,6 +1638,9 @@ export const Library: React.FC = () => {
                           </div>
                           <span className="item-label">{folder.name}</span>
                           <span className="item-sublabel">
+                            {sharing.folders[folder.id] && (
+                              <span className="shared-badge" title="Shared folder"><Users size={12} aria-hidden /> Shared ·</span>
+                            )}{' '}
                             {isFolderEmpty ? 'Empty' : `${childCount} item${childCount === 1 ? '' : 's'}`}
                           </span>
                         </div>
@@ -1652,6 +1700,10 @@ export const Library: React.FC = () => {
                           onDragEnd={handleDragEnd}
                           onClick={(e) => handleItemSelect(e, 'project', project.id)}
                           onDoubleClick={() => openProject(project.id, project.name)}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`${project.name}, project`}
+                          onKeyDown={(e) => { if (e.key === 'Enter') openProject(project.id, project.name); }}
                           onContextMenu={(e) => handleProjectContextMenu(e, project.id)}
                         >
                           <div className="item-icon-wrapper project-wrapper">
@@ -1716,6 +1768,10 @@ export const Library: React.FC = () => {
                           onDrop={(e) => handleDropOnFolder(e, folder.id)}
                           onDragEnd={handleDragEnd}
                           onDoubleClick={() => setCurrentFolderId(folder.id)}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`${folder.name}, folder`}
+                          onKeyDown={(e) => { if (e.key === 'Enter') setCurrentFolderId(folder.id); }}
                           onContextMenu={(e) => handleContextMenu(e, folder.id)}
                         >
                           <div className="list-icon folder-wrapper">
@@ -1740,7 +1796,12 @@ export const Library: React.FC = () => {
                                })}
                              </div>
                           </div>
-                          <span className="list-name">{folder.name}</span>
+                          <span className="list-name">
+                            {folder.name}
+                            {sharing.folders[folder.id] && (
+                              <span className="shared-badge" title="Shared folder"><Users size={13} aria-hidden /> Shared</span>
+                            )}
+                          </span>
                         </div>
                       );
                     } else if (kind === 'audio') {
@@ -1811,6 +1872,10 @@ export const Library: React.FC = () => {
                           onDragEnd={handleDragEnd}
                           onClick={(e) => handleItemSelect(e, 'project', project.id)}
                           onDoubleClick={() => openProject(project.id, project.name)}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`${project.name}, project`}
+                          onKeyDown={(e) => { if (e.key === 'Enter') openProject(project.id, project.name); }}
                           onContextMenu={(e) => handleProjectContextMenu(e, project.id)}
                         >
                           <div className="list-icon">
@@ -1840,7 +1905,7 @@ export const Library: React.FC = () => {
                             {renderListBar(project.id)}
                           </div>
                           <div className="list-meta">
-                            <span className="list-meta-label">Last commit:</span>
+                            <span className="list-meta-label">Last saved</span>
                             <span className="list-meta-value">
                               {project.created_at
                                 ? new Date(project.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + new Date(project.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()
@@ -1859,16 +1924,10 @@ export const Library: React.FC = () => {
                           )}
                           <div className="list-actions">
                             <button
-                              className="list-action-btn list-action-btn--save"
-                              onClick={(e) => { e.stopPropagation(); openProject(project.id, project.name); }}
-                            >
-                              Save
-                            </button>
-                            <button
                               className="list-action-btn"
                               onClick={(e) => { e.stopPropagation(); openProject(project.id, project.name); }}
                             >
-                              Open in DAW
+                              Open
                             </button>
                           </div>
                         </div>
@@ -2074,11 +2133,7 @@ export const Library: React.FC = () => {
         />
       )}
 
-      <OpenSharedModal
-        isOpen={showOpenSharedModal}
-        onClose={() => setShowOpenSharedModal(false)}
-        onOpened={() => { setShowOpenSharedModal(false); loadMyProjects(); }}
-      />
+
 
       {/* New Folder Modal */}
       <InputModal
@@ -2128,6 +2183,7 @@ export const Library: React.FC = () => {
         ]}
         onCancel={() => { setShowDeleteConfirm(false); setFolderToDelete(null); }}
       />
+    </div>
     </div>
   );
 };

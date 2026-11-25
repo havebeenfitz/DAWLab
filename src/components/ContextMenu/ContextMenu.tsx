@@ -52,26 +52,29 @@ export const createFolderMenuItems = (
 
 export const createCommitMenuItems = (
   onPreviewCommit: () => void,
-  onBranchFromCommit: () => void,
+  onBranchFromCommit?: () => void,
   onDeleteCommit?: () => void,
   onEditTags?: () => void,
 ): ContextMenuItem[] => {
   const items: ContextMenuItem[] = [
     {
-      label: "Preview this Version",
+      label: "Preview this version",
       icon: <Eye size={14} />,
       onClick: onPreviewCommit,
     },
-    {
-      label: "Branch from this Version",
+  ];
+
+  if (onBranchFromCommit) {
+    items.push({
+      label: "New alternative from here",
       icon: <GitBranch size={14} />,
       onClick: onBranchFromCommit,
-    },
-  ];
+    });
+  }
 
   if (onEditTags) {
     items.push({
-      label: "Edit Version Tags",
+      label: "Edit tags",
       icon: <Tag size={14} />,
       onClick: onEditTags,
     });
@@ -79,7 +82,7 @@ export const createCommitMenuItems = (
 
   if (onDeleteCommit) {
     items.push({
-      label: "Delete Version from Project",
+      label: "Delete this version",
       icon: <Trash2Icon size={14} />,
       onClick: onDeleteCommit,
       danger: true,

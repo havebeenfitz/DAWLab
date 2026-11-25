@@ -132,7 +132,28 @@
   margin-top: 1.25rem;
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 6px;
   width: 100%; /* Ensure button can be centered within the card */
+}
+
+/* Visible entry to the version menu (preview, new alternative, tags, delete). */
+.card-more {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.card-more:hover {
+  background: var(--surface-2);
+  color: var(--text-main);
+  border-color: transparent;
 }
 
 .status-button {
