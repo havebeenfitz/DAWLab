@@ -43,6 +43,8 @@ import { usePreviewUpload } from "./hooks/usePreviewUpload";
 import { useStorageWarning } from "./hooks/useStorageWarning";
 import { useCommitActions } from "./hooks/useCommitActions";
 import { useBranchActions } from "./hooks/useBranchActions";
+import { useWorkingChanges } from "./hooks/useWorkingChanges";
+import { DiscardChangesDialog } from "./components/DiscardChangesDialog";
 import "./History.css";
 
 /** The focused commit, falling back to the checked-out one. */
@@ -134,6 +136,21 @@ export const History: React.FC = () => {
     closeBranchMenu: () => setIsDropdownOpen(false), setFocusedCommitId,
   });
   useDraftWatch({ passedProject, projectPath, selectedBranch, username, isListener: access.isListener });
+
+  // "Discard changes": shown only when the folder differs from the last saved version of this alternative.
+  const working = useWorkingChanges(
+    passedProject, !access.isListener && !!projectPath,
+    `${selectedBranch}|${projectLog?.lastCheckout?.commitId ?? ""}|${newestOn(projectLog, selectedBranch || "main") ?? ""}`,
+  );
+  const [showDiscard, setShowDiscard] = useState(false);
+  const discardChanges = async () => {
+    if (!passedProject || !working.baseCommitId) return;
+    const r = await window.ipcRenderer.invoke("discard-working-changes", passedProject, working.baseCommitId);
+    setShowDiscard(false);
+    await working.recheck();
+    await loadProjectLog(passedProject);
+    notify.success("Changes discarded", r?.trashedAs ? `Your previous files are in the Trash, in “${r.trashedAs}”.` : "Deleted files were brought back.");
+  };
 
   // Cmd+K (or Ctrl+K) opens the alternatives menu
   useEffect(() => {
@@ -264,6 +281,16 @@ export const History: React.FC = () => {
         onShare={() => passedProject && sharing?.shareProject(passedProject)}
         onToggleSettings={() => setShowSettings(!showSettings)}
         sync={access.folder ? { incoming: sharedSync.incoming, pulling: sharedSync.pulling, pull: () => { void sharedSync.pull(); } } : undefined}
+        discard={!access.isListener ? { count: working.changes.length, open: () => setShowDiscard(true) } : undefined}
+      />
+      <DiscardChangesDialog
+        open={showDiscard && working.changes.length > 0}
+        projectName={passedProject || ""}
+        alternative={selectedBranch || "main"}
+        changes={working.changes}
+        dawOpen={working.dawOpen}
+        onDiscard={discardChanges}
+        onClose={() => setShowDiscard(false)}
       />
 
       {!showSettings && (

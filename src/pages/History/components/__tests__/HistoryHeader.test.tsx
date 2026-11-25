@@ -171,4 +171,31 @@ describe('HistoryHeader', () => {
       expect(screen.queryByRole('button', { name: /Pull/ })).not.toBeInTheDocument();
     });
   });
+
+  describe('Discard changes', () => {
+    it('is shown only when files differ from the last save, and opens the dialog', () => {
+      const open = vi.fn();
+      renderHeader({ discard: { count: 3, open } });
+      const button = screen.getByRole('button', { name: 'Discard changes' });
+      expect(button).toHaveAttribute('title', '3 files changed since the last save. Go back to it');
+      fireEvent.click(button);
+      expect(open).toHaveBeenCalled();
+    });
+
+    it('is hidden with nothing to discard', () => {
+      renderHeader({ discard: { count: 0, open: vi.fn() } });
+      expect(screen.queryByRole('button', { name: 'Discard changes' })).not.toBeInTheDocument();
+    });
+
+    it('is hidden in settings', () => {
+      renderHeader({ showSettings: true, discard: { count: 2, open: vi.fn() } });
+      expect(screen.queryByRole('button', { name: 'Discard changes' })).not.toBeInTheDocument();
+    });
+
+    it('is hidden for listeners', () => {
+      renderHeader({ access: listener, discard: { count: 2, open: vi.fn() } });
+      expect(screen.queryByRole('button', { name: 'Discard changes' })).not.toBeInTheDocument();
+    });
+  });
 });
+

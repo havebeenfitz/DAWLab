@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ChevronLeft, GalleryHorizontalEnd, Settings, Share2, Headphones, Users, RefreshCw } from 'lucide-react';
+import { ChevronLeft, GalleryHorizontalEnd, Settings, Share2, Headphones, Users, RefreshCw, Undo2 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { dawInfo } from '@/lib/daw';
@@ -24,6 +24,8 @@ interface Props {
   onToggleSettings: () => void;
   /** Shared projects only: new versions waiting on the hub, and pulling them. */
   sync?: { incoming: number; pulling: boolean; pull: () => void };
+  /** Files differ from the last saved version: how many, and opening the Discard dialog. */
+  discard?: { count: number; open: () => void };
 }
 
 /** Top bar of a project: where you are, alternatives, and what you can do with it. */
@@ -86,6 +88,17 @@ export function HistoryHeader(p: Props) {
       <div className="flex flex-wrap gap-2 justify-center min-[900px]:justify-end items-center flex-[1.6] min-w-[200px] w-full min-[900px]:w-auto">
         {!p.showSettings && !p.access.isListener && (
           <>
+            {p.discard && p.discard.count > 0 && (
+              <button
+                type="button"
+                className="btn-pill group px-5"
+                onClick={p.discard.open}
+                title={`${p.discard.count} file${p.discard.count === 1 ? '' : 's'} changed since the last save. Go back to it`}
+              >
+                <Undo2 size={16} aria-hidden className="text-gray-400 group-hover:text-white" />
+                <span>Discard changes</span>
+              </button>
+            )}
             <ActionButton variant="save" onClick={p.onSave} className="btn-pill px-5">
               Save version
             </ActionButton>

@@ -1,0 +1,180 @@
+/**
+ * "Discard changes": puts the project folder back to the last saved version of
+ * the alternative you are on. Files that would be overwritten or removed are
+ * first moved, together, to the macOS Trash, so nothing is lost for good.
+ */
+import fs from 'fs'
+import path from 'path'
+import crypto from 'crypto'
+import { loadLocalProjectLog, saveProjectLog } from '../core/log'
+import { getCommitFileMap, getCommitPath } from '../core/commits'
+import { getCasPath } from '../core/cas'
+import { getProjectPath } from '../core/registry'
+import { getProjectStorageDirs } from '../core/storage-location'
+import { getAllFiles } from '../core/fs-utils'
+import { isNoisePath } from '../core/noise'
+import { parentForNewVersion } from './commit'
+
+export type WorkingChangeKind = 'added' | 'modified' | 'deleted'
+
+export interface WorkingChange {
+  /** Project-relative, `/`-separated. */
+  path: string
+  kind: WorkingChangeKind
+}
+
+export interface WorkingChanges {
+  /** The version the folder would go back to; null when nothing is saved yet. */
+  baseCommitId: string | null
+  changes: WorkingChange[]
+}
+
+export interface DiscardResult {
+  baseCommitId: string
+  restored: number
+  removed: number
+  /** Name of the folder in the Trash holding what was replaced, when anything was. */
+  trashedAs: string | null
+}
+
+/** Moves a path to the Trash. Electron's shell.trashItem in the app; injectable for tests. */
+export type TrashFn = (fullPath: string) => Promise<void>
+
+// Hashes of files we've already read, so checking again only reads what changed.
+const hashCache = new Map<string, { size: number; mtimeMs: number; hash: string }>()
+
+async function hashFile(full: string, stat: fs.Stats): Promise<string> {
+  const cached = hashCache.get(full)
+  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.hash
+  const hash = await new Promise<string>((resolve, reject) => {
+    const h = crypto.createHash('sha256')
+    fs.createReadStream(full).on('data', (d) => h.update(d)).on('error', reject).on('end', () => resolve(h.digest('hex')))
+  })
+  hashCache.set(full, { size: stat.size, mtimeMs: stat.mtimeMs, hash })
+  return hash
+}
+
+const byPath = (a: WorkingChange, b: WorkingChange) => a.path.localeCompare(b.path)
+
+function savedState(projectName: string) {
+  const log = loadLocalProjectLog(projectName)
+  if (!log) throw new Error(`Project '${projectName}' not found`)
+  const projectPath = getProjectPath(projectName)
+  if (!projectPath || projectPath === 'NA' || projectPath === '/') throw new Error(`'${projectName}' has no project folder on this Mac.`)
+  const { casDir, commitsDir } = getProjectStorageDirs(projectName)
+  const baseCommitId = parentForNewVersion(log, log.current_branch || 'main') ?? null
+  const files = new Map<string, string>()
+  if (baseCommitId) {
+    for (const e of getCommitFileMap(projectName, baseCommitId, commitsDir)) {
+      // Older versions may still list noise; folders ("empty") are not files.
+      if (e.hash && e.hash !== 'empty' && !isNoisePath(e.path)) files.set(e.path, e.hash)
+    }
+  }
+  return { log, projectPath, casDir, commitsDir, baseCommitId, files }
+}
+
+/** What differs between the project folder and the last saved version, ignoring noise. */
+export async function getWorkingChanges(projectName: string): Promise<WorkingChanges> {
+  const { log, projectPath, casDir, baseCommitId, files } = savedState(projectName)
+  if (!baseCommitId) return { baseCommitId: null, changes: [] }
+  const working = fs.existsSync(projectPath) ? await getAllFiles(projectPath, log.ignoredFiles || []) : {}
+  const changes: WorkingChange[] = []
+
+  for (const [rel, full] of Object.entries(working)) {
+    if (full === 'empty' || isNoisePath(rel)) continue
+    const saved = files.get(rel)
+    if (!saved) { changes.push({ path: rel, kind: 'added' }); continue }
+    const stat = fs.statSync(full)
+    // Different size means different content: no need to read the file.
+    let savedSize = -1
+    try { savedSize = fs.statSync(getCasPath(saved, casDir)).size } catch { /* not stored: compare by hash */ }
+    if (savedSize >= 0 && savedSize !== stat.size) { changes.push({ path: rel, kind: 'modified' }); continue }
+    if ((await hashFile(full, stat)) !== saved) changes.push({ path: rel, kind: 'modified' })
+  }
+  for (const rel of files.keys()) {
+    if (!(rel in working)) changes.push({ path: rel, kind: 'deleted' })
+  }
+  return { baseCommitId, changes: changes.sort(byPath) }
+}
+
+const stamp = () => {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}`
+}
+
+/** Removes folders left empty under `root` by removed files, deepest first; never `root` itself. */
+function pruneEmptyDirs(root: string, rels: string[]) {
+  const dirs = new Set<string>()
+  for (const rel of rels) for (let d = path.posix.dirname(rel); d !== '.'; d = path.posix.dirname(d)) dirs.add(d)
+  for (const d of [...dirs].sort((a, b) => b.length - a.length)) {
+    const full = path.join(root, d)
+    try { if (fs.readdirSync(full).length === 0) fs.rmdirSync(full) } catch { /* gone or not empty */ }
+  }
+}
+
+/**
+ * Puts the folder back to `expectedBaseId` (the version the user confirmed).
+ * Added and changed files are moved, as one folder, to the Trash; then changed
+ * and deleted files are restored from the saved version. If the Trash step
+ * fails nothing in the project has changed.
+ */
+export async function discardWorkingChanges(projectName: string, expectedBaseId: string, trash: TrashFn): Promise<DiscardResult> {
+  const { log, projectPath, casDir, commitsDir, baseCommitId, files } = savedState(projectName)
+  if (!baseCommitId) throw new Error('There is no saved version to go back to yet.')
+  if (baseCommitId !== expectedBaseId) throw new Error('The saved version changed in the meantime. Look at the changes again.')
+  const { changes } = await getWorkingChanges(projectName)
+
+  // Everything we will restore must be in storage before touching anything.
+  for (const c of changes) {
+    if (c.kind !== 'added' && !fs.existsSync(getCasPath(files.get(c.path)!, casDir))) {
+      throw new Error(`The saved copy of ${c.path} is missing, so it can't be restored. Nothing was changed.`)
+    }
+  }
+
+  const replaced = changes.filter((c) => c.kind !== 'deleted').map((c) => c.path)
+  let trashedAs: string | null = null
+  if (replaced.length) {
+    trashedAs = `${path.basename(projectPath)} — discarded changes ${stamp()}`
+    const staging = path.join(path.dirname(projectPath), trashedAs)
+    if (fs.existsSync(staging)) throw new Error('Try again in a second.')
+    const moved: string[] = []
+    const putBack = () => {
+      for (const rel of moved) {
+        try { fs.mkdirSync(path.dirname(path.join(projectPath, rel)), { recursive: true }); fs.renameSync(path.join(staging, rel), path.join(projectPath, rel)) } catch { /* best effort */ }
+      }
+      fs.rmSync(staging, { recursive: true, force: true })
+    }
+    try {
+      for (const rel of replaced) {
+        const to = path.join(staging, rel)
+        fs.mkdirSync(path.dirname(to), { recursive: true })
+        fs.renameSync(path.join(projectPath, rel), to)
+        moved.push(rel)
+      }
+      await trash(staging)
+    } catch (err) {
+      putBack()
+      throw new Error(`Couldn't move your current files to the Trash, so nothing was changed. ${(err as Error)?.message ?? ''}`.trim())
+    }
+  }
+
+  let restored = 0
+  for (const c of changes) {
+    if (c.kind === 'added') continue
+    const to = path.join(projectPath, c.path)
+    fs.mkdirSync(path.dirname(to), { recursive: true })
+    fs.copyFileSync(getCasPath(files.get(c.path)!, casDir), to)
+    restored++
+  }
+  pruneEmptyDirs(projectPath, changes.filter((c) => c.kind === 'added').map((c) => c.path))
+
+  // The unsaved snapshot described what was just discarded.
+  if (log.draft?.commit_id) {
+    try { fs.rmSync(getCommitPath(projectName, log.draft.commit_id, commitsDir), { recursive: true, force: true }) } catch { /* ignore */ }
+  }
+  const next = { ...log, draft: null, lastCheckout: { commitId: baseCommitId, timestamp: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14) } }
+  saveProjectLog(projectName, next)
+
+  return { baseCommitId, restored, removed: changes.filter((c) => c.kind === 'added').length, trashedAs }
+}

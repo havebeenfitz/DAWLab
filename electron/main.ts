@@ -66,6 +66,8 @@ import { startDraftWatch, stopDraftWatch, stopAllDraftWatches } from "./watchers
 import { registerHubIpc } from "./sync/ipc";
 import { removeProjectsFromLibrary, type RemoveTarget } from "./library/remove-projects";
 import { getVersionChanges } from "./dawvcs/operations/version-changes";
+import { getWorkingChanges, discardWorkingChanges } from "./dawvcs/operations/discard";
+import { runningDawApp } from "./dawvcs/core/daw-running";
 import { requestProjectSync } from "./sync/auto-sync";
 import { parseDeepLink } from "./deep-link";
 import { findVersionAudio } from "./dawvcs/operations/version-audio";
@@ -760,6 +762,16 @@ ipcMain.handle(
     return rollbackProject(projectName, commitId);
   },
 );
+// "Discard changes": what differs from the last saved version, and putting it back.
+ipcMain.handle("get-working-changes", async (_ev, projectName: string) => {
+  const changes = await getWorkingChanges(projectName);
+  const daw = loadRegistry()[projectName]?.daw;
+  return { ...changes, dawOpen: changes.changes.length ? await runningDawApp(daw) : null };
+});
+ipcMain.handle("discard-working-changes", async (_ev, projectName: string, baseCommitId: string) =>
+  discardWorkingChanges(projectName, baseCommitId, (full) => shell.trashItem(full)),
+);
+
 ipcMain.handle(
   "create-branch",
   async (
