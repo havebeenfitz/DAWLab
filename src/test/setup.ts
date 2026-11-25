@@ -9,6 +9,16 @@ afterEach(() => {
 
 // Browser mocks; skipped for suites that opt into `@vitest-environment node`.
 if (typeof window !== 'undefined') {
+  // Node 25+ ships its own global localStorage (undefined without --localstorage-file),
+  // which shadows the DOM environment's. Use the DOM one, like the app's renderer does.
+  let storageWorks = false;
+  try { storageWorks = typeof globalThis.localStorage?.clear === 'function'; } catch { /* getter can throw */ }
+  if (!storageWorks) {
+    const StorageCtor = (window as any).Storage;
+    const storage: Storage = StorageCtor ? new StorageCtor() : createMemoryStorage();
+    Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true, writable: true });
+  }
+
   // Mock electron APIs
   (global as any).window.electronAPI = {
     pickFolder: vi.fn(),
@@ -59,4 +69,16 @@ if (typeof window !== 'undefined') {
     observe() {}
     unobserve() {}
   } as any;
+}
+
+function createMemoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() { return data.size; },
+    clear: () => data.clear(),
+    getItem: (key: string) => (data.has(key) ? data.get(key)! : null),
+    key: (i: number) => [...data.keys()][i] ?? null,
+    removeItem: (key: string) => { data.delete(key); },
+    setItem: (key: string, value: string) => { data.set(key, String(value)); },
+  };
 }
