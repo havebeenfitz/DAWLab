@@ -35,9 +35,9 @@ export function HistoryHeader(p: Props) {
   const daw = dawInfo(p.daw);
   const shared = p.access.folder;
   return (
-    <div className="px-6 py-2 mb-2 relative z-10 bg-transparent flex flex-col min-[900px]:flex-row items-center gap-4 min-[900px]:gap-0 min-[900px]:justify-between">
+    <div className="history-header">
       {/* Where you are */}
-      <div className="flex items-center gap-4 shrink-0 flex-1 min-w-[200px] justify-center min-[900px]:justify-start w-full min-[900px]:w-auto">
+      <div className="history-header-title">
         <button
           type="button"
           onClick={p.onBack}
@@ -45,14 +45,14 @@ export function HistoryHeader(p: Props) {
           title="Back to Library"
           className="flex items-center gap-2 hover:opacity-80 transition-opacity no-underline text-white bg-transparent border-0 p-0 cursor-pointer"
         >
-          <ChevronLeft size={24} className="text-gray-400" />
-          <img src={logo} alt="" className="w-8 h-8 rounded-lg" />
+          <ChevronLeft size={18} className="text-gray-400" />
+          <img src={logo} alt="" className="w-7 h-7 rounded-md" />
         </button>
         <div className="flex flex-col min-w-0">
           <h2 className="flex items-center m-0 leading-tight">
-            <span className="text-white text-xl font-bold truncate">{p.projectName || 'Project'}</span>
-            <span className="text-[#444] mx-2 text-xl font-normal" aria-hidden>/</span>
-            <span className="text-gray-400 text-base font-medium mt-1" title="Current alternative">{p.alternative || 'main'}</span>
+            <span className="text-white text-[17px] font-semibold truncate">{p.projectName || 'Project'}</span>
+            <span className="text-[#444] mx-1.5 text-[17px] font-normal" aria-hidden>/</span>
+            <span className="text-gray-400 text-[14px] font-medium whitespace-nowrap" title="Current alternative">{p.alternative || 'main'}</span>
           </h2>
           {shared && (
             <span className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
@@ -68,14 +68,14 @@ export function HistoryHeader(p: Props) {
 
       {/* Alternatives (listeners only hear what was shared on main) */}
       {!p.showSettings && !p.access.isListener && (
-        <div className="flex justify-center flex-1 w-full min-[900px]:w-auto">
+        <div className="history-header-center">
           <div className="relative">
             <button
               type="button"
               onClick={p.onToggleAlternatives}
               aria-haspopup="menu"
               title="Switch or create an alternative (⌘K)"
-              className="bg-[#1C1C1C] text-white px-5 h-[48px] rounded-[15px] flex items-center gap-2 cursor-pointer border border-transparent hover:border-gray-600 transition-all shadow-sm text-md font-medium"
+              className="btn-pill alternatives-btn"
             >
               <GalleryHorizontalEnd size={18} aria-hidden />
               <span>Alternatives</span>
@@ -87,7 +87,7 @@ export function HistoryHeader(p: Props) {
       )}
 
       {/* Actions */}
-      <div className="flex flex-wrap gap-2 justify-center min-[900px]:justify-end items-center flex-[1.6] min-w-[200px] w-full min-[900px]:w-auto">
+      <div className="history-header-actions">
         {!p.showSettings && !p.access.isListener && (
           <>
             {p.discard && p.discard.count > 0 && (

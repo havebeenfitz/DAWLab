@@ -16,7 +16,7 @@ export interface WindowState {
 /** The window can't be made smaller than this. */
 export const MIN_SIZE = { width: 720, height: 480 }
 /** First launch: this share of the screen, centred. */
-const DEFAULT_SHARE = { width: 0.52, height: 0.5 }
+const DEFAULT_SHARE = { width: 0.52, height: 0.72 } // height: 0.5, then two rounds of +20% (0.5 x 1.2 x 1.2)
 /** How much of the title bar must be on a screen for the window to count as visible. */
 const MIN_VISIBLE = 80
 const SAVE_DELAY_MS = 400

@@ -60,11 +60,13 @@ import { parseCommentsFile, serializeComments } from "./feedback/comments-file";
 import { getProjectStorageDirs, allCasDirs } from "./dawvcs/core/storage-location";
 import { detectDAW, getProjectFileCandidates } from "./dawvcs/core/daw-detection";
 import { getCleanableFiles, cleanCasFiles } from "./dawvcs/operations/clean";
-import { scanForProjects, getDefaultScanRoots } from "./dawvcs/operations/scan";
+import { scanForProjects, getDefaultScanRoots, isPreviewFolder } from "./dawvcs/operations/scan";
 import { getInstalledPlugins, rescanPlugins } from "./workers/pluginScanner";
 import { startDraftWatch, stopDraftWatch, stopAllDraftWatches } from "./watchers/draftWatcher";
 import { registerHubIpc } from "./sync/ipc";
 import { removeProjectsFromLibrary, type RemoveTarget } from "./library/remove-projects";
+import { cleanUpPreviewProjects } from "./library/preview-cleanup";
+import { removeProjectFromSpace } from "./sync/spaces-client";
 import { getVersionChanges } from "./dawvcs/operations/version-changes";
 import { getWorkingChanges, discardWorkingChanges } from "./dawvcs/operations/discard";
 import { runningDawApp } from "./dawvcs/core/daw-running";
@@ -220,6 +222,8 @@ function createWindow() {
     ...placement.bounds,
     minWidth: MIN_SIZE.width,
     minHeight: MIN_SIZE.height,
+    // The app's own background, so no white shows while it loads or at the edges.
+    backgroundColor: "#161616",
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 15, y: 10 },
     webPreferences: {
@@ -293,6 +297,23 @@ app.whenReady().then(() => {
     initializeUsername();
   } catch (err) {
     console.warn("[main.ts] Failed to initialize username:", err);
+  }
+
+  // Earlier versions could add a preview folder as a project (and share it): take those out again.
+  if (getUsername()) {
+    const manager = getUserConfigManager(getUsername());
+    cleanUpPreviewProjects({
+      projects: () => Object.entries(loadRegistry() as Record<string, any>).map(([name, info]) => ({ id: String(info?.project_id ?? ""), name, path: info?.path ?? null })),
+      removeFromSpace: (name) => removeProjectFromSpace(name),
+      removeFromLibrary: (targets) => removeProjectsFromLibrary(targets, {
+        deleteProject,
+        getProjectPath,
+        removeFromFolders: (id) => manager.removeProject(id),
+        ignorePath: (p) => manager.addIgnoredProjectPath(p),
+      }),
+    })
+      .then((removed) => { if (removed.length) console.log("[main.ts] Removed preview folders added as projects:", removed); })
+      .catch((err) => console.warn("[main.ts] Preview cleanup failed:", err));
   }
 
   // Register dawpreview protocol. Used for fetching audio bytes (e.g. peak
@@ -477,6 +498,9 @@ ipcMain.handle(
 ipcMain.handle(
   "init-project",
   async (_ev, projectName: string, projectPath: string, opts: any) => {
+    if (isPreviewFolder(projectPath)) {
+      throw new Error("This is a preview of someone else's version, not a project of yours. Use Back to mine in the project to close it.");
+    }
     const res = await initProject(projectName, projectPath, opts);
     // Watch the project's parent folder so sibling projects are found later.
     rememberWatchedDir(path.dirname(projectPath), "project");

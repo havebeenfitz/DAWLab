@@ -14,11 +14,13 @@ describe('PreviewingBar', () => {
   it('says whose version you are looking at, where it is, and offers the ways on', () => {
     const p = { onOpen: vi.fn(), onBack: vi.fn(), onMakeMain: vi.fn() };
     render(<PreviewingBar preview={preview} dawName="Logic Pro" busy={false} {...p} />);
-    expect(screen.getByRole('status', { name: 'Previewing bob’s version' }))
-      .toHaveTextContent('“new drums” is in its own folder, “Song (preview · bob)”. Your project folder is untouched.');
-    fireEvent.click(screen.getByRole('button', { name: /Open in Logic Pro/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Make main/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Back to mine/ }));
+    const bar = screen.getByRole('status', { name: 'Previewing bob · 25 Nov' });
+    expect(bar).toHaveTextContent('In its own folder · yours is untouched');
+    expect(screen.getByTitle('“new drums” is in its own folder, “Song (preview · bob)”. Your project folder is untouched.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'More for this preview' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Logic Pro' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Make main' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main' }));
     expect(p.onOpen).toHaveBeenCalled(); expect(p.onMakeMain).toHaveBeenCalled(); expect(p.onBack).toHaveBeenCalled();
   });
 });

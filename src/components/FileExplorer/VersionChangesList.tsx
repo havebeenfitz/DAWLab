@@ -7,6 +7,10 @@ const WORD: Record<FileChange['kind'], string> = { added: 'Added', removed: 'Rem
 
 /** One line per changed file, like `git status`: + added, − removed, M changed, R moved. */
 export function VersionChangesList({ diff, hasParent, parentMessage, audio }: { diff: FileDiff; hasParent: boolean; parentMessage: string | null; audio?: VersionAudio }) {
+  // A first version with no files at all: say just that, not "every file is new" and "0 unchanged".
+  if (!hasParent && diff.changes.length === 0) {
+    return <div className="changes-view"><div className="file-tree-empty">This version has no files</div></div>;
+  }
   return (
     <div className="changes-view">
       <div className="changes-summary" aria-label="Summary of changes">
@@ -20,7 +24,7 @@ export function VersionChangesList({ diff, hasParent, parentMessage, audio }: { 
           {diff.removed > 0 && <span className="chg-removed">−{diff.removed}</span>}
           {diff.modified > 0 && <span className="chg-modified">~{diff.modified}</span>}
           {diff.renamed > 0 && <span className="chg-renamed">→{diff.renamed}</span>}
-          <span className="chg-same">{diff.unchanged} unchanged</span>
+          {hasParent && <span className="chg-same">{diff.unchanged} unchanged</span>}
         </span>
       </div>
       {diff.changes.length === 0 ? (

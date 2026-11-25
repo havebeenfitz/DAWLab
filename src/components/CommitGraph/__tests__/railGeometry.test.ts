@@ -55,9 +55,10 @@ describe('rail drawing', () => {
     expect(path(g, 'fork:x')!.startsWith(`M${LANE_X},75`)).toBe(true);
   });
 
-  it('joins the unsaved row to the newest version with a dashed hollow dot', () => {
+  it('joins unsaved work to the current version with a dotted line, apart from main', () => {
     const g = railGeometry({ main: ['b', 'a'], folds: [], current: 'b' }, at(['unsaved', 'v:b', 'v:a']));
-    expect(path(g, 'main')).toBe(`M${LANE_X},15 L${LANE_X},75`);
+    expect(path(g, 'main')).toBe(`M${LANE_X},45 L${LANE_X},75`);
+    expect(g.paths.find((p) => p.key === 'unsaved')).toMatchObject({ d: `M${LANE_X},15 L${LANE_X},45`, dashed: true });
     expect(g.dots.find((d) => d.unsaved)).toMatchObject({ y: 15, hollow: true });
   });
 

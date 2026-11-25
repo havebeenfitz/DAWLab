@@ -647,3 +647,22 @@ export function describeFailures(failed: Array<{ project: string; error: string 
 
 const messageOf = (err: unknown) =>
   String((err as Error)?.message ?? err)
+
+/**
+ * Takes a project out of its shared folder on this Mac, and on the hub too when
+ * you own the folder. Used to clean up projects that should never have been
+ * shared (a preview folder added by mistake). Returns whether it was shared.
+ */
+export async function removeProjectFromSpace(projectName: string): Promise<{ removedOnHub: boolean } | null> {
+  const found = findSharedProject(projectName)
+  if (!found) return null
+  const { space, projectId } = found
+  let removedOnHub = false
+  if (space.role === 'owner') {
+    await call<void>(space, `/space/projects/${encodeURIComponent(projectId)}`, 'DELETE')
+    removedOnHub = true
+  }
+  const { [projectId]: _gone, ...projects } = space.projects
+  writeSpace({ ...space, projects })
+  return { removedOnHub }
+}

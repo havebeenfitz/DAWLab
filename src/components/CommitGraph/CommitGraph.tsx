@@ -490,41 +490,47 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
                 }}
               >
                 <span className="rail-gutter" aria-hidden />
-                <span className="unsaved-title" role="status">
-                  {hasUnsavedChanges
-                    ? `Unsaved changes · ${unsavedCount} file${unsavedCount === 1 ? "" : "s"}`
-                    : "No changes since the last save"}
-                </span>
-                <input
-                  id="version-message"
-                  className="unsaved-input"
-                  aria-label="Version message"
-                  placeholder="What changed?"
-                  value={newCommitMessage}
-                  onChange={(e) => setNewCommitMessage(e.target.value)}
-                  autoComplete="off"
-                />
-                <button type="submit" className="unsaved-btn primary" disabled={isCommitting || !newCommitMessage.trim()}>
-                  {isCommitting ? "Saving…" : "Save"}
-                </button>
-                {hasUnsavedChanges && onDiscard && (
-                  <button type="button" className="unsaved-btn danger" onClick={onDiscard} disabled={isCommitting || isExiting} title="Go back to the last saved version">
-                    Discard
-                  </button>
-                )}
-                {isCreatingCommit && !hasUnsavedChanges && (
-                  <button
-                    type="button"
-                    className="unsaved-btn"
-                    onClick={() => {
-                      setNewCommitMessage("");
-                      if (onCancelSave) onCancelSave();
-                    }}
-                    disabled={isCommitting}
-                  >
-                    Cancel
-                  </button>
-                )}
+                <div className="unsaved-card">
+                  <div className="unsaved-head" role="status">
+                    <span className="unsaved-title">{hasUnsavedChanges ? "Unsaved changes" : "No changes since the last save"}</span>
+                    {hasUnsavedChanges && (
+                      <span className="unsaved-count">· {unsavedCount} file{unsavedCount === 1 ? "" : "s"}</span>
+                    )}
+                  </div>
+                  <div className="unsaved-line">
+                    <input
+                      id="version-message"
+                      className="unsaved-input"
+                      aria-label="Version message"
+                      placeholder="Describe this version"
+                      value={newCommitMessage}
+                      onChange={(e) => setNewCommitMessage(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Escape") e.currentTarget.blur(); }}
+                      autoComplete="off"
+                    />
+                    <button type="submit" className="unsaved-btn primary" disabled={isCommitting || !newCommitMessage.trim()}>
+                      {isCommitting ? "Saving…" : "Save"}
+                    </button>
+                    {hasUnsavedChanges && onDiscard && (
+                      <button type="button" className="unsaved-btn quiet" onClick={onDiscard} disabled={isCommitting || isExiting} title="Go back to the last saved version">
+                        Discard
+                      </button>
+                    )}
+                    {isCreatingCommit && !hasUnsavedChanges && (
+                      <button
+                        type="button"
+                        className="unsaved-btn quiet"
+                        onClick={() => {
+                          setNewCommitMessage("");
+                          if (onCancelSave) onCancelSave();
+                        }}
+                        disabled={isCommitting}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
               </form>
             )}
 

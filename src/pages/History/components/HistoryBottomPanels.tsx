@@ -66,11 +66,12 @@ const panelClass = (active: boolean, scrolls: boolean) =>
 export function HistoryBottomPanels(p: Props) {
   const { changes, loading: changesLoading } = useVersionChanges(p.projectName, p.fileCommitId);
   return (
-    <div className="flex flex-col flex-1 min-h-0 px-6">
+    <div className="history-panels-wrap flex flex-col flex-1 min-h-0 mt-4">
       <MobileTabPicker activeTab={p.activeTab} onTabChange={p.onTabChange} />
 
-      <div className="bottom-panels flex flex-col min-[1100px]:flex-row gap-8 flex-1 min-h-0">
+      <div className="bottom-panels history-panels flex flex-col min-[1100px]:flex-row gap-4 flex-1 min-h-0">
         <div className={panelClass(p.activeTab === 'files', true)}>
+          <div className="panel-label">Files</div>
           <FileExplorer
             projectName={p.projectName}
             commitId={p.fileCommitId}
@@ -82,11 +83,13 @@ export function HistoryBottomPanels(p: Props) {
         </div>
 
         <div className={panelClass(p.activeTab === 'plugins', true)}>
+          <div className="panel-label">Plugins</div>
           <PluginSection plugins={changes?.plugins ? changes.plugins.changes.filter(c => c.kind !== 'removed').map(c => c.plugin) : p.plugins} changes={changes?.plugins ?? null} />
         </div>
 
         {/* Comments on the active version (Tasks + Notepad are hidden for now) */}
         <div className={panelClass(p.activeTab === 'comments', false)}>
+          <div className="panel-label">Comments</div>
           <VersionComments
             // Remount on entering/leaving full screen: flushes this panel's
             // pending save before the overlay loads, and reloads after it.

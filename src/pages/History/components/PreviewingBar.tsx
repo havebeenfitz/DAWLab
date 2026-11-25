@@ -1,4 +1,5 @@
-import { Eye, ExternalLink, Undo2, Check } from 'lucide-react';
+import { useState } from 'react';
+import { Eye, MoreHorizontal } from 'lucide-react';
 import './PreviewingBar.css';
 
 export interface ActivePreview {
@@ -18,29 +19,44 @@ interface Props {
 }
 
 /**
- * While someone else's version is laid out for a look, the whole top of the
- * project says so in a color of its own, so it is never mistaken for yours.
+ * While someone else's version is laid out for a look, the top of the details
+ * column says so in a color of its own, so it is never mistaken for yours.
  */
 export function PreviewingBar({ preview, dawName, busy, onOpen, onBack, onMakeMain }: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
   if (!preview) return null;
   const folder = preview.path.split('/').pop();
   return (
-    <div className="previewing-bar" role="status" aria-label={`Previewing ${preview.author}’s version`}>
-      <Eye size={18} aria-hidden />
+    <div className="previewing-bar" role="status" aria-label={`Previewing ${preview.branch}`}>
+      <Eye size={16} aria-hidden className="previewing-icon" />
       <div className="previewing-text">
-        <strong>Previewing {preview.author || preview.branch}’s version</strong>
-        <span>“{preview.message}” is in its own folder, “{folder}”. Your project folder is untouched.</span>
+        <strong>Previewing {preview.branch}</strong>
+        <span title={`“${preview.message}” is in its own folder, “${folder}”. Your project folder is untouched.`}>
+          In its own folder · yours is untouched
+        </span>
       </div>
       <div className="previewing-actions">
-        <button type="button" className="ui-btn ui-btn-sm" onClick={onOpen} disabled={busy}>
-          <ExternalLink size={13} aria-hidden /> Open in {dawName}
+        <button type="button" className="ui-btn" onClick={onBack} disabled={busy}>
+          {busy ? 'Closing…' : 'Back to main'}
         </button>
-        <button type="button" className="ui-btn ui-btn-sm" onClick={onMakeMain} disabled={busy}>
-          <Check size={13} aria-hidden /> Make main
+        <button type="button" className="ui-btn previewing-primary" onClick={onMakeMain} disabled={busy}>
+          Make main
         </button>
-        <button type="button" className="ui-btn ui-btn-sm previewing-back" onClick={onBack} disabled={busy}>
-          <Undo2 size={13} aria-hidden /> {busy ? 'Closing…' : 'Back to mine'}
-        </button>
+        <span className="previewing-menu-wrap">
+          <button
+            type="button" className="ui-btn previewing-more" aria-label="More for this preview"
+            aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)} disabled={busy}
+          >
+            <MoreHorizontal size={14} aria-hidden />
+          </button>
+          {menuOpen && (
+            <span className="previewing-menu" role="menu" onMouseLeave={() => setMenuOpen(false)}>
+              <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onOpen(); }}>
+                Open in {dawName}
+              </button>
+            </span>
+          )}
+        </span>
       </div>
     </div>
   );

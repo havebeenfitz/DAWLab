@@ -42,15 +42,6 @@
 /* Unsaved changes: one compact block at the top of the rail. */
 :root { --unsaved-line: #5c4d26; --unsaved-fg: #d4b062; --unsaved-danger: #ef6f64; }
 .rail-head:empty { display: none; }
-.unsaved-block { margin-bottom: 2px; display: grid; grid-template-columns: var(--rail-gutter, 34px) auto minmax(80px, 1fr) auto auto; align-items: center; gap: 8px; height: 34px; padding-right: 6px; border: 1px dashed var(--unsaved-line); border-radius: 6px; }
-.unsaved-title { font-size: 12px; color: var(--unsaved-fg); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.unsaved-input { min-width: 0; font: inherit; font-size: 12px; height: 24px; padding: 0 8px; border-radius: 5px; border: 1px solid var(--rail-line); background: transparent; color: var(--rail-text); }
-.unsaved-input:focus-visible { outline: 2px solid var(--rail-main); outline-offset: 0; }
-.unsaved-btn { font: inherit; font-size: 11px; height: 24px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--rail-line); background: var(--rail-panel); color: var(--rail-text); cursor: pointer; white-space: nowrap; }
-.unsaved-btn.primary { background: var(--rail-main); border-color: var(--rail-main); color: #fff; }
-.unsaved-btn.danger { color: var(--unsaved-danger); }
-.unsaved-btn:disabled { opacity: 0.5; cursor: default; }
-.unsaved-btn:focus-visible { outline: 2px solid var(--rail-main); outline-offset: 1px; }
 .rail-fold-name { overflow: visible; white-space: nowrap; }
 .rail-btn.icon { padding: 2px 4px; }
 .rail-menu-wrap { position: relative; }
@@ -60,3 +51,28 @@
 .rail-menu button:disabled { opacity: .45; cursor: default; }
 
 .rail-gutter { display: block; }
+
+/* Unsaved changes: a small card on the rail, the next version waiting to be saved. */
+.unsaved-block { display: grid; grid-template-columns: var(--rail-gutter, 34px) minmax(0, 1fr); align-items: center; margin-bottom: 8px; }
+.unsaved-card { max-width: 480px; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 8px; background: rgba(234, 179, 8, 0.07); border: 1px solid rgba(234, 179, 8, 0.28); }
+.unsaved-head { display: flex; align-items: baseline; gap: 6px; }
+.unsaved-title { font-size: 13px; font-weight: 600; color: var(--unsaved-fg); }
+.unsaved-count { font-size: 11px; color: var(--rail-muted); font-variant-numeric: tabular-nums; }
+.unsaved-line { display: flex; align-items: center; gap: 8px; }
+.unsaved-input { flex: 1; min-width: 0; height: 28px; padding: 0 10px; font: inherit; font-size: 13px; border-radius: 6px; border: 1px solid transparent; background: rgba(255, 255, 255, 0.06); color: var(--rail-text); }
+.unsaved-input::placeholder { color: var(--rail-muted); }
+.unsaved-input:focus { outline: none; border-color: rgba(234, 179, 8, 0.6); }
+.unsaved-btn { height: 28px; padding: 0 12px; font: inherit; font-size: 12px; font-weight: 600; border-radius: 6px; border: 0; cursor: pointer; white-space: nowrap; }
+.unsaved-btn.primary { background: #d4a72c; color: #1a1406; }
+.unsaved-btn.primary:hover:not(:disabled) { background: #e0b43a; }
+.unsaved-btn.quiet { background: transparent; color: var(--rail-muted); font-weight: 500; padding: 0 8px; }
+.unsaved-btn.quiet:hover:not(:disabled) { color: var(--unsaved-danger); }
+.unsaved-btn:disabled { opacity: 0.45; cursor: default; }
+.unsaved-btn:focus-visible, .unsaved-input:focus-visible { outline: 2px solid var(--rail-main); outline-offset: 1px; }
+
+/* The unsaved card's mark on the rail: a hollow amber ring centred on the card. */
+.unsaved-block .rail-gutter { position: relative; align-self: stretch; }
+.unsaved-block .rail-gutter::after {
+  content: ''; position: absolute; z-index: 2; left: 2px; top: 50%; width: 12px; height: 12px; margin-top: -6px;
+  box-sizing: border-box; border-radius: 50%; border: 2px solid var(--unsaved-fg); background: var(--rail-bg);
+}

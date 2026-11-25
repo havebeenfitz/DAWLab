@@ -15,7 +15,7 @@ interface Props {
 export function VersionTagFilter(p: Props) {
   if (p.tags.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2 px-6 mb-2">
+    <div className="version-tag-filter flex flex-wrap items-center gap-2 mb-2">
       {p.tags.map((tag) => (
         <TagChip
           key={tag}

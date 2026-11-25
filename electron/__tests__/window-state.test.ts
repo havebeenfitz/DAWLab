@@ -16,12 +16,12 @@ const laptop: Rect = { x: 0, y: 25, width: 1512, height: 920 }
 const external: Rect = { x: 1512, y: 0, width: 2560, height: 1415 }
 
 describe('first launch', () => {
-  it('opens at about half the screen, centred', () => {
-    expect(defaultBounds({ x: 0, y: 25, width: 2020, height: 1500 })).toEqual({ x: 485, y: 400, width: 1050, height: 750 })
+  it('opens at about half the screen wide and 72% high, centred', () => {
+    expect(defaultBounds({ x: 0, y: 25, width: 2020, height: 1500 })).toEqual({ x: 485, y: 235, width: 1050, height: 1080 })
   })
 
   it('never opens below the minimum size, nor larger than the screen', () => {
-    expect(defaultBounds({ x: 0, y: 0, width: 1000, height: 700 })).toMatchObject({ width: MIN_SIZE.width, height: MIN_SIZE.height })
+    expect(defaultBounds({ x: 0, y: 0, width: 1000, height: 600 })).toMatchObject({ width: MIN_SIZE.width, height: MIN_SIZE.height })
     expect(defaultBounds({ x: 0, y: 0, width: 600, height: 400 })).toEqual({ x: 0, y: 0, width: 600, height: 400 })
   })
 

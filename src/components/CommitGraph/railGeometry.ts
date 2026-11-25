@@ -28,7 +28,7 @@ export interface RailGeometryInput {
 }
 
 export interface RailDot { key: string; x: number; y: number; lane: string | null; current: boolean; hollow: boolean; unsaved: boolean }
-export interface RailPath { key: string; d: string; lane: string | null }
+export interface RailPath { key: string; d: string; lane: string | null; dashed?: boolean }
 
 export interface RailGeometry {
   gutter: number;
@@ -52,13 +52,15 @@ export function railGeometry(input: RailGeometryInput, marks: RailMark[]): RailG
     mainYs.push(at);
     dots.push({ key: `v:${id}`, x: LANE_X, y: at, lane: null, current: id === input.current, hollow: auto.has(id), unsaved: false });
   }
+  if (mainYs.length > 1) {
+    paths.push({ key: 'main', d: `M${LANE_X},${r1(Math.min(...mainYs))} L${LANE_X},${r1(Math.max(...mainYs))}`, lane: null });
+  }
+  // Unsaved work: the next version, not saved yet, joined to the version it starts from by a dashed line.
   const unsavedY = y.get('unsaved');
   if (unsavedY !== undefined) {
     dots.push({ key: 'unsaved', x: LANE_X, y: unsavedY, lane: null, current: false, hollow: true, unsaved: true });
-    mainYs.push(unsavedY);
-  }
-  if (mainYs.length > 1) {
-    paths.push({ key: 'main', d: `M${LANE_X},${r1(Math.min(...mainYs))} L${LANE_X},${r1(Math.max(...mainYs))}`, lane: null });
+    const from = (input.current ? y.get(`v:${input.current}`) : undefined) ?? (mainYs.length ? Math.min(...mainYs) : undefined);
+    if (from !== undefined && from > unsavedY) paths.push({ key: 'unsaved', d: `M${LANE_X},${r1(unsavedY)} L${LANE_X},${r1(from)}`, lane: null, dashed: true });
   }
 
   // Folded alternatives: lanes by order, so two from the same version never overlap.

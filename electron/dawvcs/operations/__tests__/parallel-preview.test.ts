@@ -27,6 +27,7 @@ import { setUsername } from '../../core/constants'
 import { initProject } from '../init'
 import { commitProject } from '../commit'
 import { loadLocalProjectLog, saveProjectLog } from '../../core/log'
+import { loadRegistry } from '../../core/registry'
 import { startParallelPreview, endParallelPreview, getParallelPreview } from '../parallel-preview'
 
 const trashDir = path.join(MOCK_HOME, '.Trash')
@@ -61,9 +62,9 @@ beforeAll(async () => {
 afterAll(() => fs.rmSync(MOCK_HOME, { recursive: true, force: true }))
 
 describe('previewing a parallel version', () => {
-  it('lays it out next to the project and never touches your folder', async () => {
+  it('lays it out in DAWLab\'s own folder, never next to the project, and never touches your folder', async () => {
     const p = await startParallelPreview('Song', 'bob · 25 Nov', trash)
-    expect(p.path).toBe(path.join(MOCK_HOME, 'Music', 'Song (preview · bob)'))
+    expect(p.path).toBe(path.join(MOCK_HOME, '.dawlab', 'users', 'max', 'previews', 'Song', 'Song (preview · bob)'))
     expect(read(path.join(p.path, 'Song.als'))).toBe('bob drums')
     expect(read(path.join(p.path, 'drums.wav'))).toBe('drums')
     expect(read(path.join(dir, 'Song.als'))).toBe('my unsaved work')
@@ -72,17 +73,20 @@ describe('previewing a parallel version', () => {
     // Your checked-out version stays yours.
     expect(loadLocalProjectLog('Song').lastCheckout.commitId).not.toBe(p.commitId)
     expect(getParallelPreview('Song')).toMatchObject({ branch: 'bob · 25 Nov', author: 'bob', message: 'bob drums' })
+    // Nothing new appears next to the project, and no project is registered for the preview.
+    expect(fs.readdirSync(path.join(MOCK_HOME, 'Music'))).toEqual(['Song'])
+    expect(Object.keys(loadRegistry())).toEqual(['Song'])
   })
 
   it('replaces an open preview instead of piling up folders', async () => {
     const again = await startParallelPreview('Song', 'bob · 25 Nov', trash)
-    expect(again.path).toBe(path.join(MOCK_HOME, 'Music', 'Song (preview · bob)'))
+    expect(again.path).toBe(path.join(MOCK_HOME, '.dawlab', 'users', 'max', 'previews', 'Song', 'Song (preview · bob)'))
     expect(trash).toHaveBeenCalledTimes(1)
   })
 
   it('Back to mine moves the preview folder to the Trash and forgets it', async () => {
     await endParallelPreview('Song', trash)
-    expect(fs.existsSync(path.join(MOCK_HOME, 'Music', 'Song (preview · bob)'))).toBe(false)
+    expect(fs.existsSync(path.join(MOCK_HOME, '.dawlab', 'users', 'max', 'previews', 'Song', 'Song (preview · bob)'))).toBe(false)
     expect(getParallelPreview('Song')).toBeNull()
     expect(read(path.join(dir, 'Song.als'))).toBe('my unsaved work')
     await endParallelPreview('Song', trash) // nothing open: fine

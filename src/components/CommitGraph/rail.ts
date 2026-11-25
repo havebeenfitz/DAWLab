@@ -40,7 +40,9 @@ const newestFirst = (a: RailCommit, b: RailCommit) =>
  */
 export function railItems(commits: RailCommit[], forks: RailFork[]): RailItem[] {
   const rows: RailItem[] = [];
-  const sorted = [...commits].sort(newestFirst);
+  // Newest first; versions saved in the same second keep the order they were saved in.
+  const order = new Map(commits.map((c, i) => [c.commit_id, i]));
+  const sorted = [...commits].sort((a, b) => b.timestamp.localeCompare(a.timestamp) || (order.get(b.commit_id)! - order.get(a.commit_id)!));
   const ids = new Set(sorted.map((c) => String(c.commit_id)));
   const byParent = new Map<string, RailFork[]>();
   const orphans: RailFork[] = [];

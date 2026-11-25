@@ -390,8 +390,78 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-/* Narrow windows: header buttons keep their icons, labels go; nothing wraps into a second row of pills. */
+/* ---- Layout: one content edge (the page's 24 px gutter) and a 4/8/12/16/24 spacing scale ---- */
+.history-header { display: flex; align-items: center; gap: 12px; padding: 4px 0 16px; position: relative; z-index: 10; }
+.history-header-title { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; }
+.history-header-title h2 { min-width: 0; }
+.history-header-title h2 > span:first-child { max-width: 40vw; }
+.history-header-center { flex: none; }
+.history-header-actions { display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: nowrap; }
+/* Compact, native-sized controls in the project header (the Library keeps its own). */
+.history-header .btn-pill { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; gap: 6px; }
+.history-header .btn-pill-icon { width: 32px; height: 32px; border-radius: 8px; }
+.history-header .alternatives-btn kbd { font-size: 11px; }
+
+/* Narrow windows: header buttons keep their icons, labels go; nothing wraps. */
 @media (max-width: 1150px) {
   .history-page .pill-label { display: none; }
-  .history-page .btn-pill { padding-left: 14px !important; padding-right: 14px !important; }
+}
+
+/* ---- Rail, details bar and panels: same edge, 12-16 px between them ---- */
+.history-page .commit-graph-wrapper { display: flex; flex-direction: column; gap: 12px; }
+.history-panels > div { min-width: 0; }
+/* Equal columns from 1100 px up. */
+@media (min-width: 1100px) { .history-panels > div { flex: 1 1 0; display: flex; flex-direction: column; } }
+.panel-label { flex: none; margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted, #8b8b8b); }
+@media (max-width: 1099px) { .panel-label { display: none; } }
+/* One box style for the three panels: thin border, moderate radius, 16 px inside. */
+.history-panels .file-tree-container,
+.history-panels .plugin-container,
+.history-panels .version-comments__panel { border: 1px solid #2c2c30 !important; border-radius: 10px !important; padding: 16px !important; }
+.history-panels .version-comments__label { display: none; }
+.history-panels .file-tree-section { min-width: 0; }
+/* Small, plain empty states. */
+.history-panels .plugin-empty, .history-panels .file-tree-empty, .history-panels .file-tree-loading { font-style: normal; font-size: 12px; padding: 8px 0; text-align: left; color: var(--text-muted, #8b8b8b); }
+/* Path box and its buttons: one 32 px row. */
+.history-panels .project-path-unit { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.history-panels .project-path-box { height: 32px; padding: 0 10px; align-items: center; font-size: 12px; border-radius: 8px; }
+.history-panels .project-path-icon-button { width: 32px; height: 32px; padding: 0; border-radius: 8px; }
+
+/* ---- Wide windows: the history is a column on the left, details and panels on the right ---- */
+.history-divider { display: none; }
+@media (min-width: 1200px) {
+  .history-page { overflow: hidden; }
+  .history-main {
+    position: relative; flex: 1; min-height: 0;
+    display: grid; grid-template-columns: var(--history-col, 440px) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto; column-gap: 33px;
+  }
+  .history-main .commit-graph-wrapper { display: contents; }
+  .history-main > .version-tag-filter { grid-column: 1; grid-row: 1; }
+  .history-main .version-rail { grid-column: 1; grid-row: 1 / -1; max-height: none; min-height: 0; overflow-y: auto; padding-right: 4px; }
+  .history-main:has(> .version-tag-filter) .version-rail { grid-row: 2 / -1; }
+  .history-main > .previewing-bar { grid-column: 2; grid-row: 1; }
+  .history-main .selected-version { grid-column: 2; grid-row: 2; align-self: start; }
+  .history-main .history-panels-wrap { grid-column: 2; grid-row: 3; margin-top: 16px; min-height: 0; overflow-y: auto; }
+  .history-main .preview-dropzone-container { grid-column: 2; grid-row: 4; }
+  .history-main > .text-white { grid-column: 1; }
+  .history-divider {
+    display: block; position: absolute; top: 0; bottom: 0; left: calc(var(--history-col, 440px) + 16px);
+    width: 1px; background: #2c2c30; cursor: col-resize; z-index: 4;
+  }
+  .history-divider::before { content: ""; position: absolute; top: 0; bottom: 0; left: -4px; right: -4px; }
+  .history-divider:hover, .history-divider:focus-visible { background: var(--rail-main, #7f95ff); outline: none; }
+  /* The Unsaved changes card stays at the top of the column while it scrolls. */
+  .history-main .unsaved-block { position: sticky; top: 0; z-index: 3; background: var(--background, #161616); padding-bottom: 4px; }
+  .history-main .unsaved-card { max-width: none; }
+  /* The sticky card hides the rail behind it, so it draws its own dotted line from the ring to its bottom edge. */
+  .history-main .unsaved-block .rail-gutter::before {
+    content: ''; position: absolute; z-index: 1; left: 7px; width: 2px; top: calc(50% + 6px); bottom: -4px;
+    background: radial-gradient(circle, var(--unsaved-fg) 0.9px, transparent 1.3px) center top / 2px 4px repeat-y;
+  }
+}
+/* Right side between 1200 and 1500: Files on the left, Plugins over Comments on the right. */
+@media (min-width: 1200px) and (max-width: 1499px) {
+  .history-panels { display: grid !important; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto; gap: 16px; }
+  .history-panels > div:nth-child(1) { grid-row: 1 / span 2; }
 }

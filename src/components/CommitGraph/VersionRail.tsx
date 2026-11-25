@@ -168,17 +168,16 @@ export function VersionRail(props: Props) {
       <div className="rail-list" ref={listRef}>
         <svg className="rail-svg" width={g.gutter} height={height} aria-hidden data-testid="rail-svg">
           {g.paths.map((p) => (
-            <path key={p.key} d={p.d} stroke={color(p.lane)} strokeWidth={2} fill="none" strokeLinecap="round" />
+            <path key={p.key} d={p.d} stroke={p.dashed ? 'var(--unsaved-fg)' : color(p.lane)} strokeWidth={2} fill="none" strokeLinecap="round" strokeDasharray={p.dashed ? '0.1 4' : undefined} />
           ))}
-          {g.dots.map((d) => (
+          {g.dots.filter((d) => !d.unsaved).map((d) => (
             <g key={d.key}>
-              {d.current && <circle cx={d.x} cy={d.y} r={8.5} fill="none" stroke="var(--rail-text)" strokeWidth={1.5} />}
+              {/* Filled 10 px dots; the line runs on behind them. Hollow for kept snapshots. The unsaved ring is drawn by the card itself (VersionRail.css), so a sticky card keeps it. */}
               <circle
-                cx={d.x} cy={d.y} r={6}
+                cx={d.x} cy={d.y} r={d.hollow ? 4 : 5}
                 fill={d.hollow ? 'var(--rail-bg)' : color(d.lane)}
-                stroke={d.unsaved ? 'var(--unsaved-fg)' : d.hollow ? color(d.lane) : 'var(--rail-bg)'}
-                strokeWidth={2}
-                strokeDasharray={d.unsaved ? '2 2' : undefined}
+                stroke={d.hollow ? color(d.lane) : 'none'}
+                strokeWidth={d.hollow ? 2 : 0}
               />
             </g>
           ))}

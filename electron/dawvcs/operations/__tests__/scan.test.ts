@@ -82,3 +82,13 @@ describe('scanForProjects', () => {
     expect(res).toEqual([])
   })
 })
+
+describe('preview folders', async () => {
+  const { isPreviewFolder } = await import('../scan')
+  it('are recognised by their name, so they are never suggested or added as projects', () => {
+    expect(isPreviewFolder('/Music/Chigura/test (preview · elenadanilova)')).toBe(true)
+    expect(isPreviewFolder('/Music/Chigura/test (preview · elena) 2')).toBe(true)
+    expect(isPreviewFolder('/Music/Chigura/test')).toBe(false)
+    expect(isPreviewFolder('/Music/preview mix')).toBe(false)
+  })
+})

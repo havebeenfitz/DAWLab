@@ -56,6 +56,7 @@ import { loadRegistry, getProjectPath } from '../../dawvcs/core/registry'
 import { saveHubSettings, shareProject, getProjectRemote, onParallelPlacement } from '../hub-client'
 import { rollbackProject } from '../../dawvcs/operations/rollback'
 import { dismissParallelVersion } from '../../dawvcs/operations/parallel'
+import { startParallelPreview, endParallelPreview } from '../../dawvcs/operations/parallel-preview'
 import { getProjectStorageDirs } from '../../dawvcs/core/storage-location'
 import { openParallelVersions, dismissalOf } from '../../../shared/forks'
 import {
@@ -596,6 +597,37 @@ describe('progress while files move', () => {
     // Sizes came from the hub up front: the total never shrinks while downloading.
     const totals = downs.filter((t) => t.phase === 'download').map((t) => t.bytesTotal)
     expect(Math.min(...totals)).toBe(Math.max(...totals.slice(0, 1)))
+  })
+})
+
+describe('a preview open while the folder syncs', () => {
+  it('never becomes a project, is never uploaded, and the project count stays the same', async () => {
+    const w = await world('pvsync')
+    const bob = w.u('bob')
+    const joined = await w.join(bob, (await w.invite()).code)
+    as(w.owner)
+    fs.writeFileSync(path.join(getProjectPath('Snow'), 'Snow.als'), 'owner take')
+    await commitProject('Snow', 'owner take', 'main', w.owner)
+    await syncSpace(w.folderId)
+    as(bob)
+    fs.writeFileSync(path.join(getProjectPath('Snow'), 'Snow.als'), 'bob take')
+    await commitProject('Snow', 'bob take', 'main', bob)
+    await syncSpace(joined.folderId)
+    as(w.owner)
+    await syncSpace(w.folderId)
+    const before = projectNames()
+    const fork = (loadLocalProjectLog('Snow').branches as any[]).find((b) => b.forkOf).name
+    const trash = async (p: string) => { fs.rmSync(p, { recursive: true, force: true }) }
+    const p = await startParallelPreview('Snow', fork, trash)
+    // The preview is nowhere near the shared folder on disk.
+    expect(p.path.startsWith(path.join(work, 'pvsync'))).toBe(false)
+    const r = await syncSpace(w.folderId)
+    expect(r.uploadedProjects).toEqual([])
+    expect(projectNames()).toEqual(before)
+    await endParallelPreview('Snow', trash)
+    expect(projectNames()).toEqual(before)
+    as(bob)
+    expect((await syncSpace(joined.folderId)).addedProjects).toEqual([])
   })
 })
 

@@ -81,6 +81,11 @@ function looksLikeProjectDir(entries: fs.Dirent[]): boolean {
  * directory that DAWLab can detect as a project as a terminal node (it is not
  * descended into further). Emits progress as it walks.
  */
+/** "<song> (preview · elena)" or "<song> (preview · elena) 2": a parallel-version preview folder. */
+export function isPreviewFolder(dir: string): boolean {
+  return /\(preview · [^)]+\)( \d+)?$/.test(path.basename(dir))
+}
+
 export async function scanForProjects(
   roots: string[],
   opts: {
@@ -108,6 +113,8 @@ export async function scanForProjects(
   const record = (dir: string, daw: DAW) => {
     const resolved = path.resolve(dir)
     if (seenDirs.has(resolved)) return
+    // A folder DAWLab laid out to preview someone's version is not a project of yours.
+    if (isPreviewFolder(resolved)) return
     seenDirs.add(resolved)
 
     let candidates: string[] = []

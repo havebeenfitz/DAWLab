@@ -47,6 +47,7 @@ import { useStorageWarning } from "./hooks/useStorageWarning";
 import { useCommitActions } from "./hooks/useCommitActions";
 import { useBranchActions } from "./hooks/useBranchActions";
 import { useWorkingChanges } from "./hooks/useWorkingChanges";
+import { useHistoryColumn, HISTORY_COL_MIN, HISTORY_COL_MAX } from "./hooks/useHistoryColumn";
 import { DiscardChangesDialog } from "./components/DiscardChangesDialog";
 import "./History.css";
 
@@ -147,6 +148,7 @@ export const History: React.FC = () => {
 
   // "Discard changes": shown only when the folder differs from the last saved version of this alternative.
   const [showDiscard, setShowDiscard] = useState(false);
+  const historyCol = useHistoryColumn();
   const [dismissTarget, setDismissTarget] = useState<ParallelVersion | null>(null);
   // Every line that split off this alternative, folded into the rail where it split:
   // parallel versions (dismissed ones stay hidden) and alternatives made from it.
@@ -360,26 +362,6 @@ export const History: React.FC = () => {
         onClose={() => setShowDiscard(false)}
       />
 
-      {!showSettings && (
-        <PreviewingBar
-          preview={preview}
-          dawName={dawInfo(projectLog?.daw ?? undefined).name}
-          busy={previewBusy}
-          onOpen={() => preview && openInDaw(preview.path)}
-          onBack={() => { void endPreview(); }}
-          onMakeMain={async () => {
-            if (!preview || !passedProject) return;
-            try {
-              await window.ipcRenderer.invoke("make-parallel-version-main", passedProject, preview.branch, username || "You");
-              await endPreview();
-              await log.refreshProjectLog();
-              notify.success(`${preview.author || "Their"} version is now main`, "Your version stays in the history.");
-            } catch (err) {
-              notify.error("Couldn't make it main", String((err as Error)?.message ?? err));
-            }
-          }}
-        />
-      )}
       {!showSettings && (() => {
         const current = projectLog?.branches?.find((b: any) => b.name === (selectedBranch || "main")) as any;
         const from = current?.forkOf ? projectLog?.branches?.find((b: any) => b.name === current.forkOf.branch) : null;
@@ -394,91 +376,128 @@ export const History: React.FC = () => {
         );
       })()}
 
-      {showSettings ? (
-        <ProjectSettings
-          projectId={projectId || ""}
-          projectName={passedProject || "Project"}
-          onBack={() => setShowSettings(false)}
-        />
-      ) : (
-        <>
-          <VersionTagFilter
-            tags={tags.branchVersionTags}
-            tagColors={tags.tagColors}
-            activeTags={tags.activeVersionTags}
-            onToggle={tags.toggleVersionTagFilter}
-            effectiveFilterCount={tags.effectiveVersionFilter.length}
-            visibleCount={visibleCommits.length}
-            totalCount={tags.branchCommits.length}
+      <div
+        className={showSettings ? "history-settings" : "history-main"}
+        style={{ ["--history-col" as string]: `${historyCol.width}px` }}
+      >
+        {showSettings ? (
+          <ProjectSettings
+            projectId={projectId || ""}
+            projectName={passedProject || "Project"}
+            onBack={() => setShowSettings(false)}
           />
-
-          {visibleCommits.length > 0 ? (
-            <CommitGraph
-              commits={visibleCommits}
-              tagColors={tags.tagColors}
-              onEditTags={(commitId, x, y) => tags.setVersionTagPopover({ commitId, x, y })}
-              onCheckout={commits.handleCheckout}
-              onDeleteCommit={commits.handleDeleteCommitRequest}
-              onBranchCreate={branches.handleBranchFromCommit}
-              currentCommitId={projectLog.lastCheckout?.commitId}
-              selectedCommitId={focusedCommitId}
-              onCommitSelect={setFocusedCommitId}
-              lastCheckoutTimestamp={projectLog.lastCheckout?.timestamp}
-              hasUnsavedChanges={hasUnsavedChanges}
-              restoringCommitId={commits.restoringCommitId}
-              projectName={passedProject}
-              projectId={projectId || ""}
-              currentBranch={selectedBranch}
-              onSaveCommit={commits.handleSaveCommit}
-              onCancelSave={commits.cancelCommitForm}
-              isCommitting={commits.isCommitting}
-              isCreatingCommit={commits.isCreatingCommit}
-              unsavedCount={working.changes.length}
-              onDiscard={() => setShowDiscard(true)}
-              readOnly={access.isListener}
-              me={username}
-              forks={railForks}
-              forkMenu={forkMenu}
-              onPreviewFork={access.isListener ? undefined : (b) => { void startPreview(b); }}
-              onDismissFork={(b) => setDismissTarget(openParallelVersions(projectLog, selectedBranch || "main", username || undefined).find((p) => p.branch === b) ?? null)}
+        ) : (
+          <>
+            <PreviewingBar
+              preview={preview}
+              dawName={dawInfo(projectLog?.daw ?? undefined).name}
+              busy={previewBusy}
+              onOpen={() => preview && openInDaw(preview.path)}
+              onBack={() => { void endPreview(); }}
+              onMakeMain={async () => {
+                if (!preview || !passedProject) return;
+                try {
+                  await window.ipcRenderer.invoke("make-parallel-version-main", passedProject, preview.branch, username || "You");
+                  await endPreview();
+                  await log.refreshProjectLog();
+                  notify.success(`${preview.author || "Their"} version is now main`, "Your version stays in the history.");
+                } catch (err) {
+                  notify.error("Couldn't make it main", String((err as Error)?.message ?? err));
+                }
+              }}
             />
-          ) : (
-            <div className="text-white text-center py-10">
-              {branches.isCreatingBranch
-                ? "Loading branch..."
-                : "No versions in this branch"}
-            </div>
-          )}
-        </>
-      )}
+            <VersionTagFilter
+              tags={tags.branchVersionTags}
+              tagColors={tags.tagColors}
+              activeTags={tags.activeVersionTags}
+              onToggle={tags.toggleVersionTagFilter}
+              effectiveFilterCount={tags.effectiveVersionFilter.length}
+              visibleCount={visibleCommits.length}
+              totalCount={tags.branchCommits.length}
+            />
 
-      {/* Bottom panels and the preview dropzone are hidden in the settings view */}
-      {!showSettings && (
-        <HistoryBottomPanels
-          activeTab={activeMobileTab}
-          onTabChange={setActiveMobileTab}
-          projectName={passedProject}
-          fileCommitId={activeCommit?.commit_id || projectLog.lastCheckout?.commitId}
-          projectPath={projectPath}
-          onSelectPath={pathPrompt.openPathModal}
-          plugins={(projectLog as any).metadata?.plugins || []}
-          commentsCommitId={activeCommit ? String(activeCommit.commit_id) : null}
-          commentsKey={`${activeCommit?.commit_id ?? "none"}-${feedback.feedbackSession ? "fs" : "docked"}`}
-          username={username || "You"}
-          currentTime={player.currentTime}
-          onPlayFrom={player.playFrom}
-        />
-      )}
+            {visibleCommits.length > 0 ? (
+              <CommitGraph
+                commits={visibleCommits}
+                tagColors={tags.tagColors}
+                onEditTags={(commitId, x, y) => tags.setVersionTagPopover({ commitId, x, y })}
+                onCheckout={commits.handleCheckout}
+                onDeleteCommit={commits.handleDeleteCommitRequest}
+                onBranchCreate={branches.handleBranchFromCommit}
+                currentCommitId={projectLog.lastCheckout?.commitId}
+                selectedCommitId={focusedCommitId}
+                onCommitSelect={setFocusedCommitId}
+                lastCheckoutTimestamp={projectLog.lastCheckout?.timestamp}
+                hasUnsavedChanges={hasUnsavedChanges}
+                restoringCommitId={commits.restoringCommitId}
+                projectName={passedProject}
+                projectId={projectId || ""}
+                currentBranch={selectedBranch}
+                onSaveCommit={commits.handleSaveCommit}
+                onCancelSave={commits.cancelCommitForm}
+                isCommitting={commits.isCommitting}
+                isCreatingCommit={commits.isCreatingCommit}
+                unsavedCount={working.changes.length}
+                onDiscard={() => setShowDiscard(true)}
+                readOnly={access.isListener}
+                me={username}
+                forks={railForks}
+                forkMenu={forkMenu}
+                onPreviewFork={access.isListener ? undefined : (b) => { void startPreview(b); }}
+                onDismissFork={(b) => setDismissTarget(openParallelVersions(projectLog, selectedBranch || "main", username || undefined).find((p) => p.branch === b) ?? null)}
+              />
+            ) : (
+              <div className="text-white text-center py-10">
+                {branches.isCreatingBranch
+                  ? "Loading branch..."
+                  : "No versions in this branch"}
+              </div>
+            )}
+          </>
+        )}
 
-      {!showSettings && (
-        <PreviewBar
-          activeCommit={activeCommit}
-          versionNumber={versionNumber}
-          player={player}
-          upload={upload}
-          onOpenFeedback={feedback.handleOpenFeedback}
-        />
-      )}
+        {/* Bottom panels and the preview dropzone are hidden in the settings view */}
+        {!showSettings && (
+          <HistoryBottomPanels
+            activeTab={activeMobileTab}
+            onTabChange={setActiveMobileTab}
+            projectName={passedProject}
+            fileCommitId={activeCommit?.commit_id || projectLog.lastCheckout?.commitId}
+            projectPath={projectPath}
+            onSelectPath={pathPrompt.openPathModal}
+            plugins={(projectLog as any).metadata?.plugins || []}
+            commentsCommitId={activeCommit ? String(activeCommit.commit_id) : null}
+            commentsKey={`${activeCommit?.commit_id ?? "none"}-${feedback.feedbackSession ? "fs" : "docked"}`}
+            username={username || "You"}
+            currentTime={player.currentTime}
+            onPlayFrom={player.playFrom}
+          />
+        )}
+
+        {!showSettings && (
+          <PreviewBar
+            activeCommit={activeCommit}
+            versionNumber={versionNumber}
+            player={player}
+            upload={upload}
+            onOpenFeedback={feedback.handleOpenFeedback}
+          />
+        )}
+        {!showSettings && (
+          <div
+            className="history-divider"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize the history column"
+            aria-valuenow={historyCol.width}
+            aria-valuemin={HISTORY_COL_MIN}
+            aria-valuemax={HISTORY_COL_MAX}
+            tabIndex={0}
+            onPointerDown={historyCol.startDrag}
+            onKeyDown={historyCol.onKey}
+          />
+        )}
+      </div>
 
       {/* Full-screen feedback over everything, including the app chrome */}
       {feedback.feedbackSession && feedback.feedbackVersion &&

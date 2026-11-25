@@ -1,6 +1,6 @@
 /**
  * "Preview whole project" for a parallel version: lays that version out into
- * its own folder next to the project ("<song> (preview · bob)"), so it can be
+ * its own folder in DAWLab's data ("<song> (preview · bob)"), so it can be
  * opened in the DAW without ever touching your working folder. "Back to mine"
  * moves that folder to the Trash. One preview per project at a time.
  */
@@ -60,7 +60,8 @@ export async function startParallelPreview(projectName: string, branch: string, 
 
   await endParallelPreview(projectName, trash)
   const author = String(fork.forkOf?.author || tip.author || '')
-  const base = path.join(path.dirname(projectPath), `${path.basename(projectPath)} (preview · ${safe(author || branch)})`)
+  // In DAWLab's own folder, never next to the project: a shared or watched folder must not see it.
+  const base = path.join(getUserDir(), 'previews', safe(projectName), `${path.basename(projectPath)} (preview · ${safe(author || branch)})`)
   let target = base
   for (let i = 2; fs.existsSync(target); i++) target = `${base} ${i}`
   if (path.resolve(target) === path.resolve(projectPath)) throw new Error('Refusing to preview into the project folder.')
