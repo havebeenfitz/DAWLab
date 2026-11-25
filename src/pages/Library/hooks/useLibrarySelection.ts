@@ -140,6 +140,13 @@ export function useLibrarySelection({ viewOrder, overlaysOpen, projects, audioIt
         if (!quickLook) setSelection(clearSelection);
         return;
       }
+      // Cmd/Ctrl+A selects every project and audio item on screen.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        const last = selectableKeys[selectableKeys.length - 1] ?? null;
+        setSelection({ keys: new Set(selectableKeys), anchor: selectableKeys[0] ?? null, focus: last });
+        return;
+      }
       if (e.code !== 'Space' || e.repeat || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
 
       // Handled here, so a focused button (e.g. the play button just clicked)
@@ -157,7 +164,7 @@ export function useLibrarySelection({ viewOrder, overlaysOpen, projects, audioIt
     return () => window.removeEventListener('keydown', onKeyDown);
     // openQuickLookOnFocus reads exactly selection.focus, projects, audioItems and the play functions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overlaysOpen, quickLook, selection.focus, projects, audioItems, playPreview, playAudio]);
+  }, [overlaysOpen, quickLook, selection.focus, projects, audioItems, playPreview, playAudio, selectableKeys]);
 
   const quickLookProject = quickLook?.kind === 'project' ? projects.find(p => p.id === quickLook.id) : undefined;
   const quickLookAudio = quickLook?.kind === 'audio' ? audioItems.find(a => a.id === quickLook.id) : undefined;

@@ -2,7 +2,7 @@
  * Builders for the Library's right-click menus. Each item closes the menu as
  * part of its action, in the same order as before (close first or last).
  */
-import { FolderPlus, FileMusic, Play, Square, AudioLines, Pencil, Trash2, Tag, Users, Share2, ExternalLink } from 'lucide-react';
+import { FolderPlus, FileMusic, Play, Square, AudioLines, Pencil, Trash2, Tag, Users, Share2, ExternalLink, ArchiveX } from 'lucide-react';
 import { createFolderMenuItems } from '@/components/ContextMenu';
 import type { ContextMenuItem } from '@/components/ContextMenu';
 
@@ -21,6 +21,8 @@ interface FolderMenuActions {
   share: () => void;
   rename: () => void;
   remove: () => void;
+  /** Takes the folder and every project in it out of DAWLab. Absent for shared folders. */
+  removeFromLibrary?: () => void;
 }
 
 export function buildFolderMenuItems(a: FolderMenuActions): ContextMenuItem[] {
@@ -34,6 +36,12 @@ export function buildFolderMenuItems(a: FolderMenuActions): ContextMenuItem[] {
       () => { a.rename(); a.close(); },
       () => { a.remove(); a.close(); }
     ),
+    ...(a.removeFromLibrary ? [{
+      label: 'Remove from DAWLab…',
+      icon: <ArchiveX size={14} />,
+      danger: true,
+      onClick: () => { a.close(); a.removeFromLibrary!(); },
+    }] : []),
   ];
 }
 
@@ -42,6 +50,9 @@ interface ProjectMenuActions {
   open: () => void;
   share: () => void;
   manageTags: () => void;
+  /** Label count: how many selected projects the removal applies to. Absent when not allowed. */
+  removeCount?: number;
+  removeFromLibrary?: () => void;
 }
 
 export function buildProjectMenuItems(a: ProjectMenuActions): ContextMenuItem[] {
@@ -61,6 +72,12 @@ export function buildProjectMenuItems(a: ProjectMenuActions): ContextMenuItem[] 
       icon: <Tag size={14} />,
       onClick: () => { a.manageTags(); a.close(); },
     },
+    ...(a.removeFromLibrary ? [{
+      label: a.removeCount && a.removeCount > 1 ? `Remove ${a.removeCount} Projects from DAWLab…` : 'Remove from DAWLab…',
+      icon: <ArchiveX size={14} />,
+      danger: true,
+      onClick: () => { a.close(); a.removeFromLibrary!(); },
+    }] : []),
   ];
 }
 

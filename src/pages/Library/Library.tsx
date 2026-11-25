@@ -48,6 +48,8 @@ import { useNewProjectModal, useOsFileDrop } from './hooks/useOsFileDrop';
 import { useFolderActions } from './hooks/useFolderActions';
 import { useAudioActions } from './hooks/useAudioActions';
 import { useProjectTags } from './hooks/useProjectTags';
+import { useRemoveFromLibrary, planFolderRemoval, planProjectRemoval, isInSharedFolder } from './hooks/useRemoveFromLibrary';
+import { WarningModal } from '@/components/WarningModal/WarningModal';
 
 const VIEW_MODE_KEY = 'dawlab-library-view-mode';
 
@@ -109,10 +111,11 @@ export const Library: React.FC = () => {
     audioItems, setAudioItems: data.setAudioItems, currentFolderId, loadMyProjects,
     playingId, stopPreview, closeAddMenu: () => setShowAddMenu(false),
   });
+  const removal = useRemoveFromLibrary({ setFolders: data.setFolders, audioItems, reload: loadMyProjects });
 
   const overlaysOpen =
     folderActions.showNewFolderModal || newProject.showNewProjectModal || folderActions.showRenameModal ||
-    audioActions.showAudioRenameModal || folderActions.showDeleteConfirm || found.showFoundPanel ||
+    audioActions.showAudioRenameModal || folderActions.showDeleteConfirm || !!removal.plan || found.showFoundPanel ||
     showAddMenu || showFilterMenu || !!contextMenu || !!tags.tagPopover || !!folderPeek.peek || !!newProject.dropInit;
 
   const selection = useLibrarySelection({
@@ -188,6 +191,9 @@ export const Library: React.FC = () => {
         share: () => { if (folder) sharing.shareFolder(folder.id, folder.name); },
         rename: () => folderActions.initiateRename(folderId),
         remove: () => { folderActions.initiateDelete(folderId); },
+        removeFromLibrary: isInSharedFolder(folders, folderId, sharing.folders)
+          ? undefined
+          : () => removal.setPlan(planFolderRemoval(folders, projects, folderId)),
       });
     }
     if (contextMenu.type === 'project') {
@@ -197,6 +203,15 @@ export const Library: React.FC = () => {
         open: () => { if (project) openProject(project.id, project.name); },
         share: () => { if (project) sharing.shareProject(project.name); },
         manageTags: () => tags.setTagPopover({ x: contextMenu.x, y: contextMenu.y, projectId: contextMenu.projectId! }),
+        ...(() => {
+          const plan = planProjectRemoval(projects, contextMenu.projectId!, selection.selection.keys);
+          if (!plan) return {};
+          const local = plan.projects.filter(p => !isInSharedFolder(folders, p.folderId, sharing.folders));
+          if (local.length === 0) return {};
+          const finalPlan = local.length === plan.projects.length ? plan
+            : { ...plan, projects: local, title: local.length === 1 ? `"${local[0].name}"` : `${local.length} projects` };
+          return { removeCount: local.length, removeFromLibrary: () => removal.setPlan(finalPlan) };
+        })(),
       });
     }
     if (contextMenu.type === 'audio') {
@@ -480,6 +495,22 @@ export const Library: React.FC = () => {
       )}
 
       <LibraryModals folderActions={folderActions} audioActions={audioActions} />
+      <WarningModal
+        isOpen={!!removal.plan}
+        title="Remove from DAWLab"
+        warningType="remove-from-library"
+        message={removal.plan ? (
+          <>
+            <p>Remove {removal.plan.title}{removal.plan.folderIds.length ? ` and its ${removal.plan.projects.length} project${removal.plan.projects.length === 1 ? '' : 's'}` : ''} from DAWLab?</p>
+            <p>The project files stay on your disk. Their saved versions in DAWLab are deleted, and DAWLab stops suggesting them.</p>
+          </>
+        ) : ''}
+        actions={[
+          { label: 'Cancel', onClick: removal.cancel, variant: 'cancel' },
+          { label: removal.busy ? 'Removing…' : 'Remove', onClick: () => { void removal.confirm(); }, variant: 'destructive' },
+        ]}
+        onCancel={removal.cancel}
+      />
     </div>
     </div>
   );

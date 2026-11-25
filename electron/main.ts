@@ -62,6 +62,7 @@ import { scanForProjects, getDefaultScanRoots } from "./dawvcs/operations/scan";
 import { getInstalledPlugins, rescanPlugins } from "./workers/pluginScanner";
 import { startDraftWatch, stopDraftWatch, stopAllDraftWatches } from "./watchers/draftWatcher";
 import { registerHubIpc } from "./sync/ipc";
+import { removeProjectsFromLibrary, type RemoveTarget } from "./library/remove-projects";
 import { requestProjectSync } from "./sync/auto-sync";
 import { parseDeepLink } from "./deep-link";
 import { fileURLToPath } from "node:url";
@@ -1553,6 +1554,18 @@ ipcMain.handle(
     }
   },
 );
+
+// Take several projects out of DAWLab at once. Their files stay on disk; only
+// DAWLab's history goes, and watched-folder scans stop suggesting them.
+ipcMain.handle("remove-projects-from-library", async (_ev, targets: RemoveTarget[]) => {
+  const manager = getUserConfigManager(getUsername());
+  return removeProjectsFromLibrary(Array.isArray(targets) ? targets : [], {
+    deleteProject,
+    getProjectPath,
+    removeFromFolders: (id) => manager.removeProject(id),
+    ignorePath: (p) => manager.addIgnoredProjectPath(p),
+  });
+});
 
 // Clear folder manager cache (on logout)
 ipcMain.handle("clear-folder-cache", () => {
