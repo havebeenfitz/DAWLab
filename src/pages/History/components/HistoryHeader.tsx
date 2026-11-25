@@ -5,6 +5,8 @@ import { ActionButton } from '@/components/ui/ActionButton';
 import { dawInfo } from '@/lib/daw';
 import type { ProjectAccess } from '@/hooks/useProjectAccess';
 import { relativeTime, type SyncStatus } from '@/components/Sharing/hub';
+import { TransferBar } from '@/components/Sharing/TransferBar';
+import type { TransferProgress } from '../../../../shared/transfer-progress';
 
 interface Props {
   projectName: string;
@@ -23,7 +25,7 @@ interface Props {
   onShare: () => void;
   onToggleSettings: () => void;
   /** Shared projects only: new versions waiting on the hub, and pulling them. */
-  sync?: { incoming: number; pulling: boolean; pull: () => void };
+  sync?: { incoming: number; pulling: boolean; pull: () => void; transfer?: TransferProgress | null };
   /** Files differ from the last saved version: how many, and opening the Discard dialog. */
   discard?: { count: number; open: () => void };
 }
@@ -125,6 +127,7 @@ export function HistoryHeader(p: Props) {
             )}
           </button>
         )}
+        {shared && p.sync?.pulling && p.sync.transfer && <TransferBar transfer={p.sync.transfer} compact />}
         <button type="button" className="btn-pill group px-5" onClick={p.onShare} disabled={!p.projectName}>
           <Share2 size={16} aria-hidden className="text-gray-400 group-hover:text-white" />
           <span>{shared ? 'Sharing' : 'Share'}</span>

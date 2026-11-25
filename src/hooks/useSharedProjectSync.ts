@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { hub, onSyncStatus, describeSync } from '@/components/Sharing/hub';
+import { hub, onSyncStatus, describeSync, onHubProgress } from '@/components/Sharing/hub';
+import type { TransferProgress } from '../../shared/transfer-progress';
 import { notify, errorMessage } from '@/lib/notify';
 
 export interface SharedProjectSync {
   /** Versions on the hub this Mac doesn't have yet. */
   incoming: number;
   pulling: boolean;
+  /** Files and bytes moving during a Pull. */
+  transfer: TransferProgress | null;
   pull: () => Promise<void>;
 }
 
@@ -21,6 +24,7 @@ export function useSharedProjectSync(
 ): SharedProjectSync {
   const [incoming, setIncoming] = useState(0);
   const [pulling, setPulling] = useState(false);
+  const [transfer, setTransfer] = useState<TransferProgress | null>(null);
   const pullingRef = useRef(false);
   const onPulledRef = useRef(onPulled);
   onPulledRef.current = onPulled;
@@ -52,6 +56,8 @@ export function useSharedProjectSync(
     if (!projectName || !folderId || pullingRef.current) return;
     pullingRef.current = true;
     setPulling(true);
+    setTransfer(null);
+    const off = onHubProgress(projectName, (_m, t) => { if (t) setTransfer(t); });
     try {
       const r = await hub.syncProjectNow(projectName);
       await onPulledRef.current();
@@ -60,11 +66,13 @@ export function useSharedProjectSync(
     } catch (err) {
       notify.error(`Couldn’t sync “${projectName}”`, errorMessage(err));
     } finally {
+      off();
+      setTransfer(null);
       pullingRef.current = false;
       setPulling(false);
       void check();
     }
   }, [projectName, folderId, check]);
 
-  return { incoming, pulling, pull };
+  return { incoming, pulling, transfer, pull };
 }

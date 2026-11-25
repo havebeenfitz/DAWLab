@@ -155,6 +155,21 @@ describe('creating and reading a space', () => {
   })
 })
 
+describe('file sizes for progress', () => {
+  it('tells members how big stored files are, null for unknown ones, and ignores junk', async () => {
+    const { listener, p, fileHash } = await setup()
+    const missing = 'a'.repeat(64)
+    const r = await call('POST', `${p}/objects/sizes`, { token: listener.token, body: { hashes: [fileHash, missing, '../x'] } })
+    expect(r.status).toBe(200)
+    expect(r.json.sizes).toEqual({ [fileHash]: 'ableton data'.length, [missing]: null })
+  })
+
+  it('is the hidden 404 for someone who is not a member', async () => {
+    const { p, fileHash } = await setup()
+    expect((await call('POST', `${p}/objects/sizes`, { token: 'x'.repeat(40), body: { hashes: [fileHash] } })).status).toBe(404)
+  })
+})
+
 describe('invites', () => {
   it('creates, lists and revokes; the code is never shown again', async () => {
     const owner = await createSpace()

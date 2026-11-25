@@ -51,14 +51,15 @@ describe('hub events', () => {
     expect(ipcRegistrations('hub-sync-progress')).toBe(1);
 
     emitIpc('hub-sync-progress', { key: 'My Song', message: 'Uploading 2 of 5' });
-    emitIpc('hub-sync-progress', { key: 'join', message: 'Downloading' });
+    const transfer = { phase: 'download', fileIndex: 1, fileCount: 2, bytesDone: 5, bytesTotal: 10 };
+    emitIpc('hub-sync-progress', { key: 'join', message: 'Downloading', transfer });
     emitIpc('hub-sync-progress', { key: 'other', message: 'ignored' });
     emitIpc('hub-sync-progress', null);
 
     expect(projectCb).toHaveBeenCalledTimes(1);
-    expect(projectCb).toHaveBeenCalledWith('Uploading 2 of 5');
+    expect(projectCb).toHaveBeenCalledWith('Uploading 2 of 5', undefined);
     expect(joinCb).toHaveBeenCalledTimes(1);
-    expect(joinCb).toHaveBeenCalledWith('Downloading');
+    expect(joinCb).toHaveBeenCalledWith('Downloading', transfer);
     offP(); offJ();
   });
 

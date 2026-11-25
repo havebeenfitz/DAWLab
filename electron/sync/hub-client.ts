@@ -25,6 +25,7 @@ import {
   type CreateProjectResponse, type HubRole, type ProjectResponse, type SharedComment, type SharedLog,
 } from '../../shared/hub-protocol'
 import { adoptHubPlacement, placementMoves, type ParallelPlacement } from '../../shared/forks'
+import { createTransferTracker, describeTransfer, type TransferProgress } from '../../shared/transfer-progress'
 
 export interface HubSettings {
   hubUrl: string
@@ -50,7 +51,7 @@ export interface SyncResult {
   remote: ProjectRemote
 }
 
-export type SyncProgress = (message: string) => void
+export type SyncProgress = (message: string, transfer?: TransferProgress) => void
 
 /** Told when a sync moves your versions into a parallel alternative, so the app can say so. */
 let placementListener: (projectName: string, moves: ParallelPlacement[]) => void = () => {}
@@ -152,19 +153,33 @@ export class HubClient {
   postComments = (commitId: string, comments: SharedComment[]) =>
     this.json<SharedComment[]>(`${this.base}/commits/${commitId}/comments`, 'POST', comments)
 
-  async uploadObject(hash: string, file: string) {
+  /** Sizes of files on the hub; empty when the hub is too old to say. */
+  async sizes(hashes: string[]): Promise<Record<string, number | null>> {
+    if (!hashes.length) return {}
+    try {
+      return (await this.json<{ sizes: Record<string, number | null> }>(`${this.base}/objects/sizes`, 'POST', { hashes })).sizes ?? {}
+    } catch {
+      return {}
+    }
+  }
+
+  async uploadObject(hash: string, file: string, onBytes: (n: number) => void = () => {}) {
     const size = fs.statSync(file).size
+    const counted = fs.createReadStream(file)
+    counted.on('data', (chunk) => onBytes(chunk.length))
     await this.request(`${this.base}/objects/${hash}`, {
       method: 'PUT',
-      body: Readable.toWeb(fs.createReadStream(file)) as any,
+      body: Readable.toWeb(counted) as any,
       duplex: 'half',
       headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(size) },
     })
   }
 
   /** Downloads to a temp file, checks the hash, then moves it into CAS. */
-  async downloadObject(hash: string, target: string) {
+  async downloadObject(hash: string, target: string, onBytes: (n: number) => void = () => {}, onSize: (size: number) => void = () => {}) {
     const res = await this.request(`${this.base}/objects/${hash}`)
+    const length = Number(res.headers.get('content-length'))
+    if (Number.isFinite(length) && length >= 0) onSize(length)
     fs.mkdirSync(path.dirname(target), { recursive: true })
     const tmp = `${target}.${process.pid}.download`
     const hasher = crypto.createHash('sha256')
@@ -174,6 +189,7 @@ export class HubClient {
         async function* (source) {
           for await (const chunk of source) {
             hasher.update(chunk)
+            onBytes(chunk.length)
             yield chunk
           }
         },
@@ -280,16 +296,19 @@ export async function syncProjectWith(
   }
 
   const { missing } = blobFiles.size ? await client.missing([...blobFiles.keys()]) : { missing: [] }
-  let uploaded = 0
   for (const hash of missing) {
-    uploaded++
-    onProgress(`Uploading file ${uploaded} of ${missing.length}...`)
-    const file = blobFiles.get(hash)!
-    if (!fs.existsSync(file)) {
+    if (!fs.existsSync(blobFiles.get(hash)!)) {
       throw new Error(`A file from one of the versions of '${projectName}' is missing on this Mac, so that version can't be shared. Open the project once so DAWLab can find it, then sync again.`)
     }
-    await client.uploadObject(hash, file)
   }
+  const names = fileNames(filemaps.values())
+  const up = createTransferTracker('upload', missing.map((h) => ({ size: fs.statSync(blobFiles.get(h)!).size, name: names.get(h) })),
+    (p) => onProgress(describeTransfer(p), p))
+  for (const [i, hash] of missing.entries()) {
+    up.startFile(i)
+    await client.uploadObject(hash, blobFiles.get(hash)!, (n) => up.addBytes(n))
+  }
+  up.flush()
   for (const [id, filemap] of filemaps) await client.putFilemap(id, filemap)
 
   // Versions whose preview is missing locally can't be pushed with it; drop the pointer for the hub only.
@@ -417,12 +436,16 @@ async function pullInto(
     if (c.preview_file && !fs.existsSync(getCasPath(c.preview_file, casDir))) need.add(c.preview_file)
   }
 
-  let n = 0
-  for (const hash of need) {
-    n++
-    onProgress(`Downloading file ${n} of ${need.size}...`)
-    await client.downloadObject(hash, getCasPath(hash, casDir))
+  const wanted = [...need]
+  const sizes = await client.sizes(wanted)
+  const names = fileNames(filemaps.values())
+  const down = createTransferTracker('download', wanted.map((h) => ({ size: sizes[h] ?? null, name: names.get(h) ?? 'Preview' })),
+    (p) => onProgress(describeTransfer(p), p))
+  for (const [i, hash] of wanted.entries()) {
+    down.startFile(i)
+    await client.downloadObject(hash, getCasPath(hash, casDir), (b) => down.addBytes(b), (size) => down.knowSize(size))
   }
+  if (wanted.length) down.flush()
   // Filemaps last: a version only appears locally once all its files are here.
   for (const [id, filemap] of filemaps) saveCommit(projectName, id, filemap, commitsDir)
 
@@ -457,6 +480,17 @@ export async function hubError(res: Response, hiddenMessage: string): Promise<Er
   const body: any = await res.json().catch(() => null)
   const message = res.status === 404 && !body ? hiddenMessage : body?.error || `The DAWLab server answered ${res.status} ${res.statusText}.`
   return Object.assign(new Error(message), { status: res.status })
+}
+
+/** A readable name for each stored file: the last part of a path it has in some version. */
+function fileNames(filemaps: Iterable<unknown>): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const fm of filemaps) {
+    for (const e of (fm as Array<{ path: string; hash: string }>) ?? []) {
+      if (e?.hash && e.hash !== 'empty' && !out.has(e.hash)) out.set(e.hash, path.basename(String(e.path)))
+    }
+  }
+  return out
 }
 
 function safeName(name: string) {

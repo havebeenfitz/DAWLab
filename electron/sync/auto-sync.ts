@@ -1,3 +1,4 @@
+import type { TransferProgress } from '../../shared/transfer-progress'
 /**
  * Keeps shared folders in sync without anyone pressing a button: every few
  * minutes, after a version is saved, and when a shared project is opened.
@@ -12,6 +13,8 @@ export interface SyncStatus {
   folderId: string
   state: SyncState
   message?: string
+  /** Files and bytes moving right now, for a progress bar. */
+  transfer?: TransferProgress
   lastSync?: string
   error?: string
   result?: Pick<SpaceSyncResult, 'pushedVersions' | 'pulledVersions' | 'addedProjects' | 'uploadedProjects' | 'failed'>
@@ -82,7 +85,7 @@ export function requestSpaceSync(folderId: string): Promise<SpaceSyncResult | nu
 async function runSync(folderId: string): Promise<SpaceSyncResult | null> {
   emit({ folderId, state: 'syncing' })
   try {
-    const result = await syncSpace(folderId, (message) => emit({ folderId, state: 'syncing', message }))
+    const result = await syncSpace(folderId, (message, transfer) => emit({ folderId, state: 'syncing', message, ...(transfer ? { transfer } : {}) }))
     emit({
       folderId,
       state: result.failed.length ? 'error' : 'synced',

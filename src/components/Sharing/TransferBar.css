@@ -1,0 +1,6 @@
+.transfer-bar { display: flex; flex-direction: column; gap: 4px; min-width: 180px; max-width: 360px; }
+.transfer-track { height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.transfer-fill { height: 100%; background: var(--brand, #3b82f6); transition: width 120ms linear; }
+.transfer-text { font-size: 11px; color: var(--text-secondary, #9ca3af); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.transfer-file { color: var(--text-primary, #e5e7eb); }
+.transfer-bar.is-compact { min-width: 140px; }

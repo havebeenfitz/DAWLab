@@ -1,3 +1,4 @@
+import type { TransferProgress } from '../../shared/transfer-progress'
 import os from 'os'
 import path from 'path'
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
@@ -27,8 +28,8 @@ const publicSpace = (s: ReturnType<typeof getLocalSpace>) => s && {
  * background sync state of shared folders on `hub-status`.
  */
 export function registerHubIpc(ipcMain: IpcMain, getWindow: () => BrowserWindow | null) {
-  const progress = (ev: IpcMainInvokeEvent, key: string) => (message: string) => {
-    if (!ev.sender.isDestroyed()) ev.sender.send('hub-sync-progress', { key, message })
+  const progress = (ev: IpcMainInvokeEvent, key: string) => (message: string, transfer?: TransferProgress) => {
+    if (!ev.sender.isDestroyed()) ev.sender.send('hub-sync-progress', { key, message, ...(transfer ? { transfer } : {}) })
   }
   const sendStatus = (status: SyncStatus) => {
     const win = getWindow()

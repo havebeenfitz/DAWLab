@@ -571,3 +571,31 @@ describe('dismissing a parallel version, between two Macs', () => {
   })
 })
 
+describe('progress while files move', () => {
+  it('reports bytes and file names for uploads and downloads, ending at the full size', async () => {
+    const w = await world('progress')
+    as(w.owner)
+    const big = Buffer.alloc(3 * 1024 * 1024, 7)
+    fs.writeFileSync(path.join(getProjectPath('Snow'), 'big take.wav'), big)
+    await commitProject('Snow', 'big take', 'main', w.owner)
+    const ups: any[] = []
+    await syncSpace(w.folderId, (_m, t) => { if (t) ups.push(t) })
+    expect(ups.at(-1)).toMatchObject({ phase: 'upload', bytesDone: ups.at(-1).bytesTotal })
+    expect(ups.some((t) => t.fileName === 'big take.wav')).toBe(true)
+    expect(ups.at(-1).bytesTotal).toBeGreaterThanOrEqual(big.length)
+
+    const bob = w.u('bob')
+    as(bob)
+    const downs: any[] = []
+    const code = (await w.invite()).code
+    as(bob)
+    await joinSpace(code, path.join(work, 'progress', bob), (_m, t) => { if (t) downs.push(t) })
+    const last = downs.filter((t) => t.phase === 'download').at(-1)
+    expect(last.bytesDone).toBe(last.bytesTotal)
+    expect(last.bytesTotal).toBeGreaterThanOrEqual(big.length)
+    // Sizes came from the hub up front: the total never shrinks while downloading.
+    const totals = downs.filter((t) => t.phase === 'download').map((t) => t.bytesTotal)
+    expect(Math.min(...totals)).toBe(Math.max(...totals.slice(0, 1)))
+  })
+})
+

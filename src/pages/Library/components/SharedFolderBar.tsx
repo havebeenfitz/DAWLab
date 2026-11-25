@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Users, Headphones, RefreshCw, AlertCircle, Lock } from 'lucide-react';
 import { useSharing, roleLabel, relativeTime, hub, errorText } from '@/components/Sharing';
 import type { SharedFolder } from '@/components/Sharing';
+import { TransferBar } from '@/components/Sharing/TransferBar';
 import './LibrarySidebar.css';
 
 /** Shown at the top of a shared folder: who's in it, how you take part, and whether it's up to date. */
@@ -26,7 +27,7 @@ export function SharedFolderBar({ folderId }: { folderId: string }) {
         {roleLabel[shared.role]}
         {listening ? ' · you can play previews and comment' : ''}
         {' · '}
-        {syncing ? (st?.message || 'Syncing…') : error ? (
+        {syncing && st?.transfer ? <TransferBar transfer={st.transfer} /> : syncing ? (st?.message || 'Syncing…') : error ? (
           <span className="ui-status-error"><AlertCircle size={12} aria-hidden /> {error}</span>
         ) : `synced ${relativeTime(st?.lastSync ?? shared.lastSync)}`}
       </span>

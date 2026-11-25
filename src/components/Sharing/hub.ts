@@ -1,4 +1,5 @@
 import type { ParallelPlacement } from '../../../shared/forks'
+import type { TransferProgress } from '../../../shared/transfer-progress'
 /** Renderer-side calls and events for DAWLab sharing (see electron/sync). Tokens never reach the renderer. */
 
 export type SpaceRole = 'owner' | 'edit' | 'listen'
@@ -78,6 +79,8 @@ export interface SyncStatus {
   folderId: string
   state: SyncState
   message?: string
+  /** Files and bytes moving right now. */
+  transfer?: TransferProgress
   lastSync?: string
   error?: string
   result?: { pushedVersions: number; pulledVersions: number; addedProjects: string[]; uploadedProjects?: string[]; failed: Array<{ project: string; error: string }> }
@@ -146,8 +149,8 @@ function subscribe<T>(channel: string, cb: Listener<T>): () => void {
 }
 
 /** Progress text for one operation key: a project name, a folder id, 'open' or 'join'. */
-export function onHubProgress(key: string, cb: (message: string) => void) {
-  return subscribe<{ key: string; message: string }>('hub-sync-progress', (data) => { if (data?.key === key) cb(data.message) })
+export function onHubProgress(key: string, cb: (message: string, transfer?: TransferProgress) => void) {
+  return subscribe<{ key: string; message: string; transfer?: TransferProgress }>('hub-sync-progress', (data) => { if (data?.key === key) cb(data.message, data.transfer) })
 }
 
 /** Background sync state of shared folders. */

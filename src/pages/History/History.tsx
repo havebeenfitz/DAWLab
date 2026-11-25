@@ -281,7 +281,7 @@ export const History: React.FC = () => {
         onOpenInDaw={handleOpenInDaw}
         onShare={() => passedProject && sharing?.shareProject(passedProject)}
         onToggleSettings={() => setShowSettings(!showSettings)}
-        sync={access.folder ? { incoming: sharedSync.incoming, pulling: sharedSync.pulling, pull: () => { void sharedSync.pull(); } } : undefined}
+        sync={access.folder ? { incoming: sharedSync.incoming, pulling: sharedSync.pulling, transfer: sharedSync.transfer, pull: () => { void sharedSync.pull(); } } : undefined}
         discard={!access.isListener ? { count: working.changes.length, open: () => setShowDiscard(true) } : undefined}
       />
       <DiscardChangesDialog

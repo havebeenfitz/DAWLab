@@ -74,6 +74,16 @@ export function createProjectRoutes(storage: Storage, maxUpload: number) {
     send(res, 200, { missing })
   }
 
+  /** Sizes of stored files, so a download can show how much is left. Unknown hashes are null. */
+  async function objectSizes(access: ProjectAccess, req: http.IncomingMessage, res: http.ServerResponse) {
+    const body = await readJson(req)
+    if (Array.isArray(body?.hashes) && body.hashes.length > MAX_HASHES_PER_QUERY) throw new HttpError(413, 'Ask about fewer files at once')
+    const hashes: string[] = Array.isArray(body?.hashes) ? body.hashes.filter(isHash) : []
+    const sizes: Record<string, number | null> = {}
+    for (const h of new Set(hashes)) sizes[h] = await storage.size(keys.object(access.projectId, h))
+    send(res, 200, { sizes })
+  }
+
   async function putObject(access: ProjectAccess, hash: string, req: http.IncomingMessage, res: http.ServerResponse) {
     if (await storage.exists(keys.object(access.projectId, hash))) {
       req.resume()
@@ -189,6 +199,9 @@ export function createProjectRoutes(storage: Storage, maxUpload: number) {
     if (rest[0] === 'log' && rest.length === 1 && method === 'PUT') return putLog(await authorize('edit'), req, res)
     if (rest[0] === 'objects' && rest[1] === 'missing' && method === 'POST') {
       return missingObjects(await authorize('edit'), req, res)
+    }
+    if (rest[0] === 'objects' && rest[1] === 'sizes' && method === 'POST') {
+      return objectSizes(await authorize('listen'), req, res)
     }
     if (rest[0] === 'objects' && rest.length === 2 && isHash(rest[1])) {
       if (method === 'PUT') return putObject(await authorize('edit'), rest[1], req, res)
