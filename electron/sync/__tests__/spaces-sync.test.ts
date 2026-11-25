@@ -132,6 +132,9 @@ describe('Shared folders', () => {
     editInvite = edit.link
     listenInvite = (await createInvite(aliceFolder, 'listen')).link
 
+    await expect(previewInvite(editInvite)).rejects.toThrow(/already in “Album”/)
+
+    setUsername('bob')
     const preview = await previewInvite(editInvite)
     expect(preview.space.name).toBe('Album')
     expect(preview.role).toBe('edit')

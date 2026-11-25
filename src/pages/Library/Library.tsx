@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { notify } from "@/lib/notify";
 import { useNavigate } from 'react-router-dom';
 import './Library.css';
-import { Plus, FolderPlus, Search, LayoutGrid, List, Music, User, Loader2, ArrowUpRight, FileMusic, Filter, X, Play, Square, AudioLines, Pencil, Trash2, Link2 } from 'lucide-react';
+import { Plus, FolderPlus, Search, LayoutGrid, List, Music, Loader2, ArrowUpRight, FileMusic, Filter, X, Play, Square, AudioLines, Pencil, Trash2, Link2 } from 'lucide-react';
 import logo from '../../assets/logo.png';
 import logicLogo from '@/assets/logic_logo.png';
 import abletonLogo from '@/assets/ableton_live_logo.png';
@@ -1975,11 +1975,8 @@ export const Library: React.FC = () => {
 
       {/* Bottom Bar */}
       <footer className="library-footer">
-        <div className="footer-left">
-           <div className="user-avatar" onClick={() => navigate('/settings')} style={{ cursor: 'pointer' }}>
-              <User size={20} />
-           </div>
-        </div>
+        {/* Settings moved to the sidebar */}
+        <div className="footer-left" />
 
         <div className="footer-right">
            <ActivityPanel embedded={true} />

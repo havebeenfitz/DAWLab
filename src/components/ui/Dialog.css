@@ -79,7 +79,10 @@
   border: 1px solid var(--border-card);
   background: var(--surface-2);
   color: var(--text-main);
-  font: 500 0.875rem/1 inherit;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
   white-space: nowrap;
   cursor: pointer;
   transition: background-color 0.15s, border-color 0.15s, color 0.15s;
@@ -89,10 +92,11 @@
 .ui-btn-primary { background: var(--brand); border-color: var(--brand); color: var(--text-on-accent); }
 .ui-btn-primary:hover:not(:disabled) { background: var(--brand-hover); border-color: var(--brand-hover); }
 .ui-btn-primary:active:not(:disabled) { background: var(--brand-pressed); }
-.ui-btn-danger { color: var(--color-error); }
-.ui-btn-danger:hover:not(:disabled) { border-color: var(--color-error); }
 .ui-btn-ghost { background: transparent; border-color: transparent; color: var(--text-secondary); }
 .ui-btn-ghost:hover:not(:disabled) { background: var(--surface-2); color: var(--text-main); border-color: transparent; }
+.ui-btn-danger { color: var(--color-error); }
+.ui-btn-danger:hover:not(:disabled) { border-color: var(--color-error); }
+.ui-btn-ghost.ui-btn-danger:hover:not(:disabled) { color: var(--color-error); border-color: transparent; }
 .ui-btn-sm { height: 28px; padding: 0 10px; font-size: 0.8rem; border-radius: 8px; }
 
 .ui-icon-btn {

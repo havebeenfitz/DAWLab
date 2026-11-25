@@ -261,13 +261,20 @@ export async function previewInvite(input: string): Promise<InvitePreview & { hu
     body: JSON.stringify({ code }),
   })
   if (!res.ok) throw await hubError(res, 'This invite is not valid. It may have expired or been used up; ask for a new one.')
-  return { ...((await res.json()) as InvitePreview), hubUrl }
+  const preview = (await res.json()) as InvitePreview
+  if (findJoined(hubUrl, preview.space.id)) throw new Error(`You're already in “${preview.space.name}”. It's in the Shared section of your Library.`)
+  return { ...preview, hubUrl }
 }
+
+const findJoined = (hubUrl: string, spaceId: string) =>
+  listLocalSpaces().find((s) => s.hubUrl === hubUrl && s.spaceId === spaceId) ?? null
 
 /** Joins a shared folder: creates the Library folder and downloads its projects into `parentDir/<folder name>`. */
 export async function joinSpace(input: string, parentDir: string, onProgress: SyncProgress = () => {}): Promise<SpaceSyncResult> {
   const { hubUrl, code } = parseInvite(input)
   onProgress('Checking the invite...')
+  // Don't spend an invite (or add yourself twice) for a folder you're already in.
+  await previewInvite(input)
   const res = await fetch(`${hubUrl}/api/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -276,7 +283,7 @@ export async function joinSpace(input: string, parentDir: string, onProgress: Sy
   if (!res.ok) throw await hubError(res, 'This invite is not valid. It may have expired or been used up; ask for a new one.')
   const joined = (await res.json()) as JoinResponse
 
-  const already = listLocalSpaces().find((s) => s.hubUrl === hubUrl && s.spaceId === joined.space.id)
+  const already = findJoined(hubUrl, joined.space.id)
   if (already) return syncSpace(already.folderId, onProgress)
 
   const folder = folderManager().createFolder(joined.space.name, null)
