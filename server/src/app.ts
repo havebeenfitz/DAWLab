@@ -46,6 +46,8 @@ class HttpError extends Error {
 /** Thrown for anything a caller without a valid key or token could probe: answered with an empty 404. */
 const HIDDEN = new HttpError(404, '')
 
+const MAX_COMMENTS = 5000
+const MAX_COMMENT_BYTES = 64 * 1024
 const JSON_LIMIT = 8 * 1024 * 1024
 
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex')
@@ -107,7 +109,7 @@ export function createHub(opts: HubOptions) {
     const log = toSharedLog(body?.log ?? body)
     if (!log.name) throw new HttpError(400, 'Project name is required')
     const projectId = crypto.randomUUID()
-    log.id = log.id || projectId
+    log.id = isCommitId(log.id) ? log.id : projectId
     const editToken = newToken()
     const listenToken = newToken()
     await storage.putJson(keys.meta(projectId), { id: projectId, name: log.name, createdAt: new Date().toISOString() })
@@ -127,6 +129,8 @@ export function createHub(opts: HubOptions) {
       const current = await loadLog(access.projectId)
       // Only accept versions whose filemap was uploaded first, so the log never points at missing data.
       for (const c of allCommits(incoming)) {
+        if (!isCommitId(c.commit_id)) throw new HttpError(400, 'Bad version id')
+        if (c.preview_file !== undefined && !isHash(c.preview_file)) throw new HttpError(400, `Bad preview for ${c.commit_id}`)
         if (!(await storage.exists(keys.filemap(access.projectId, c.commit_id)))) {
           throw new HttpError(409, `Upload the filemap of version ${c.commit_id} before the log`)
         }
@@ -218,7 +222,7 @@ export function createHub(opts: HubOptions) {
   async function postComments(access: Access, commitId: string, req: http.IncomingMessage, res: http.ServerResponse) {
     const body = await readJson(req)
     const incoming: SharedComment[] = (Array.isArray(body) ? body : body?.comments ?? []).filter(
-      (c: any) => c && typeof c.id === 'string' && c.id.length <= 64,
+      (c: any) => c && typeof c.id === 'string' && c.id.length <= 64 && JSON.stringify(c).length <= MAX_COMMENT_BYTES,
     )
     const log = await loadLog(access.projectId)
     if (!allCommits(log).some((c) => c.commit_id === commitId)) throw new HttpError(404, 'No such version')
@@ -226,6 +230,7 @@ export function createHub(opts: HubOptions) {
     const merged = await withLock(key, async () => {
       const current = (await storage.getJson<{ comments: SharedComment[] }>(key))?.comments ?? []
       const next = mergeComments(current, incoming)
+      if (next.length > MAX_COMMENTS) throw new HttpError(413, 'Too many comments on this version')
       await storage.putJson(key, { version: 1, comments: next })
       return next
     })
@@ -235,7 +240,12 @@ export function createHub(opts: HubOptions) {
   // --------------------------------------------------------------- router
 
   async function route(req: http.IncomingMessage, res: http.ServerResponse) {
-    const url = new URL(req.url ?? '/', 'http://hub')
+    let url: URL
+    try {
+      url = new URL(req.url ?? '/', 'http://hub')
+    } catch {
+      throw HIDDEN
+    }
     const parts = url.pathname.split('/').filter(Boolean)
     const method = req.method ?? 'GET'
 

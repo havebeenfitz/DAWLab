@@ -17,7 +17,8 @@ const server = http.createServer(createHub({
   publicUrl: process.env.PUBLIC_URL || undefined,
   maxUploadBytes: process.env.MAX_UPLOAD_MB ? Number(process.env.MAX_UPLOAD_MB) * 1024 * 1024 : undefined,
 }))
-server.requestTimeout = 0 // large uploads over slow links
+server.requestTimeout = 0 // large uploads over slow links; headersTimeout still drops stalled requests
+server.headersTimeout = 30_000
 server.listen(port, () => console.log(`[hub] DAWLab Hub on :${port} (storage: ${storage.kind})`))
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {

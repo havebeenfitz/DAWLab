@@ -21,7 +21,7 @@ import { writeJsonSync } from '../dawvcs/core/fs-utils'
 import { rollbackProject } from '../dawvcs/operations/rollback'
 import { parseCommentsFile, serializeComments } from '../feedback/comments-file'
 import {
-  allCommits, mergeComments, mergeLogs, parseShareLink, toSharedLog,
+  allCommits, isCommitId, isHash, mergeComments, mergeLogs, parseShareLink, toSharedLog,
   type CreateProjectResponse, type HubRole, type ProjectResponse, type SharedComment, type SharedLog,
 } from '../../shared/hub-protocol'
 
@@ -289,6 +289,7 @@ export async function openSharedProject(
   const client = new HubClient(hubUrl, token)
   onProgress('Reading the shared project...')
   const { role, log: remoteLog } = await client.getProject()
+  assertSafeLog(remoteLog)
   const registry = loadRegistry()
   const already = Object.entries(registry).find(([name]) => getProjectRemote(name)?.token === token)
   if (already) {
@@ -303,7 +304,7 @@ export async function openSharedProject(
     throw new Error(`${projectPath} already exists and is not empty. Pick another folder.`)
   }
 
-  const projectId = remoteLog.id || crypto.randomUUID()
+  const projectId = isCommitId(remoteLog.id) ? remoteLog.id : crypto.randomUUID()
   registerProject(projectId, projectName, projectPath, remoteLog.daw, undefined, remoteLog.description ?? undefined,
     remoteLog.key ?? undefined, remoteLog.bpm ?? undefined, 'shared', undefined, 'home')
   const base = buildProjectLog(projectName, projectPath, { projectID: projectId, daw: remoteLog.daw, privacy_flag: 'shared' })
@@ -338,6 +339,7 @@ async function pullInto(
   onProgress: SyncProgress,
   opts: { previewsOnly?: boolean } = {},
 ) {
+  assertSafeLog(remoteLog)
   const { casDir, commitsDir } = getProjectStorageDirs(projectName)
   ensureCasDir(casDir)
   const newCommits = allCommits(remoteLog).filter((c) => !commitExists(projectName, c.commit_id, commitsDir))
@@ -347,6 +349,7 @@ async function pullInto(
   for (const c of newCommits) {
     // A listen link can't read filemaps: its versions are kept with no files, just previews and comments.
     const filemap = opts.previewsOnly ? [] : await client.getFilemap(c.commit_id)
+    assertSafeFilemap(filemap)
     filemaps.set(c.commit_id, filemap)
     for (const e of filemap) if (e.hash !== 'empty' && !fs.existsSync(getCasPath(e.hash, casDir))) need.add(e.hash)
   }
@@ -393,5 +396,29 @@ async function hubError(res: Response, hiddenMessage: string): Promise<Error> {
 }
 
 function safeName(name: string) {
-  return (name || 'Shared project').replace(/[\\/:*?"<>|]/g, '_').trim().slice(0, 80) || 'Shared project'
+  const cleaned = String(name || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^[.\s]+/, '').trim().slice(0, 80)
+  return cleaned || 'Shared project'
+}
+
+/**
+ * A hub (or anyone holding an edit link) controls the log and filemaps we
+ * download. Ids and hashes become local paths, so reject anything that isn't
+ * exactly the shape DAWLab writes itself.
+ */
+function assertSafeLog(log: SharedLog) {
+  for (const c of allCommits(log)) {
+    if (!isCommitId(c.commit_id)) throw new Error('The hub sent an invalid version id; refusing to sync.')
+    if (c.preview_file !== undefined && !isHash(c.preview_file)) throw new Error('The hub sent an invalid preview; refusing to sync.')
+  }
+}
+
+function assertSafeFilemap(filemap: Array<{ path: string; hash: string }>) {
+  if (!Array.isArray(filemap)) throw new Error('The hub sent an invalid file list; refusing to sync.')
+  for (const e of filemap) {
+    const p = typeof e?.path === 'string' ? e.path : ''
+    const unsafe = !p || path.isAbsolute(p) || path.win32.isAbsolute(p) || p.split(/[\\/]/).includes('..')
+    if (unsafe || (e.hash !== 'empty' && !isHash(e.hash))) {
+      throw new Error(`The hub sent an unsafe file path (${p}); refusing to sync.`)
+    }
+  }
 }

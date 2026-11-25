@@ -202,6 +202,9 @@ describe('DAWLab Hub sharing', () => {
       ['/api/project', { headers: { Authorization: 'Bearer abcdefghijklmnopqrstuvwx' } }],
       ['/api/projects', { method: 'POST', body: '{}' }],
       ['/api/projects', { method: 'POST', headers: { 'X-Hub-Key': 'nope' }, body: '{}' }],
+      ['/api/project/objects/' + 'a'.repeat(64), { method: 'PUT', body: 'x' }],
+      ['/api/project/log', { method: 'DELETE' }],
+      ['/%E0%A4%A'],
     ]
     for (const [p, init] of probes) {
       if (live && !process.env.HUB_LIVE_KEY && p === '/api/projects') continue // the proxy adds the real key
