@@ -104,8 +104,11 @@ describe('pluginsOfVersion', () => {
       { path: 'S.logicx/Alternatives/000/ProjectData', hash: a },
       { path: 'S.logicx/Alternatives/001/ProjectData', hash: b },
     ], 'Logic Pro X', cas)!
-    // Without installed AUs to look names up in, the subtype code stands in for the name.
-    expect(plugins.map(p => [p.name, p.manufacturer, p.count])).toEqual([['FQ3p', 'FabF', 3], ['VRm1', 'Vlhl', 1]])
+    // Names come from the Audio Units installed on the machine; without them the subtype code stands in.
+    expect(plugins.map(p => p.count)).toEqual([3, 1])
+    expect(['FQ3p', 'Pro-Q 3']).toContain(plugins[0].name)
+    expect(['VRm1', 'Room']).toContain(plugins[1].name)
+    expect(plugins.some(p => p.manufacturer === 'appl' || p.manufacturer === 'Apple')).toBe(false)
   })
 
   it('returns null when nothing can be read', () => {

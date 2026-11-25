@@ -1,6 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import zlib from 'zlib';
 import fs from 'fs';
+import { ABLETON_INSTRUMENT_TAGS, ABLETON_SKIP_TAGS, abletonDeviceName } from './builtinPlugins';
 
 export interface PluginInfo {
     name: string;
@@ -9,6 +10,8 @@ export interface PluginInfo {
     is_instrument?: boolean;
     /** How many times the plugin is used in the project. */
     count?: number;
+    /** One of the DAW's own plugins (Channel EQ, EQ Eight…), not a third-party one. */
+    builtin?: boolean;
 }
 
 export interface ExtractedMetadata {
@@ -115,7 +118,7 @@ export class AbletonParser implements MetadataParser {
         processTracks(liveSet.Tracks);
 
         // Exhaustive Search
-        const pluginsList = this.findPlugins(jsonObj);
+        const pluginsList = [...this.findPlugins(jsonObj), ...this.findNativeDevices(jsonObj)];
         console.log(`[AbletonParser] Found ${pluginsList.length} unique plugins`);
 
         return {
@@ -126,6 +129,32 @@ export class AbletonParser implements MetadataParser {
             plugins: pluginsList,
             track_summary: tracks
         };
+    }
+
+    /** Live's own devices (EQ Eight, Operator, racks…), counted per instance, wherever they sit (tracks, racks, chains). */
+    private findNativeDevices(root: any): PluginInfo[] {
+        const byName = new Map<string, PluginInfo>();
+        const stack: any[] = [root];
+        while (stack.length > 0) {
+            const obj = stack.pop();
+            if (!obj || typeof obj !== 'object') continue;
+            if (Array.isArray(obj)) { for (const v of obj) stack.push(v); continue; }
+            for (const [k, v] of Object.entries(obj)) {
+                if (k.startsWith('@_') || !v || typeof v !== 'object') continue;
+                if (k === 'Devices' && !Array.isArray(v)) {
+                    for (const [tag, dev] of Object.entries(v as Record<string, any>)) {
+                        if (tag.startsWith('@_') || ABLETON_SKIP_TAGS.has(tag) || !dev || typeof dev !== 'object') continue;
+                        const instances = Array.isArray(dev) ? dev.length : 1;
+                        const name = abletonDeviceName(tag);
+                        const seen = byName.get(name);
+                        if (seen) seen.count = (seen.count ?? 1) + instances;
+                        else byName.set(name, { name, manufacturer: 'Ableton', type: 'Live', is_instrument: ABLETON_INSTRUMENT_TAGS.has(tag), builtin: true, count: instances });
+                    }
+                }
+                stack.push(v);
+            }
+        }
+        return [...byName.values()];
     }
 
     private findPlugins(root: any): PluginInfo[] {

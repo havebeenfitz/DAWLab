@@ -52,7 +52,7 @@ export const PluginSection: React.FC<PluginSectionProps> = ({ plugins, changes }
   const uniquePlugins = useMemo(() => {
     const seen = new Set<string>();
     return plugins.filter(p => {
-      const key = p.name.toLowerCase();
+      const key = `${p.builtin ? 'builtin:' : ''}${p.name.toLowerCase()}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -66,7 +66,7 @@ export const PluginSection: React.FC<PluginSectionProps> = ({ plugins, changes }
 
     uniquePlugins.forEach(plugin => {
       // Without a list of installed plugins (scan failed or not on a Mac) don't claim anything is missing.
-      const installed = installedPlugins.length === 0 || isPluginInstalled(plugin.name, installedPlugins);
+      const installed = !!plugin.builtin || installedPlugins.length === 0 || isPluginInstalled(plugin.name, installedPlugins);
       const enriched = { ...plugin, installed };
       if (plugin.is_instrument) {
         instruments.push(enriched);

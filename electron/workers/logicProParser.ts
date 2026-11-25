@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import plist from 'plist';
 import { PluginInfo, ExtractedMetadata, MetadataParser } from './parser';
+import { LOGIC_BUILTIN_INSTRUMENTS, LOGIC_NOT_PLUGINS, logicBuiltinName } from './builtinPlugins';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -126,7 +127,8 @@ export class LogicProParser implements MetadataParser {
     const binaryIndex = this.buildNameIndex(data);
 
     // Step 3: Extract unique plugins from plist XML fragments (Method 1)
-    const plugins = this.extractFromPlistFragments(text, auIndex, binaryIndex);
+    // Step 4: Logic's own plugins (Channel EQ, ChromaVerb, Alchemy…) from their instance records
+    const plugins = [...this.extractFromPlistFragments(text, auIndex, binaryIndex), ...this.extractBuiltins(data)];
 
     return {
       daw_version: 'Logic Pro X',
@@ -222,6 +224,31 @@ export class LogicProParser implements MetadataParser {
     }
 
     return plugins;
+  }
+
+  // ─── Method 4: Logic's own plugins ───────────────────────────────────────
+
+  /**
+   * Logic's built-in plugins are stored as records whose label is followed by
+   * zero padding and the tag "GAME". Each record is one plugin instance.
+   */
+  private extractBuiltins(data: Buffer): PluginInfo[] {
+    const byName = new Map<string, PluginInfo>();
+    const tag = Buffer.from('GAME');
+    for (let at = data.indexOf(tag); at !== -1; at = data.indexOf(tag, at + tag.length)) {
+      let end = at;
+      while (end > 0 && data[end - 1] === 0 && at - end < 24) end--;
+      if (end === at) continue; // a label is always followed by zero padding
+      let start = end;
+      while (start > 0 && data[start - 1] >= 0x20 && data[start - 1] <= 0x7e && end - start < 48) start--;
+      const label = data.subarray(start, end).toString('latin1').trim();
+      if (label.length < 2 || LOGIC_NOT_PLUGINS.has(label)) continue;
+      const name = logicBuiltinName(label);
+      const seen = byName.get(name);
+      if (seen) seen.count = (seen.count ?? 1) + 1;
+      else byName.set(name, { name, manufacturer: 'Apple', type: 'Logic', is_instrument: LOGIC_BUILTIN_INSTRUMENTS.has(name), builtin: true, count: 1 });
+    }
+    return [...byName.values()];
   }
 
   // ─── Method 2: Binary AU Code Pattern (Display Names) ────────────────────

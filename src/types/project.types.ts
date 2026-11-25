@@ -6,8 +6,12 @@
 export interface PluginInfo {
   name: string;
   manufacturer?: string;
-  type?: string;         // "VST3" | "AU" | "VST2"
+  type?: string;         // "VST3" | "AU" | "VST2" | "Logic" | "Live"
   is_instrument?: boolean;
+  /** Instances in the project. */
+  count?: number;
+  /** One of the DAW's own plugins (Channel EQ, EQ Eight…), always available. */
+  builtin?: boolean;
 }
 
 /**

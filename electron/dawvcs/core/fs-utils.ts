@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { isNoiseDir, isNoisePath } from './noise'
 import { promises as fsp } from 'fs'
 import { shell } from 'electron';
 
@@ -30,13 +31,14 @@ export async function getAllFiles(root: string, ignoredPaths: string[] = []) {
       }
       for (const e of entries) {
         // Skip directories named "Backup" and DAWLab's own storage folders
-        if (e.isDirectory() && (e.name === 'Backup' || e.name === 'Project File Backups' || ALWAYS_SKIPPED_DIR_NAMES.has(e.name))) {
+        if (e.isDirectory() && (isNoiseDir(e.name) || ALWAYS_SKIPPED_DIR_NAMES.has(e.name))) {
           continue
         }
 
         const full = path.join(dir, e.name)
         const relPath = path.relative(root, full).split(path.sep).join('/')
         if (isIgnored(relPath)) continue
+        if (!e.isDirectory() && isNoisePath(relPath)) continue
 
         // Check if this is a symlink and if it points outside the project
         if (e.isSymbolicLink()) {

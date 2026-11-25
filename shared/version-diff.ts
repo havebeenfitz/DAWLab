@@ -4,6 +4,8 @@
  * removed or used a different number of times. Pure, so the app and tests share it.
  */
 
+import { isNoisePath } from './noise'
+
 export interface DiffFileEntry {
   path: string
   hash: string
@@ -28,8 +30,8 @@ export interface FileDiff {
   unchanged: number
 }
 
-/** DAWLab's own storage folder inside a project is never part of a version. */
-const isInternal = (p: string) => p === '.dawlabproject' || p.startsWith('.dawlabproject/')
+/** DAWLab's storage, undo history, autosaves and Finder files are never shown as changes. */
+const isInternal = (p: string) => isNoisePath(p)
 /** Folder placeholders in a filemap carry the hash "empty"; they aren't files. */
 const isFile = (e: DiffFileEntry) => e.hash !== 'empty'
 
@@ -88,6 +90,8 @@ export interface DiffPlugin {
   is_instrument?: boolean
   /** How many times the plugin is used in the project; 1 when unknown. */
   count?: number
+  /** One of the DAW's own plugins (Channel EQ, EQ Eight…). */
+  builtin?: boolean
 }
 
 export type PluginChangeKind = 'added' | 'removed' | 'count' | 'same'
