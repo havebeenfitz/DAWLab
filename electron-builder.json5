@@ -16,8 +16,10 @@
     target: ["dmg"],
     icon: "src/assets/icons/logo.icns",
     artifactName: "${productName}-Mac-${arch}-${version}-Installer.${ext}",
-    identity: null, // Explicitly disable code signing
-    hardenedRuntime: false,
+    // Signed and notarized only when CI provides a Developer ID certificate
+    // (CSC_LINK) and App Store Connect API key (APPLE_API_KEY*); otherwise the
+    // build stays unsigned, as before. See .github/workflows/build.yml.
+    hardenedRuntime: true,
     gatekeeperAssess: false,
     entitlements: "entitlements.mac.plist",
     entitlementsInherit: "entitlements.mac.plist",
