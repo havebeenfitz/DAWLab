@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, Check, ExternalLink } from 'lucide-react';
 import { PluginInfo } from '@/types/project.types';
 import './PluginSection.css';
+import type { PluginDiff, PluginChange } from '../../../shared/version-diff';
 
 interface InstalledPlugin {
   name: string;
@@ -11,25 +12,25 @@ interface InstalledPlugin {
 
 interface PluginSectionProps {
   plugins: PluginInfo[];
+  /** Plugin changes against the previous version, when known. */
+  changes?: PluginDiff | null;
 }
-
-// MOCK: when true, every plugin renders as installed (green) for demo purposes.
-// Set to false to restore real local plugin detection.
-const MOCK_ALL_INSTALLED = true;
 
 /**
  * Check if a project plugin is locally installed.
  * Uses case-insensitive, whitespace-insensitive substring matching.
  */
 function isPluginInstalled(pluginName: string, installedPlugins: InstalledPlugin[]): boolean {
-  const needle = pluginName.toLowerCase().replace(/\s+/g, '');
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const needle = norm(pluginName);
+  if (!needle) return false;
   return installedPlugins.some(installed => {
-    const haystack = installed.name.replace(/\s+/g, '');
-    return haystack.includes(needle) || needle.includes(haystack);
+    const haystack = norm(installed.name);
+    return !!haystack && (haystack.includes(needle) || needle.includes(haystack));
   });
 }
 
-export const PluginSection: React.FC<PluginSectionProps> = ({ plugins }) => {
+export const PluginSection: React.FC<PluginSectionProps> = ({ plugins, changes }) => {
   const [installedPlugins, setInstalledPlugins] = useState<InstalledPlugin[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -64,7 +65,8 @@ export const PluginSection: React.FC<PluginSectionProps> = ({ plugins }) => {
     const effects: (PluginInfo & { installed: boolean })[] = [];
 
     uniquePlugins.forEach(plugin => {
-      const installed = MOCK_ALL_INSTALLED || isPluginInstalled(plugin.name, installedPlugins);
+      // Without a list of installed plugins (scan failed or not on a Mac) don't claim anything is missing.
+      const installed = installedPlugins.length === 0 || isPluginInstalled(plugin.name, installedPlugins);
       const enriched = { ...plugin, installed };
       if (plugin.is_instrument) {
         instruments.push(enriched);
@@ -83,6 +85,13 @@ export const PluginSection: React.FC<PluginSectionProps> = ({ plugins }) => {
 
     return { instruments, effects };
   }, [uniquePlugins, installedPlugins]);
+
+  const changeOf = useMemo(() => {
+    const m = new Map<string, PluginChange>();
+    for (const c of changes?.changes ?? []) m.set(c.plugin.name.toLowerCase(), c);
+    return m;
+  }, [changes]);
+  const removed = (changes?.changes ?? []).filter(c => c.kind === 'removed');
 
   const handleGetPlugin = (plugin: PluginInfo) => {
     const query = plugin.manufacturer && plugin.manufacturer !== 'Unknown'
@@ -108,7 +117,20 @@ export const PluginSection: React.FC<PluginSectionProps> = ({ plugins }) => {
   return (
     <div className="plugin-section">
       <div className="plugin-container">
-        {uniquePlugins.length === 0 ? (
+        {changes && (
+          <div className="plugin-changes-summary">
+            {changes.added + changes.removed + changes.countChanged === 0 ? (
+              <span className="chg-same">No plugin changes since the previous version</span>
+            ) : (
+              <>
+                {changes.added > 0 && <span className="chg-added">+{changes.added} added</span>}
+                {changes.removed > 0 && <span className="chg-removed">−{changes.removed} removed</span>}
+                {changes.countChanged > 0 && <span className="chg-modified">~{changes.countChanged} used more or less</span>}
+              </>
+            )}
+          </div>
+        )}
+        {uniquePlugins.length === 0 && removed.length === 0 ? (
           <div className="plugin-empty">No plugins detected in this project</div>
         ) : (
           <>
@@ -118,6 +140,7 @@ export const PluginSection: React.FC<PluginSectionProps> = ({ plugins }) => {
                 plugins={instruments}
                 keyPrefix="inst"
                 onGetPlugin={handleGetPlugin}
+                changeOf={changeOf}
               />
             )}
 
@@ -127,7 +150,27 @@ export const PluginSection: React.FC<PluginSectionProps> = ({ plugins }) => {
                 plugins={effects}
                 keyPrefix="fx"
                 onGetPlugin={handleGetPlugin}
+                changeOf={changeOf}
               />
+            )}
+
+            {removed.length > 0 && (
+              <div className="plugin-group">
+                <div className="plugin-group-label">Removed in this version</div>
+                {removed.map((c, i) => (
+                  <div key={`rm-${i}`} className="plugin-row plugin-row-removed">
+                    <span className="plugin-change-mark chg-removed" aria-label="Removed">−</span>
+                    <span className="plugin-name-group">
+                      <span className="plugin-name">{c.plugin.name}</span>
+                      {c.plugin.manufacturer && c.plugin.manufacturer !== 'Unknown' && (
+                        <span className="plugin-manufacturer">{c.plugin.manufacturer}</span>
+                      )}
+                    </span>
+                    <span />
+                    <span className="plugin-type-badge">{c.plugin.type}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </>
         )}
@@ -141,9 +184,10 @@ interface PluginGroupProps {
   plugins: (PluginInfo & { installed: boolean })[];
   keyPrefix: string;
   onGetPlugin: (plugin: PluginInfo) => void;
+  changeOf: Map<string, PluginChange>;
 }
 
-const PluginGroup: React.FC<PluginGroupProps> = ({ label, plugins, keyPrefix, onGetPlugin }) => {
+const PluginGroup: React.FC<PluginGroupProps> = ({ label, plugins, keyPrefix, onGetPlugin, changeOf }) => {
   const missing = plugins.filter(p => !p.installed);
   const installed = plugins.filter(p => p.installed);
 
@@ -158,6 +202,7 @@ const PluginGroup: React.FC<PluginGroupProps> = ({ label, plugins, keyPrefix, on
               plugin={plugin}
               installed={false}
               onGetPlugin={onGetPlugin}
+              change={changeOf.get(plugin.name.toLowerCase())}
             />
           ))}
         </div>
@@ -168,6 +213,7 @@ const PluginGroup: React.FC<PluginGroupProps> = ({ label, plugins, keyPrefix, on
           plugin={plugin}
           installed={true}
           onGetPlugin={onGetPlugin}
+          change={changeOf.get(plugin.name.toLowerCase())}
         />
       ))}
     </div>
@@ -178,16 +224,24 @@ interface PluginRowProps {
   plugin: PluginInfo;
   installed: boolean;
   onGetPlugin: (plugin: PluginInfo) => void;
+  change?: PluginChange;
 }
 
-const PluginRow: React.FC<PluginRowProps> = ({ plugin, installed, onGetPlugin }) => {
+const PluginRow: React.FC<PluginRowProps> = ({ plugin, installed, onGetPlugin, change }) => {
   return (
-    <div className={`plugin-row ${installed ? '' : 'plugin-row-missing'}`}>
+    <div className={`plugin-row ${installed ? '' : 'plugin-row-missing'} ${change?.kind === 'added' ? 'plugin-row-added' : ''}`}>
       <span className={`plugin-status-icon ${installed ? 'installed' : 'missing'}`}>
         {installed ? <Check size={16} /> : <AlertTriangle size={16} />}
       </span>
       <span className="plugin-name-group">
-        <span className="plugin-name">{plugin.name}</span>
+        <span className="plugin-name">
+          {change?.kind === 'added' && <span className="plugin-change-mark chg-added" aria-label="Added">+ </span>}
+          {plugin.name}
+          {change && change.after > 1 && change.kind === 'same' && <span className="plugin-count"> ×{change.after}</span>}
+          {change?.kind === 'count' && (
+            <span className="plugin-count chg-modified" title="Times used: before → now"> ×{change.before} → ×{change.after}</span>
+          )}
+        </span>
         {plugin.manufacturer && plugin.manufacturer !== 'Unknown' && (
           <span className="plugin-manufacturer">{plugin.manufacturer}</span>
         )}

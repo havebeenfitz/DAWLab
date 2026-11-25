@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { FileExplorer } from '@/components/FileExplorer/FileExplorer';
 import { PluginSection } from '@/components/PluginSection/PluginSection';
 import { VersionComments } from '@/components/Feedback/VersionComments';
+import { useVersionChanges } from '@/hooks/useVersionChanges';
 
 export type BottomPanelTab = 'files' | 'plugins' | 'comments';
 
@@ -63,6 +64,7 @@ const panelClass = (active: boolean, scrolls: boolean) =>
 
 /** Files, plugins and comments of the active version: side by side on desktop, tabbed on mobile. */
 export function HistoryBottomPanels(p: Props) {
+  const { changes, loading: changesLoading } = useVersionChanges(p.projectName, p.fileCommitId);
   return (
     <div className="flex flex-col flex-1 min-h-0 px-6">
       <MobileTabPicker activeTab={p.activeTab} onTabChange={p.onTabChange} />
@@ -74,11 +76,13 @@ export function HistoryBottomPanels(p: Props) {
             commitId={p.fileCommitId}
             projectPath={p.projectPath}
             onSelectPath={p.onSelectPath}
+            changes={changes}
+            changesLoading={changesLoading}
           />
         </div>
 
         <div className={panelClass(p.activeTab === 'plugins', true)}>
-          <PluginSection plugins={p.plugins} />
+          <PluginSection plugins={changes?.plugins ? changes.plugins.changes.filter(c => c.kind !== 'removed').map(c => c.plugin) : p.plugins} changes={changes?.plugins ?? null} />
         </div>
 
         {/* Comments on the active version (Tasks + Notepad are hidden for now) */}

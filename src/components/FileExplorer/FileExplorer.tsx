@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ChevronRight, Folder, File, Mic, FileMusic, FileCode, Copy, FolderOpen, Check, EyeOff, RotateCcw } from 'lucide-react';
 import dawlabLogo from '@/assets/logo.png';
 import './FileExplorer.css';
+import type { VersionChanges } from '@/hooks/useVersionChanges';
+import { VersionChangesList, CHANGE_MARK, CHANGE_WORD } from './VersionChangesList';
 
 interface FileMapEntry {
   path: string;
@@ -13,6 +15,9 @@ interface FileExplorerProps {
   commitId?: string;
   projectPath: string | null;
   onSelectPath?: () => void;
+  /** What this version changed; when given, the explorer opens on the change list. */
+  changes?: VersionChanges | null;
+  changesLoading?: boolean;
 }
 
 interface TreeNode {
@@ -23,7 +28,13 @@ interface TreeNode {
   tracked: boolean; // false = in ignoredFiles, excluded from future commits
 }
 
-export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitId, projectPath, onSelectPath }) => {
+export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitId, projectPath, onSelectPath, changes, changesLoading }) => {
+  const [view, setView] = useState<'changes' | 'all'>('changes');
+  const changeByPath = useMemo(() => {
+    const m = new Map<string, keyof typeof CHANGE_MARK>();
+    for (const c of changes?.files.changes ?? []) if (c.kind !== 'removed') m.set(c.path, c.kind);
+    return m;
+  }, [changes]);
   const [fileMap, setFileMap] = useState<FileMapEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -230,6 +241,11 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
               <Icon size={16} className={`tree-type-icon ${isFolder ? 'folder-icon' : 'file-icon'}`} />
             </span>
             <span className="tree-label">{node.name}</span>
+            {changeByPath.has(node.path) && (
+              <span className={`tree-change-mark change-${changeByPath.get(node.path)}`} title={CHANGE_WORD[changeByPath.get(node.path)!]}>
+                {CHANGE_MARK[changeByPath.get(node.path)!]}
+              </span>
+            )}
             {!node.tracked && <span className="untracked-badge">Not tracked</span>}
             {node.tracked ? (
               <button
@@ -321,6 +337,24 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
         </div>
       )}
 
+      {changes !== undefined && (
+        <div className="file-view-switch" role="group" aria-label="Show">
+          <button type="button" aria-pressed={view === 'changes'} onClick={() => setView('changes')}>Changes</button>
+          <button type="button" aria-pressed={view === 'all'} onClick={() => setView('all')}>All files</button>
+        </div>
+      )}
+
+      {changes !== undefined && view === 'changes' ? (
+        <div className="file-tree-container">
+          {changesLoading && !changes ? (
+            <div className="file-tree-loading">Comparing with the previous version...</div>
+          ) : changes ? (
+            <VersionChangesList diff={changes.files} hasParent={!!changes.parentId} parentMessage={changes.parentMessage} />
+          ) : (
+            <div className="file-tree-empty">Changes for this version aren't available</div>
+          )}
+        </div>
+      ) : (
       <div className="file-tree-container">
         {hasDawlabStorage && (
           <div className="tree-node">
@@ -343,6 +377,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
           renderTree(tree)
         )}
       </div>
+      )}
     </div>
   );
 };
