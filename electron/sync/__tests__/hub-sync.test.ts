@@ -2,6 +2,9 @@
 /**
  * End-to-end: two local users share one project through a real in-process
  * DAWLab Hub (filesystem storage), the way two producers would.
+ *
+ * Set HUB_LIVE_URL (and HUB_LIVE_KEY, unless something in front of the hub
+ * adds the X-Hub-Key header) to run the same flow against a deployed hub.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import fs from 'fs'
@@ -68,10 +71,17 @@ describe('DAWLab Hub sharing', () => {
   let editUrl = ''
   let listenUrl = ''
 
+  const live = process.env.HUB_LIVE_URL
+  const hubKey = live ? process.env.HUB_LIVE_KEY ?? '' : 'secret-key'
+
   beforeAll(async () => {
-    server = http.createServer(createHub({ storage: new FsStorage(path.join(MOCK_HOME, 'hub-data')), createKey: 'secret-key' }))
-    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
-    hubUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    if (live) {
+      hubUrl = live.replace(/\/+$/, '')
+    } else {
+      server = http.createServer(createHub({ storage: new FsStorage(path.join(MOCK_HOME, 'hub-data')), createKey: 'secret-key' }))
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+      hubUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    }
 
     fs.mkdirSync(path.join(aliceDir, 'Samples'), { recursive: true })
     fs.writeFileSync(path.join(aliceDir, 'Song.als'), 'ableton v1')
@@ -83,20 +93,21 @@ describe('DAWLab Hub sharing', () => {
 
   afterAll(() => {
     vi.useRealTimers()
-    server.close()
+    server?.close()
     fs.rmSync(MOCK_HOME, { recursive: true, force: true })
   })
 
   it('refuses to create a project without the hub key', async () => {
     setUsername('alice')
     await initProject(name, aliceDir, { storageMode: 'project', author: 'alice' })
+    if (live && !process.env.HUB_LIVE_KEY) return // a proxy adds the real key to every request
     saveHubSettings({ hubUrl, hubKey: 'wrong' })
     await expect(shareProject(name)).rejects.toThrow(/did not accept this key/)
   })
 
   it('shares a project and its comments', async () => {
     setUsername('alice')
-    saveHubSettings({ hubUrl, hubKey: 'secret-key' })
+    saveHubSettings({ hubUrl, hubKey })
     const result = await shareProject(name)
     expect(result.pushed).toBe(1)
     expect(result.uploadedFiles).toBe(2)
@@ -193,6 +204,7 @@ describe('DAWLab Hub sharing', () => {
       ['/api/projects', { method: 'POST', headers: { 'X-Hub-Key': 'nope' }, body: '{}' }],
     ]
     for (const [p, init] of probes) {
+      if (live && !process.env.HUB_LIVE_KEY && p === '/api/projects') continue // the proxy adds the real key
       const res = await fetch(hubUrl + p, init)
       expect(res.status, p).toBe(404)
       expect(await res.text(), p).toBe('')
@@ -200,6 +212,7 @@ describe('DAWLab Hub sharing', () => {
   })
 
   it('rejects uploads whose content does not match the hash', async () => {
+    setUsername('alice')
     const token = getProjectRemote(name)!.token
     const res = await fetch(`${hubUrl}/api/project/objects/${'0'.repeat(64)}`, {
       method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: 'not that',
