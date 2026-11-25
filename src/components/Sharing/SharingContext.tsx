@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { hub, onJoinLink, onSyncStatus, type SharedFolder, type SyncStatus } from './hub';
+import { hub, describeSync, onJoinLink, onSyncStatus, type SharedFolder, type SyncStatus } from './hub';
 import { ShareFolderDialog } from './ShareFolderDialog';
 import { JoinFolderDialog } from './JoinFolderDialog';
 import { ShareProjectDialog } from './ShareProjectDialog';
@@ -15,6 +15,8 @@ interface SharingContextValue {
   shareFolder: (folderId: string, folderName: string) => void;
   shareProject: (projectName: string) => void;
   join: (prefill?: string) => void;
+  /** Pull and push a shared folder now; reports the outcome as a notice. */
+  syncNow: (folderId: string) => Promise<void>;
 }
 
 const SharingContext = createContext<SharingContextValue | null>(null);
@@ -31,6 +33,8 @@ export function SharingProvider({ children }: { children: ReactNode }) {
   const [shareTarget, setShareTarget] = useState<{ folderId: string; folderName: string } | null>(null);
   const [projectTarget, setProjectTarget] = useState<string | null>(null);
   const [joinPrefill, setJoinPrefill] = useState<string | null>(null);
+  // Folders synced by hand: their outcome is reported by syncNow, not by the background notice.
+  const manual = useRef(new Set<string>());
 
   const refresh = useCallback(async () => {
     try {
@@ -55,7 +59,7 @@ export function SharingProvider({ children }: { children: ReactNode }) {
     const added = s.result?.addedProjects ?? [];
     const pulled = s.result?.pulledVersions ?? 0;
     if (added.length || pulled) announceLibraryChange();
-    if (s.state === 'synced' && (added.length || pulled)) {
+    if (s.state === 'synced' && (added.length || pulled) && !manual.current.has(s.folderId)) {
       const parts = [
         added.length ? `${added.length} new project${added.length > 1 ? 's' : ''}` : '',
         pulled ? `${pulled} new version${pulled > 1 ? 's' : ''}` : '',
@@ -71,6 +75,21 @@ export function SharingProvider({ children }: { children: ReactNode }) {
     return off;
   }, []);
 
+  const syncNow = useCallback(async (folderId: string) => {
+    manual.current.add(folderId);
+    const name = folders[folderId]?.name ?? 'Shared folder';
+    try {
+      const r = await hub.syncNow(folderId);
+      if (r.ok) notify.success(`“${name}” synced`, describeSync(r));
+      else notify.error(`Couldn’t sync “${name}”`, r.error ?? 'Try again in a moment.');
+    } catch (err) {
+      notify.error(`Couldn’t sync “${name}”`, err);
+    } finally {
+      manual.current.delete(folderId);
+      refresh();
+    }
+  }, [folders, refresh]);
+
   const value = useMemo<SharingContextValue>(() => ({
     folders,
     status,
@@ -78,7 +97,8 @@ export function SharingProvider({ children }: { children: ReactNode }) {
     shareFolder: (folderId, folderName) => setShareTarget({ folderId, folderName }),
     shareProject: (projectName) => setProjectTarget(projectName),
     join: (prefill) => setJoinPrefill(prefill ?? ''),
-  }), [folders, status, refresh]);
+    syncNow,
+  }), [folders, status, refresh, syncNow]);
 
   return (
     <SharingContext.Provider value={value}>

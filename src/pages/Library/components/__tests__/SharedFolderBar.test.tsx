@@ -12,6 +12,7 @@ const sharing = vi.hoisted(() => ({
     shareFolder: vi.fn(),
     shareProject: vi.fn(),
     join: vi.fn(),
+    syncNow: vi.fn(),
   },
 }));
 
@@ -86,7 +87,7 @@ describe('SharedFolderBar', () => {
     sharing.value.status = { f1: { folderId: 'f1', state: 'syncing', message: 'Downloading Song' } };
     render(<SharedFolderBar folderId="f1" />);
     expect(bar()).toHaveTextContent('Downloading Song');
-    expect(screen.getByRole('button', { name: 'Invite & manage' }).querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Syncing…' }).querySelector('.animate-spin')).not.toBeNull();
   });
 
   it('says Syncing… without a message', () => {
@@ -114,5 +115,17 @@ describe('SharedFolderBar', () => {
     render(<SharedFolderBar folderId="f1" />);
     expect(bar()).not.toHaveTextContent('Token revoked');
     expect(bar()).toHaveTextContent('synced just now');
+  });
+
+  it('syncs the folder now, and is disabled while a sync runs', () => {
+    render(<SharedFolderBar folderId="f1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+    expect(sharing.value.syncNow).toHaveBeenCalledWith('f1');
+  });
+
+  it('shows Syncing… while syncing', () => {
+    sharing.value.status = { f1: { folderId: 'f1', state: 'syncing' } };
+    render(<SharedFolderBar folderId="f1" />);
+    expect(screen.getByRole('button', { name: 'Syncing…' })).toBeDisabled();
   });
 });

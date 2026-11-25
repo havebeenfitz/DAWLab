@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ChevronLeft, GalleryHorizontalEnd, Settings, Share2, Headphones, Users } from 'lucide-react';
+import { ChevronLeft, GalleryHorizontalEnd, Settings, Share2, Headphones, Users, RefreshCw } from 'lucide-react';
 import logo from '@/assets/logo.png';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { dawInfo } from '@/lib/daw';
@@ -22,6 +22,8 @@ interface Props {
   onOpenInDaw: () => void;
   onShare: () => void;
   onToggleSettings: () => void;
+  /** Shared projects only: new versions waiting on the hub, and pulling them. */
+  sync?: { incoming: number; pulling: boolean; pull: () => void };
 }
 
 /** Top bar of a project: where you are, alternatives, and what you can do with it. */
@@ -92,6 +94,23 @@ export function HistoryHeader(p: Props) {
               {daw.logo ? <img src={daw.logo} alt={daw.name} className="w-[18px] h-[18px] object-contain" /> : <span>{daw.name}</span>}
             </button>
           </>
+        )}
+        {shared && p.sync && (
+          <button
+            type="button"
+            className="btn-pill group px-5 relative"
+            onClick={p.sync.pull}
+            disabled={p.sync.pulling}
+            title={p.sync.incoming > 0
+              ? `${p.sync.incoming} new version${p.sync.incoming === 1 ? '' : 's'} from others. Get them and send yours`
+              : 'Get everyone’s latest versions and send yours'}
+          >
+            <RefreshCw size={16} aria-hidden className={`text-gray-400 group-hover:text-white ${p.sync.pulling ? 'animate-spin' : ''}`} />
+            <span>{p.sync.pulling ? 'Pulling…' : 'Pull'}</span>
+            {p.sync.incoming > 0 && !p.sync.pulling && (
+              <span className="ui-badge" aria-label={`${p.sync.incoming} new from others`}>{p.sync.incoming} new</span>
+            )}
+          </button>
         )}
         <button type="button" className="btn-pill group px-5" onClick={p.onShare} disabled={!p.projectName}>
           <Share2 size={16} aria-hidden className="text-gray-400 group-hover:text-white" />

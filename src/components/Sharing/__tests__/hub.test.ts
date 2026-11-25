@@ -157,3 +157,13 @@ describe('labels', () => {
     expect(Object.keys(roleHint)).toEqual(['edit', 'listen']);
   });
 });
+
+import { describeSync } from '../hub';
+describe('describeSync', () => {
+  it('says what a manual sync did, or that all is up to date', () => {
+    expect(describeSync({ ok: true })).toBe('Up to date');
+    expect(describeSync({ ok: true, pulledVersions: 1 })).toBe('1 new version pulled');
+    expect(describeSync({ ok: true, pulledVersions: 3, pushedVersions: 2, addedProjects: ['A'], uploadedProjects: ['B', 'C'] }))
+      .toBe('1 new project, 3 new versions pulled, 2 projects shared, 2 versions sent');
+  });
+});

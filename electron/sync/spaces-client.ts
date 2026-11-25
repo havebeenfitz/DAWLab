@@ -14,9 +14,11 @@ import { getUserDir, getUsername } from '../dawvcs/core/constants'
 import { getUserConfigManager } from '../dawvcs/core/config'
 import { loadLocalProjectLog } from '../dawvcs/core/log'
 import { loadRegistry } from '../dawvcs/core/registry'
+import { getProjectStorageDirs } from '../dawvcs/core/storage-location'
+import { commitExists } from '../dawvcs/core/commits'
 import { writeJsonSync } from '../dawvcs/core/fs-utils'
 import {
-  parseFullInvite, buildFullInvite, parseJoinLink, toSharedLog,
+  allCommits, parseFullInvite, buildFullInvite, parseJoinLink, toSharedLog,
   type CreatedInvite, type InviteInfo, type InvitePreview, type JoinResponse, type SpaceMember, type SpaceProject,
   type SpaceResponse, type SpaceRole,
 } from '../../shared/hub-protocol'
@@ -234,6 +236,47 @@ async function downloadNewRemoteProjects(
     }
   }
   return { ...space, projects }
+}
+
+// ------------------------------------------------------------- one project
+
+/** The shared folder and hub project id behind a local project, if it is in a shared folder. */
+export function findSharedProject(projectName: string): { space: LocalSpace; projectId: string } | null {
+  const space = getSpaceForProject(projectName)
+  if (!space) return null
+  const projectId = Object.entries(space.projects).find(([, name]) => name === projectName)?.[0]
+  return projectId ? { space, projectId } : null
+}
+
+export interface ProjectSyncResult {
+  pulledVersions: number
+  pushedVersions: number
+}
+
+/**
+ * Pulls one project's new versions, alternatives and comments from the hub and
+ * sends this Mac's new ones. A project not yet uploaded to its shared folder
+ * goes through a folder sync, which uploads it first.
+ */
+export async function syncSharedProject(projectName: string, onProgress: SyncProgress = () => {}): Promise<ProjectSyncResult> {
+  const found = findSharedProject(projectName)
+  if (!found) {
+    const space = getSpaceForProject(projectName)
+    if (!space) throw new Error(`'${projectName}' is not in a shared folder.`)
+    const r = await syncSpace(space.folderId, onProgress)
+    return { pulledVersions: r.pulledVersions, pushedVersions: r.pushedVersions }
+  }
+  const counts = await syncProjectWith(projectName, projectClient(found.space, found.projectId), writeRole(found.space.role), onProgress)
+  return { pulledVersions: counts.pulled, pushedVersions: counts.pushed }
+}
+
+/** How many versions others put on the hub that this Mac doesn't have yet. Reads only the version list. */
+export async function countIncomingVersions(projectName: string): Promise<number> {
+  const found = findSharedProject(projectName)
+  if (!found) return 0
+  const { log } = await projectClient(found.space, found.projectId).getProject()
+  const { commitsDir } = getProjectStorageDirs(projectName)
+  return allCommits(log).filter((c) => !commitExists(projectName, c.commit_id, commitsDir)).length
 }
 
 /** Syncs the shared folder a project is in, if it is in one. Used after saving a version. */

@@ -10,9 +10,9 @@ const m = vi.hoisted(() => ({
   spaces: {
     listLocalSpaces: vi.fn(), getLocalSpace: vi.fn(), getSpaceForProject: vi.fn(), shareFolder: vi.fn(), joinSpace: vi.fn(),
     getSpaceDetails: vi.fn(), listInvites: vi.fn(), createInvite: vi.fn(), revokeInvite: vi.fn(), changeMemberRole: vi.fn(),
-    removeMember: vi.fn(), leaveSpace: vi.fn(), stopSharing: vi.fn(), previewInvite: vi.fn(),
+    removeMember: vi.fn(), leaveSpace: vi.fn(), stopSharing: vi.fn(), previewInvite: vi.fn(), countIncomingVersions: vi.fn(),
   },
-  autoSync: { requestProjectSync: vi.fn(), requestSpaceSync: vi.fn(), startAutoSync: vi.fn(), syncAllSpaces: vi.fn() },
+  autoSync: { requestProjectSync: vi.fn(), requestSharedProjectSync: vi.fn(), requestSpaceSync: vi.fn(), startAutoSync: vi.fn(), syncAllSpaces: vi.fn() },
   manager: { createFolder: vi.fn(), moveProject: vi.fn(), getProjectFolder: vi.fn(), getFolders: vi.fn() },
   registry: { loadRegistry: vi.fn() },
 }))
@@ -167,5 +167,31 @@ describe('sharing IPC', () => {
     await call('hub-project-saved', 'Snow')
     expect(m.autoSync.requestProjectSync).toHaveBeenCalledWith('Snow')
     expect(await call('hub-default-join-dir')).toMatch(/Music[\\/]DAWLab$/)
+  })
+
+  it('reports what a manual folder sync did, and why it failed', async () => {
+    m.autoSync.requestSpaceSync.mockResolvedValueOnce({
+      space, pulledVersions: 3, pushedVersions: 1, addedProjects: ['Lodge'], uploadedProjects: [], failed: [],
+    })
+    const ok = await call('hub-sync-space-now', 'f1')
+    expect(ok).toMatchObject({ ok: true, pulledVersions: 3, pushedVersions: 1, addedProjects: ['Lodge'] })
+    expect(JSON.stringify(ok)).not.toContain('SECRET-MEMBER-TOKEN')
+
+    m.autoSync.requestSpaceSync.mockResolvedValueOnce({ space, pulledVersions: 0, pushedVersions: 0, addedProjects: [], uploadedProjects: [], failed: [{ project: 'Snow', error: 'disk full' }] })
+    expect(await call('hub-sync-space-now', 'f1')).toMatchObject({ ok: false, error: 'Snow: disk full' })
+
+    m.autoSync.requestSpaceSync.mockResolvedValueOnce(null)
+    m.spaces.getLocalSpace.mockReturnValueOnce({ ...space, lastError: 'You no longer have access' })
+    expect(await call('hub-sync-space-now', 'f1')).toEqual({ ok: false, error: 'You no longer have access' })
+  })
+
+  it('pulls one project and counts versions waiting on the hub, treating failures as none', async () => {
+    m.autoSync.requestSharedProjectSync.mockResolvedValueOnce({ pulledVersions: 2, pushedVersions: 0 })
+    expect(await call('hub-sync-project-now', 'Snow')).toEqual({ pulledVersions: 2, pushedVersions: 0 })
+    expect(m.autoSync.requestSharedProjectSync).toHaveBeenCalledWith('Snow', expect.any(Function))
+    m.spaces.countIncomingVersions.mockResolvedValueOnce(4)
+    expect(await call('hub-project-incoming', 'Snow')).toBe(4)
+    m.spaces.countIncomingVersions.mockRejectedValueOnce(new Error('offline'))
+    expect(await call('hub-project-incoming', 'Snow')).toBe(0)
   })
 })

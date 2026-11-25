@@ -2,7 +2,7 @@
  * Builders for the Library's right-click menus. Each item closes the menu as
  * part of its action, in the same order as before (close first or last).
  */
-import { FolderPlus, FileMusic, Play, Square, AudioLines, Pencil, Trash2, Tag, Users, Share2, ExternalLink, ArchiveX } from 'lucide-react';
+import { FolderPlus, FileMusic, Play, Square, AudioLines, Pencil, Trash2, Tag, Users, Share2, ExternalLink, ArchiveX, RefreshCw } from 'lucide-react';
 import { createFolderMenuItems } from '@/components/ContextMenu';
 import type { ContextMenuItem } from '@/components/ContextMenu';
 
@@ -19,6 +19,8 @@ interface FolderMenuActions {
   isShared: boolean;
   close: () => void;
   share: () => void;
+  /** Pull and push a shared folder now. Absent for folders that aren't shared. */
+  syncNow?: () => void;
   rename: () => void;
   remove: () => void;
   /** Takes the folder and every project in it out of DAWLab. Absent for shared folders. */
@@ -32,6 +34,11 @@ export function buildFolderMenuItems(a: FolderMenuActions): ContextMenuItem[] {
       icon: <Users size={14} />,
       onClick: () => { a.close(); a.share(); },
     },
+    ...(a.syncNow ? [{
+      label: 'Sync Now',
+      icon: <RefreshCw size={14} />,
+      onClick: () => { a.close(); a.syncNow!(); },
+    }] : []),
     ...createFolderMenuItems(
       () => { a.rename(); a.close(); },
       () => { a.remove(); a.close(); }

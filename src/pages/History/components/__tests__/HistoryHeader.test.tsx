@@ -149,4 +149,26 @@ describe('HistoryHeader', () => {
       expect(screen.queryByText(/Listening in/)).not.toBeInTheDocument();
     });
   });
+
+  describe('Pull for shared projects', () => {
+    it('shows Pull with a badge of new versions from others, and pulls', () => {
+      const pull = vi.fn();
+      renderHeader({ access: collaborator, sync: { incoming: 3, pulling: false, pull } });
+      const button = screen.getByRole('button', { name: /Pull/ });
+      expect(screen.getByLabelText('3 new from others')).toHaveTextContent('3 new');
+      fireEvent.click(button);
+      expect(pull).toHaveBeenCalled();
+    });
+
+    it('is disabled while pulling and has no badge then', () => {
+      renderHeader({ access: collaborator, sync: { incoming: 3, pulling: true, pull: vi.fn() } });
+      expect(screen.getByRole('button', { name: /Pulling/ })).toBeDisabled();
+      expect(screen.queryByLabelText('3 new from others')).not.toBeInTheDocument();
+    });
+
+    it('is not shown for projects that are not shared', () => {
+      renderHeader({ sync: { incoming: 1, pulling: false, pull: vi.fn() } });
+      expect(screen.queryByRole('button', { name: /Pull/ })).not.toBeInTheDocument();
+    });
+  });
 });

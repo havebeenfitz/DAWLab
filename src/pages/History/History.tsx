@@ -19,6 +19,7 @@ import { MergeModal } from "@/components/MergeModal/MergeModal";
 import { ProjectSettings } from "@/components/ProjectSettings/ProjectSettings";
 import { useOptionalSharing } from "@/components/Sharing";
 import { useProjectAccess } from "@/hooks/useProjectAccess";
+import { useSharedProjectSync } from "@/hooks/useSharedProjectSync";
 import FeedbackView from "@/components/Feedback/FeedbackView";
 import { BranchMenu } from "@/components/BranchMenu/BranchMenu";
 import { TagManagerPopover } from "@/components/TagManagerPopover/TagManagerPopover";
@@ -85,6 +86,8 @@ export const History: React.FC = () => {
   const access = useProjectAccess(passedProject);
 
   const log = useProjectLog(passedProject, projectId);
+  // Shared projects: new versions from others, and Pull.
+  const sharedSync = useSharedProjectSync(passedProject, access.folder?.folderId, log.refreshProjectLog);
   const { projectLog, selectedBranch, loadProjectLog } = log;
   const pathPrompt = usePathPrompt();
   const projectPath = useProjectPath(projectLog, () => pathPrompt.requestPath(null));
@@ -251,6 +254,7 @@ export const History: React.FC = () => {
         onOpenInDaw={handleOpenInDaw}
         onShare={() => passedProject && sharing?.shareProject(passedProject)}
         onToggleSettings={() => setShowSettings(!showSettings)}
+        sync={access.folder ? { incoming: sharedSync.incoming, pulling: sharedSync.pulling, pull: () => { void sharedSync.pull(); } } : undefined}
       />
 
       {showSettings ? (

@@ -11,9 +11,9 @@ import {
 import {
   listLocalSpaces, getLocalSpace, getSpaceForProject, shareFolder, joinSpace, getSpaceDetails,
   listInvites, createInvite, revokeInvite, changeMemberRole, removeMember, leaveSpace, stopSharing,
-  previewInvite,
+  previewInvite, countIncomingVersions,
 } from './spaces-client'
-import { requestProjectSync, requestSpaceSync, startAutoSync, syncAllSpaces, type SyncStatus } from './auto-sync'
+import { requestProjectSync, requestSharedProjectSync, requestSpaceSync, startAutoSync, syncAllSpaces, type SyncStatus } from './auto-sync'
 
 /** Never hand tokens to the renderer: it only needs to know what is shared and how. */
 const publicSpace = (s: ReturnType<typeof getLocalSpace>) => s && {
@@ -81,6 +81,24 @@ export function registerHubIpc(ipcMain: IpcMain, getWindow: () => BrowserWindow 
     }
   })
   ipcMain.handle('hub-sync-space', (_ev, folderId: string) => requestSpaceSync(folderId).then((r) => r && publicSpace(r.space)))
+  // One project of a shared folder: pull and push now, and how many versions are waiting on the hub.
+  ipcMain.handle('hub-sync-project-now', (ev, projectName: string) => requestSharedProjectSync(projectName, progress(ev, projectName)))
+  ipcMain.handle('hub-project-incoming', (_ev, projectName: string) => countIncomingVersions(projectName).catch(() => 0))
+  // "Sync now": pull and push one shared folder right away; reports what happened.
+  ipcMain.handle('hub-sync-space-now', async (_ev, folderId: string) => {
+    const r = await requestSpaceSync(folderId)
+    if (!r) return { ok: false, error: getLocalSpace(folderId)?.lastError ?? 'Sync failed.' }
+    return {
+      ok: r.failed.length === 0,
+      pulledVersions: r.pulledVersions,
+      pushedVersions: r.pushedVersions,
+      addedProjects: r.addedProjects,
+      uploadedProjects: r.uploadedProjects,
+      failed: r.failed,
+      error: r.failed[0] ? `${r.failed[0].project}: ${r.failed[0].error}` : undefined,
+      folder: publicSpace(r.space),
+    }
+  })
   ipcMain.handle('hub-sync-all', () => syncAllSpaces().then(() => true))
   ipcMain.handle('hub-project-saved', (_ev, projectName: string) => { requestProjectSync(projectName); return true })
   ipcMain.handle('hub-project-share-context', (_ev, projectName: string) => projectShareContext(projectName))

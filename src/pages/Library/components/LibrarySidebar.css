@@ -97,3 +97,22 @@
   color: #8ccaff;
   vertical-align: middle;
 }
+
+/* A shared folder row: the folder, and Sync now next to it */
+.lib-sidebar-row { display: flex; align-items: center; gap: 2px; }
+.lib-sidebar-row .lib-sidebar-item { flex: 1; min-width: 0; }
+.lib-sidebar-sync {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  padding: 0;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.lib-sidebar-sync:hover:not(:disabled) { background: var(--surface-1); color: var(--text-main); border-color: transparent; }
+.lib-sidebar-sync:disabled { cursor: default; color: var(--brand); }

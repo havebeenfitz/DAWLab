@@ -4,7 +4,7 @@ import './LibrarySidebar.css';
 
 /** Shown at the top of a shared folder: who's in it, how you take part, and whether it's up to date. */
 export function SharedFolderBar({ folderId }: { folderId: string }) {
-  const { folders, status, shareFolder } = useSharing();
+  const { folders, status, shareFolder, syncNow } = useSharing();
   const shared = folders[folderId];
   if (!shared) return null;
   const st = status[folderId];
@@ -27,8 +27,17 @@ export function SharedFolderBar({ folderId }: { folderId: string }) {
           <span className="ui-status-error"><AlertCircle size={12} aria-hidden /> {error}</span>
         ) : `synced ${relativeTime(st?.lastSync ?? shared.lastSync)}`}
       </span>
+      <button
+        type="button"
+        className="ui-btn ui-btn-sm"
+        onClick={() => { void syncNow(folderId); }}
+        disabled={syncing}
+        title="Get everyone's latest versions and send yours"
+      >
+        <RefreshCw size={13} className={syncing ? 'animate-spin' : undefined} aria-hidden />
+        {syncing ? 'Syncing…' : 'Sync now'}
+      </button>
       <button type="button" className="ui-btn ui-btn-sm" onClick={() => shareFolder(folderId, shared.name)}>
-        {syncing ? <RefreshCw size={13} className="animate-spin" aria-hidden /> : null}
         {shared.role === 'owner' ? 'Invite & manage' : 'People'}
       </button>
     </div>

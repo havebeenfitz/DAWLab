@@ -55,6 +55,7 @@ import { saveHubSettings } from '../hub-client'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, getSpaceForProject, listLocalSpaces,
   changeMemberRole, removeMember, previewInvite, leaveSpace, parseInvite, revokeInvite, stopSharing, listInvites,
+  syncSharedProject, countIncomingVersions, findSharedProject,
 } from '../spaces-client'
 import { saveProjectRemote } from '../hub-client'
 import { createHub } from '../../../server/src/app.ts'
@@ -120,6 +121,9 @@ describe('Shared folders', () => {
     expect(result.pushedVersions).toBe(2)
     expect(result.space.role).toBe('owner')
     expect(getSpaceForProject('Snow')?.folderId).toBe(aliceFolder)
+    // Sharing must not duplicate versions in the local history
+    expect(versions('Snow')).toHaveLength(1)
+    expect(versions('Intro')).toHaveLength(1)
 
     const again = await syncSpace(aliceFolder)
     expect(again.pushedVersions).toBe(0)
@@ -196,6 +200,24 @@ describe('Shared folders', () => {
     expect(result.addedProjects).toEqual(['Lodge'])
     expect(getUserConfigManager('alice').getProjectFolder(projectId('Lodge'))).toBe(aliceFolder)
     expect(fs.readFileSync(path.join(getProjectPath('Lodge'), 'Lodge.als'), 'utf8')).toBe('Lodge v1')
+  })
+
+  it('pulls one project on its own and says how many new versions are waiting', async () => {
+    setUsername('bob')
+    fs.writeFileSync(path.join(getProjectPath('Intro'), 'Intro.als'), 'Intro v2 from bob')
+    vi.setSystemTime(new Date('2026-02-01T12:00:00Z'))
+    await commitProject('Intro', 'bob take', 'main', 'bob')
+    expect(await syncSharedProject('Intro')).toEqual({ pulledVersions: 0, pushedVersions: 1 })
+
+    setUsername('alice')
+    expect(findSharedProject('Intro')?.space.folderId).toBe(aliceFolder)
+    expect(await countIncomingVersions('Intro')).toBe(1)
+    expect(await countIncomingVersions('Snow')).toBe(0)
+    expect(await syncSharedProject('Intro')).toEqual({ pulledVersions: 1, pushedVersions: 0 })
+    expect(await countIncomingVersions('Intro')).toBe(0)
+    expect(versions('Intro')).toHaveLength(2)
+    await expect(syncSharedProject('Nope')).rejects.toThrow(/not in a shared folder/)
+    expect(await countIncomingVersions('Nope')).toBe(0)
   })
 
   it('lets the owner see and manage people', async () => {

@@ -1,4 +1,4 @@
-import { Folder as FolderIcon, Library as LibraryIcon, Users, Headphones, LogIn, Settings as SettingsIcon, Loader2, AlertCircle } from 'lucide-react';
+import { Folder as FolderIcon, Library as LibraryIcon, Users, Headphones, LogIn, Settings as SettingsIcon, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Folder } from '@/types/library';
 import { useSharing } from '@/components/Sharing';
@@ -13,7 +13,7 @@ interface Props {
 /** Where things are: all projects, your folders, and folders shared with or by you. */
 export function LibrarySidebar({ folders, currentFolderId, onNavigate }: Props) {
   const navigate = useNavigate();
-  const { folders: shared, status, join } = useSharing();
+  const { folders: shared, status, join, syncNow } = useSharing();
   const byPosition = (a: Folder, b: Folder) => (a.position ?? 0) - (b.position ?? 0);
   const own = folders.filter((f) => f.parentId === null && !shared[f.id]).sort(byPosition);
   const sharedFolders = folders.filter((f) => shared[f.id]).sort(byPosition);
@@ -60,21 +60,31 @@ export function LibrarySidebar({ folders, currentFolderId, onNavigate }: Props) 
           const listening = s.role === 'listen';
           const state = st?.state ?? (s.lastError ? 'error' : 'synced');
           return (
-            <button
-              key={f.id}
-              type="button"
-              className={`lib-sidebar-item ${activeTop === f.id || currentFolderId === f.id ? 'is-active' : ''}`}
-              onClick={() => onNavigate(f.id)}
-              title={`${f.name} · ${listening ? 'listener' : s.role === 'owner' ? 'you share it' : 'collaborator'}`}
-            >
-              {listening ? <Headphones size={15} aria-hidden /> : <Users size={15} aria-hidden />}
-              <span>{f.name}</span>
-              <span className="lib-sidebar-meta">
-                {state === 'syncing' && <Loader2 size={12} className="animate-spin" aria-label="Syncing" />}
-                {state === 'error' && <AlertCircle size={12} className="lib-sidebar-error" aria-label="Sync problem" />}
-                {state === 'synced' && s.members.length > 1 && <span aria-label={`${s.members.length} people`}>{s.members.length}</span>}
-              </span>
-            </button>
+            <div key={f.id} className="lib-sidebar-row">
+              <button
+                type="button"
+                className={`lib-sidebar-item ${activeTop === f.id || currentFolderId === f.id ? 'is-active' : ''}`}
+                onClick={() => onNavigate(f.id)}
+                title={`${f.name} · ${listening ? 'listener' : s.role === 'owner' ? 'you share it' : 'collaborator'}`}
+              >
+                {listening ? <Headphones size={15} aria-hidden /> : <Users size={15} aria-hidden />}
+                <span>{f.name}</span>
+                <span className="lib-sidebar-meta">
+                  {state === 'error' && <AlertCircle size={12} className="lib-sidebar-error" aria-label="Sync problem" />}
+                  {state === 'synced' && s.members.length > 1 && <span aria-label={`${s.members.length} people`}>{s.members.length}</span>}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="lib-sidebar-sync"
+                onClick={() => { void syncNow(f.id); }}
+                disabled={state === 'syncing'}
+                aria-label={state === 'syncing' ? `Syncing ${f.name}` : `Sync ${f.name} now`}
+                title={state === 'syncing' ? 'Syncing…' : 'Sync now: get everyone’s latest versions and send yours'}
+              >
+                {state === 'syncing' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              </button>
+            </div>
           );
         })}
         <button type="button" className="lib-sidebar-item lib-sidebar-action" onClick={() => join()}>

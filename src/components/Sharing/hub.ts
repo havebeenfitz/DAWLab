@@ -45,6 +45,28 @@ export interface InvitePreview {
   expiresAt: string
 }
 
+export interface SyncNowResult {
+  ok: boolean
+  pulledVersions?: number
+  pushedVersions?: number
+  addedProjects?: string[]
+  uploadedProjects?: string[]
+  failed?: Array<{ project: string; error: string }>
+  error?: string
+}
+
+/** One line for what a manual sync did: "Up to date", "3 new versions pulled", "1 new project"… */
+export function describeSync(r: SyncNowResult): string {
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const parts = [
+    r.addedProjects?.length ? `${plural(r.addedProjects.length, 'new project')}` : '',
+    r.pulledVersions ? `${plural(r.pulledVersions, 'new version')} pulled` : '',
+    r.uploadedProjects?.length ? `${plural(r.uploadedProjects.length, 'project')} shared` : '',
+    r.pushedVersions ? `${plural(r.pushedVersions, 'version')} sent` : '',
+  ].filter(Boolean)
+  return parts.length ? parts.join(', ') : 'Up to date'
+}
+
 export type SyncState = 'syncing' | 'synced' | 'error'
 export interface SyncStatus {
   folderId: string
@@ -76,6 +98,11 @@ export const hub = {
   shareFolder: (folderId: string) => invoke<SharedFolder>('hub-share-folder', folderId),
   syncFolder: (folderId: string) => invoke<SharedFolder | null>('hub-sync-space', folderId),
   syncAll: () => invoke<boolean>('hub-sync-all'),
+  syncNow: (folderId: string) => invoke<SyncNowResult>('hub-sync-space-now', folderId),
+  /** Pull and push one project of a shared folder. */
+  syncProjectNow: (projectName: string) => invoke<{ pulledVersions: number; pushedVersions: number }>('hub-sync-project-now', projectName),
+  /** Versions others put on the hub that this Mac doesn't have yet. */
+  incomingVersions: (projectName: string) => invoke<number>('hub-project-incoming', projectName),
   previewInvite: (input: string) => invoke<InvitePreview>('hub-preview-invite', input),
   join: (input: string, parentDir: string) =>
     invoke<SharedFolder & { addedProjects: string[]; failed: Array<{ project: string; error: string }> }>('hub-join-space', input, parentDir),

@@ -189,6 +189,7 @@ export const Library: React.FC = () => {
         isShared: Boolean(sharing.folders[folderId]),
         close,
         share: () => { if (folder) sharing.shareFolder(folder.id, folder.name); },
+        syncNow: sharing.folders[folderId] && sharing.status[folderId]?.state !== 'syncing' ? () => { void sharing.syncNow(folderId); } : undefined,
         rename: () => folderActions.initiateRename(folderId),
         remove: () => { folderActions.initiateDelete(folderId); },
         removeFromLibrary: isInSharedFolder(folders, folderId, sharing.folders)

@@ -14,6 +14,7 @@ const sharing = vi.hoisted(() => ({
     shareFolder: vi.fn(),
     shareProject: vi.fn(),
     join: vi.fn(),
+    syncNow: vi.fn(),
   },
 }));
 
@@ -51,7 +52,8 @@ function renderSidebar(currentFolderId: string | null = null, list: Folder[] = f
   return { onNavigate };
 }
 
-const item = (name: string) => screen.getByRole('button', { name: new RegExp(name) });
+// The folder itself, not the Sync now button beside a shared folder (whose label also has the name).
+const item = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}`) });
 
 beforeEach(() => {
   sharing.value.folders = {
@@ -85,7 +87,7 @@ describe('LibrarySidebar', () => {
   it('lists shared folders by position', () => {
     renderSidebar();
     const section = screen.getByText('Shared').parentElement!;
-    const names = within(section).getAllByRole('button').map((b) => b.querySelector('span')?.textContent);
+    const names = within(section).getAllByRole('button').filter((b) => !b.classList.contains('lib-sidebar-sync')).map((b) => b.querySelector('span')?.textContent);
     expect(names).toEqual(['Remix pack', 'Band EP', 'Live set', 'Join shared folder…']);
   });
 
@@ -159,7 +161,7 @@ describe('LibrarySidebar', () => {
       s3: { folderId: 's3', state: 'synced' },
     };
     renderSidebar();
-    expect(within(item('Band EP')).getByLabelText('Syncing')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Syncing Band EP' })).toBeDisabled();
     expect(within(item('Live set')).queryByLabelText('Sync problem')).not.toBeInTheDocument();
     expect(within(item('Live set')).getByLabelText('2 people')).toBeInTheDocument();
   });
@@ -175,5 +177,13 @@ describe('LibrarySidebar', () => {
     renderSidebar();
     fireEvent.click(item('Settings'));
     expect(screen.getByTestId('location')).toHaveTextContent('/settings');
+  });
+
+  it('offers Sync now next to each shared folder, disabled while it syncs', () => {
+    sharing.value.status = { s1: { folderId: 's1', state: 'syncing' } } as any;
+    renderSidebar();
+    fireEvent.click(screen.getByRole('button', { name: 'Sync Live set now' }));
+    expect(sharing.value.syncNow).toHaveBeenCalledWith('s3');
+    expect(screen.getByRole('button', { name: 'Syncing Band EP' })).toBeDisabled();
   });
 });

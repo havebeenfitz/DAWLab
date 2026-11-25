@@ -4,7 +4,7 @@
  * One sync per folder runs at a time; a request while one runs queues one more.
  * Status goes to the renderer on `hub-status`.
  */
-import { listLocalSpaces, getSpaceForProject, syncSpace, type SpaceSyncResult } from './spaces-client'
+import { listLocalSpaces, getSpaceForProject, syncSpace, syncSharedProject, type ProjectSyncResult, type SpaceSyncResult } from './spaces-client'
 
 export type SyncState = 'syncing' | 'synced' | 'error'
 
@@ -46,6 +46,23 @@ export function syncAllSpaces() {
 export function requestProjectSync(projectName: string) {
   const space = getSpaceForProject(projectName)
   return space ? requestSpaceSync(space.folderId) : Promise.resolve(null)
+}
+
+/**
+ * Syncs one project of a shared folder now. Waits for a folder sync that is
+ * already running, so the two never write the same project at once.
+ */
+export async function requestSharedProjectSync(projectName: string, onProgress?: (m: string) => void): Promise<ProjectSyncResult> {
+  const folderId = getSpaceForProject(projectName)?.folderId
+  const busy = folderId ? running.get(folderId) : undefined
+  if (busy) await busy.catch(() => null)
+  const job = syncSharedProject(projectName, onProgress)
+  if (folderId) {
+    const tracked = job.then(() => null, () => null)
+    running.set(folderId, tracked)
+    tracked.finally(() => { if (running.get(folderId) === tracked) running.delete(folderId) })
+  }
+  return job
 }
 
 export function requestSpaceSync(folderId: string): Promise<SpaceSyncResult | null> {

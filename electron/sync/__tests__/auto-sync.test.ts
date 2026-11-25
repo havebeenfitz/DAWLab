@@ -5,10 +5,11 @@ const spaces = vi.hoisted(() => ({
   listLocalSpaces: vi.fn(),
   getSpaceForProject: vi.fn(),
   syncSpace: vi.fn(),
+  syncSharedProject: vi.fn(),
 }))
 vi.mock('../spaces-client', () => spaces)
 
-import { requestSpaceSync, requestProjectSync, syncAllSpaces, startAutoSync, stopAutoSync, type SyncStatus } from '../auto-sync'
+import { requestSpaceSync, requestProjectSync, requestSharedProjectSync, syncAllSpaces, startAutoSync, stopAutoSync, type SyncStatus } from '../auto-sync'
 
 const okResult = (folderId: string, extra: Record<string, unknown> = {}) => ({
   folderId, pushedVersions: 1, pulledVersions: 2, addedProjects: ['Lodge'], uploadedProjects: [], failed: [],
@@ -104,5 +105,26 @@ describe('auto-sync', () => {
     stopAutoSync()
     await vi.advanceTimersByTimeAsync(120_000)
     expect(spaces.syncSpace).toHaveBeenCalledTimes(2)
+  })
+
+  it('runs a one-project pull after a folder sync that is already running, never alongside it', async () => {
+    const folder = deferred<ReturnType<typeof okResult>>()
+    const order: string[] = []
+    spaces.getSpaceForProject.mockReturnValue({ folderId: 'f1' })
+    spaces.syncSpace.mockImplementation(() => folder.promise.then((r) => { order.push('folder'); return r }))
+    spaces.syncSharedProject.mockImplementation(async () => { order.push('project'); return { pulledVersions: 2, pushedVersions: 0 } })
+    void requestSpaceSync('f1')
+    const pull = requestSharedProjectSync('Snow')
+    await Promise.resolve()
+    expect(spaces.syncSharedProject).not.toHaveBeenCalled()
+    folder.resolve(okResult('f1'))
+    await expect(pull).resolves.toEqual({ pulledVersions: 2, pushedVersions: 0 })
+    expect(order).toEqual(['folder', 'project'])
+  })
+
+  it('passes errors of a one-project pull to the caller', async () => {
+    spaces.getSpaceForProject.mockReturnValue(null)
+    spaces.syncSharedProject.mockRejectedValue(new Error('offline'))
+    await expect(requestSharedProjectSync('Loose')).rejects.toThrow('offline')
   })
 })
