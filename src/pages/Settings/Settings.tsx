@@ -459,7 +459,7 @@ export const Settings: React.FC = () => {
             )}
 
             <div className="limit-display-row">
-              <span className="limit-display-label">Limit:</span>
+              <span className="limit-display-label" title="DAWLab never deletes versions on its own; the bar turns orange, then red, as you get close.">Warn at:</span>
               <div className="limit-controls-wrapper">
                 <input
                   type="number"
@@ -470,7 +470,7 @@ export const Settings: React.FC = () => {
                     if (e.key === 'Escape' && isEditingLimit) { setIsEditingLimit(false); fetchCasUsage(); }
                   }}
                   onClick={() => !isEditingLimit && setIsEditingLimit(true)}
-                  placeholder={casLimit ? '' : 'Click to set'}
+                  placeholder={casLimit ? '' : 'Not set'}
                   className={`limit-number-input ${!isEditingLimit ? 'readonly' : ''}`}
                   disabled={isSavingLimit}
                   readOnly={!isEditingLimit}

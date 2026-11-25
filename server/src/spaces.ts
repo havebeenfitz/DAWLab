@@ -221,6 +221,12 @@ export function createSpaceRoutes(opts: SpaceOptions) {
       await invites.revoke(c.space.id, rest[1])
       return send(res, 204)
     }
+    if (rest[0] === 'storage' && rest.length === 1 && method === 'GET') {
+      // Only the owner sees how full the server is.
+      requireOwner(c)
+      const space = storage.diskSpace ? await storage.diskSpace() : null
+      return send(res, 200, { kind: storage.kind, ...(space ?? { totalBytes: null, freeBytes: null }) })
+    }
     if (rest[0] === 'projects') return routeProjects(c, rest.slice(1), req, res)
     throw HIDDEN
   }

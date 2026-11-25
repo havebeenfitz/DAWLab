@@ -15,6 +15,8 @@
 }
 .share-row:last-child { border-bottom: 0; }
 .share-row-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-row-main:has(.share-row-code) { display: flex; flex-direction: column; gap: 2px; }
+.share-row-code { font-size: 0.78rem; color: var(--text, #ddd); overflow: hidden; text-overflow: ellipsis; user-select: text; }
 .share-avatar {
   width: 24px;
   height: 24px;
@@ -80,3 +82,7 @@
 .share-confirm-text { flex: 1 1 220px; font-size: 0.85rem; color: var(--text-secondary); }
 
 .share-legacy-links { display: flex; flex-direction: column; gap: 8px; }
+.share-storage-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; margin: 6px 0; }
+.share-storage-fill { height: 100%; background: var(--accent-blue, #007aff); }
+.share-storage-fill.warning { background: #ff9f0a; }
+.share-storage-fill.danger { background: #ff453a; }

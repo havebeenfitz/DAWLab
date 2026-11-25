@@ -93,6 +93,7 @@ function writeSpace(space: LocalSpace) {
 function forgetSpace(folderId: string) {
   const { [folderId]: _gone, ...rest } = readSpaces()
   writeJsonSync(spacesFile(), rest)
+  writeInviteCodes(folderId, {})
 }
 
 const folderManager = () => getUserConfigManager(getUsername())
@@ -363,18 +364,56 @@ export async function getSpaceDetails(folderId: string): Promise<SpaceResponse &
   return { ...details, local: next }
 }
 
-export const listInvites = (folderId: string) => call<InviteInfo[]>(mustSpace(folderId), '/space/invites')
+// The hub keeps only a hash of each invite code, so the owner's Mac remembers
+// the codes it created (in their own file, so a sync writing spaces.json can't drop them).
+const inviteCodesFile = () => path.join(getUserDir(), 'invite-codes.json')
+
+function readInviteCodes(): Record<string, Record<string, string>> {
+  try {
+    return JSON.parse(fs.readFileSync(inviteCodesFile(), 'utf8')) as Record<string, Record<string, string>>
+  } catch {
+    return {}
+  }
+}
+
+function writeInviteCodes(folderId: string, codes: Record<string, string>) {
+  const all = readInviteCodes()
+  if (Object.keys(codes).length) all[folderId] = codes
+  else delete all[folderId]
+  fs.mkdirSync(getUserDir(), { recursive: true })
+  writeJsonSync(inviteCodesFile(), all)
+}
+
+/** Open invites, each with its full code when this Mac created it. Codes of invites that are gone are forgotten. */
+export async function listInvites(folderId: string): Promise<Array<InviteInfo & { code?: string }>> {
+  const invites = await call<InviteInfo[]>(mustSpace(folderId), '/space/invites')
+  const known = readInviteCodes()[folderId] ?? {}
+  const kept: Record<string, string> = {}
+  for (const inv of invites) if (known[inv.id]) kept[inv.id] = known[inv.id]
+  if (Object.keys(kept).length !== Object.keys(known).length) writeInviteCodes(folderId, kept)
+  return invites.map((inv) => (kept[inv.id] ? { ...inv, code: kept[inv.id] } : inv))
+}
+
+export interface ServerStorage { kind: string; totalBytes: number | null; freeBytes: number | null }
+
+/** How full the hub's disk is. Only the folder's owner may ask. */
+export const getServerStorage = (folderId: string) => call<ServerStorage>(mustSpace(folderId), '/space/storage')
 
 export async function createInvite(folderId: string, role: 'edit' | 'listen', expiresInDays = 7, maxUses = 10) {
   const space = mustSpace(folderId)
   const invite = await call<CreatedInvite>(space, '/space/invites', 'POST', { role, expiresInDays, maxUses })
   const link = `dawlab://join?hub=${encodeURIComponent(space.hubUrl)}&code=${encodeURIComponent(invite.code)}`
   // The code people send carries the server address, so joiners set up nothing.
-  return { ...invite, code: buildFullInvite(space.hubUrl, invite.code), link }
+  const code = buildFullInvite(space.hubUrl, invite.code)
+  writeInviteCodes(folderId, { ...(readInviteCodes()[folderId] ?? {}), [invite.id]: code })
+  return { ...invite, code, link }
 }
 
-export const revokeInvite = (folderId: string, inviteId: string) =>
-  call<void>(mustSpace(folderId), `/space/invites/${encodeURIComponent(inviteId)}`, 'DELETE')
+export async function revokeInvite(folderId: string, inviteId: string) {
+  await call<void>(mustSpace(folderId), `/space/invites/${encodeURIComponent(inviteId)}`, 'DELETE')
+  const { [inviteId]: _gone, ...rest } = readInviteCodes()[folderId] ?? {}
+  writeInviteCodes(folderId, rest)
+}
 
 export const changeMemberRole = (folderId: string, memberId: string, role: 'edit' | 'listen') =>
   call<{ member: SpaceMember }>(mustSpace(folderId), `/space/members/${encodeURIComponent(memberId)}`, 'PATCH', { role })

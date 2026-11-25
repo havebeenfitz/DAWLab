@@ -22,3 +22,15 @@ export function getProjectStorageDirs(projectName: string): { casDir: string; co
   const mode: StorageMode = info?.storage_mode === 'project' ? 'project' : 'home'
   return { ...resolveStorageDirs(mode, info?.path), mode }
 }
+
+/**
+ * Every folder versions are stored in: the shared one in the home folder and
+ * each project's own `.dawlabproject/cas` when it keeps versions next to itself.
+ */
+export function allCasDirs(): string[] {
+  const dirs = new Set<string>([CAS_DIR])
+  for (const info of Object.values(loadRegistry()) as Array<{ storage_mode?: string; path?: string }>) {
+    if (info?.storage_mode === 'project') dirs.add(resolveStorageDirs('project', info.path).casDir)
+  }
+  return [...dirs]
+}

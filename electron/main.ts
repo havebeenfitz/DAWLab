@@ -55,7 +55,7 @@ import { saveProjectLog } from "./dawvcs/core/log";
 import { getCommitPath, getCommitFileMap } from "./dawvcs/core/commits";
 import { writeJsonSync } from "./dawvcs/core/fs-utils";
 import { parseCommentsFile, serializeComments } from "./feedback/comments-file";
-import { getProjectStorageDirs } from "./dawvcs/core/storage-location";
+import { getProjectStorageDirs, allCasDirs } from "./dawvcs/core/storage-location";
 import { detectDAW, getProjectFileCandidates } from "./dawvcs/core/daw-detection";
 import { getCleanableFiles, cleanCasFiles } from "./dawvcs/operations/clean";
 import { scanForProjects, getDefaultScanRoots } from "./dawvcs/operations/scan";
@@ -1348,7 +1348,8 @@ ipcMain.handle("open-external-url", async (_ev, url: string) => {
 // Get local CAS storage usage
 ipcMain.handle("get-local-cas-usage", async () => {
   try {
-    const sizeBytes = calculateCasSize();
+    // Projects can keep their versions next to themselves, so add up every store.
+    const sizeBytes = allCasDirs().reduce((sum, dir) => sum + calculateCasSize(dir), 0);
     console.log(
       `[main.ts] Local CAS size: ${(sizeBytes / 1024 / 1024).toFixed(2)} MB`,
     );

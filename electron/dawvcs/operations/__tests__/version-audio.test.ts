@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, afterAll } from 'vitest'
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 
 const { ROOT } = vi.hoisted(() => {

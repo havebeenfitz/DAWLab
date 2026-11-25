@@ -24,6 +24,7 @@ export function ShareFolderDialog({ target, shared, syncStatus, onClose, onChang
   const folderId = target?.folderId ?? '';
   const [details, setDetails] = useState<SpaceDetails | null>(null);
   const [invites, setInvites] = useState<InviteInfo[]>([]);
+  const [storage, setStorage] = useState<{ totalBytes: number | null; freeBytes: number | null } | null>(null);
   const [server, setServer] = useState<{ hubUrl: string; hasKey: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
@@ -45,7 +46,10 @@ export function ShareFolderDialog({ target, shared, syncStatus, onClose, onChang
     try {
       const d = await hub.details(folderId);
       setDetails(d);
-      if (d.me.role === 'owner') setInvites(await hub.listInvites(folderId));
+      if (d.me.role === 'owner') {
+        setInvites(await hub.listInvites(folderId));
+        hub.serverStorage(folderId).then(setStorage).catch(() => setStorage(null));
+      }
     } catch (err) {
       setError(errorText(err));
     }
@@ -171,13 +175,19 @@ export function ShareFolderDialog({ target, shared, syncStatus, onClose, onChang
               <li key={inv.id} className="share-row">
                 <span className="ui-badge ui-badge-muted">{roleLabel[inv.role]}</span>
                 <span className="share-row-main">
-                  Used {inv.uses} of {inv.maxUses} · expires {new Date(inv.expiresAt).toLocaleDateString()}
+                  {inv.code && <span className="share-row-code ui-mono" aria-label="Open invite code">{inv.code}</span>}
+                  <span>Used {inv.uses} of {inv.maxUses} · expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
                 </span>
+                {inv.code && <CopyCodeButton code={inv.code} />}
                 <button type="button" className="ui-btn ui-btn-sm ui-btn-ghost" onClick={() => revoke(inv.id)} disabled={busy}>Revoke</button>
               </li>
             ))}
           </ul>
         </section>
+      )}
+
+      {shared && isOwner && storage?.totalBytes != null && storage.freeBytes != null && (
+        <ServerStorage totalBytes={storage.totalBytes} freeBytes={storage.freeBytes} />
       )}
 
       {shared && (
@@ -253,6 +263,41 @@ function NotSharedBody({ server, onClose }: { server: { hubUrl: string; hasKey: 
       <li>You can remove people or stop sharing at any time. Everyone keeps their copies.</li>
       {server?.hubUrl && <li className="ui-hint">Server: {server.hubUrl}</li>}
     </ul>
+  );
+}
+
+const gb = (n: number) => `${(n / 1024 ** 3).toFixed(n < 10 * 1024 ** 3 ? 1 : 0)} GB`;
+
+/** Owner only: how much room is left on the server. */
+function ServerStorage({ totalBytes, freeBytes }: { totalBytes: number; freeBytes: number }) {
+  const used = totalBytes > 0 ? (totalBytes - freeBytes) / totalBytes : 0;
+  const level = used >= 0.95 ? 'danger' : used >= 0.8 ? 'warning' : '';
+  return (
+    <section className="share-section" aria-label="Server space">
+      <div className="ui-label">Server space</div>
+      <div className="share-storage-bar" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(used * 100)}>
+        <div className={`share-storage-fill ${level}`} style={{ width: `${Math.min(100, used * 100)}%` }} />
+      </div>
+      <p className="ui-hint">{gb(freeBytes)} free of {gb(totalBytes)}. Only you see this.</p>
+    </section>
+  );
+}
+
+function CopyCodeButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <button type="button" className="ui-btn ui-btn-sm" onClick={copy} aria-label="Copy open invite code">
+      {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy'}
+    </button>
   );
 }
 

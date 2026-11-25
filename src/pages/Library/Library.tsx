@@ -48,6 +48,8 @@ import { useNewProjectModal, useOsFileDrop } from './hooks/useOsFileDrop';
 import { useFolderActions } from './hooks/useFolderActions';
 import { useAudioActions } from './hooks/useAudioActions';
 import { useProjectTags } from './hooks/useProjectTags';
+import { useArchiveProjects } from './hooks/useArchiveProjects';
+import { SelectionBar } from './components/SelectionBar';
 import { useRemoveFromLibrary, REMOVE_WARNING, planFolderRemoval, planProjectRemoval, isInSharedFolder } from './hooks/useRemoveFromLibrary';
 import { WarningModal } from '@/components/WarningModal/WarningModal';
 
@@ -112,6 +114,7 @@ export const Library: React.FC = () => {
     playingId, stopPreview, closeAddMenu: () => setShowAddMenu(false),
   });
   const removal = useRemoveFromLibrary({ setFolders: data.setFolders, audioItems, reload: loadMyProjects });
+  const archiving = useArchiveProjects({ folders, setFolders: data.setFolders, reload: loadMyProjects });
 
   const overlaysOpen =
     folderActions.showNewFolderModal || newProject.showNewProjectModal || folderActions.showRenameModal ||
@@ -380,6 +383,25 @@ export const Library: React.FC = () => {
                 )}
              </div>
           )}
+
+          {(() => {
+            const keys = selection.selection.keys;
+            const chosen = projects.filter(p => keys.has(`project:${p.id}`));
+            const local = chosen.filter(p => !isInSharedFolder(folders, p.folderId, sharing.folders));
+            const projectKeys = order.viewOrder.filter(i => i.kind === 'project').map(i => `project:${i.id}`);
+            return (
+              <SelectionBar
+                count={chosen.length}
+                actionable={local.length}
+                busy={archiving.busy || removal.busy}
+                allSelected={projectKeys.every(k => keys.has(k))}
+                onSelectAll={() => selection.setSelection({ keys: new Set(projectKeys), anchor: projectKeys[0] ?? null, focus: projectKeys[projectKeys.length - 1] ?? null })}
+                onArchive={() => { void archiving.archive(local); }}
+                onRemove={() => { void removal.request({ title: local.length === 1 ? `"${local[0].name}"` : `${local.length} projects`, projects: local, folderIds: [] }); }}
+                onClear={() => selection.setSelection({ keys: new Set(), anchor: null, focus: null })}
+              />
+            );
+          })()}
         </section>
       </main>
 

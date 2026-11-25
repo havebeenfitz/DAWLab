@@ -10,7 +10,7 @@ import {
 } from './hub-client'
 import {
   listLocalSpaces, getLocalSpace, getSpaceForProject, shareFolder, joinSpace, getSpaceDetails,
-  listInvites, createInvite, revokeInvite, changeMemberRole, removeMember, leaveSpace, stopSharing,
+  listInvites, getServerStorage, createInvite, revokeInvite, changeMemberRole, removeMember, leaveSpace, stopSharing,
   previewInvite, countIncomingVersions,
 } from './spaces-client'
 import { requestProjectSync, requestSharedProjectSync, requestSpaceSync, startAutoSync, syncAllSpaces, type SyncStatus } from './auto-sync'
@@ -118,6 +118,7 @@ export function registerHubIpc(ipcMain: IpcMain, getWindow: () => BrowserWindow 
     return { ...publicSpace(r.space), addedProjects: r.addedProjects, failed: r.failed }
   })
   ipcMain.handle('hub-list-invites', (_ev, folderId: string) => listInvites(folderId))
+  ipcMain.handle('hub-server-storage', (_ev, folderId: string) => getServerStorage(folderId))
   ipcMain.handle('hub-create-invite', (_ev, folderId: string, role: 'edit' | 'listen', days?: number, uses?: number) =>
     createInvite(folderId, role, days, uses))
   ipcMain.handle('hub-revoke-invite', (_ev, folderId: string, inviteId: string) => revokeInvite(folderId, inviteId).then(() => true))

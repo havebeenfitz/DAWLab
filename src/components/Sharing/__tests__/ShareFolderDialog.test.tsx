@@ -148,14 +148,18 @@ describe('ShareFolderDialog: owner', () => {
     expect(invokeCalls('hub-create-invite')).toEqual([['f1', 'listen', undefined, undefined]]);
     expect(screen.queryByRole('button', { name: 'Create invite' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Copy invite code/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Copy invite code/ }));
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith('DAWL-7KQ4-MX2P-9TRB'));
     fireEvent.click(screen.getByRole('button', { name: /Copy app link/ }));
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith('dawlab://join/DAWL7KQ4MX2P9TRB'));
 
+    // The owner can still find the code later, in the open invites list.
+    expect(screen.getByLabelText('Open invite code')).toHaveTextContent('DAWL-7KQ4-MX2P-9TRB');
+
     // Changing the role hides the code again, so a new invite has to be made.
     fireEvent.click(screen.getByRole('button', { name: 'Collaborator' }));
     expect(screen.queryByLabelText('Invite code')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Open invite code')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create invite' })).toBeInTheDocument();
   });
 

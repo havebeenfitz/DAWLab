@@ -97,7 +97,7 @@ export function useLibrarySelection({ viewOrder, overlaysOpen, projects, audioIt
   // Clicking anywhere in the content area that isn't a card or control clears the selection.
   const handleGridBackgroundClick = (e: React.MouseEvent) => {
     if (consumeMarqueeClick()) return; // the click that ends a drag-select
-    if ((e.target as HTMLElement).closest('.library-item, .list-row, button, input, a, .recently-saved-toast, .folder-peek')) return;
+    if ((e.target as HTMLElement).closest('.library-item, .list-row, button, input, a, .recently-saved-toast, .folder-peek, .selection-bar')) return;
     setSelection(clearSelection);
   };
 

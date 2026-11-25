@@ -33,7 +33,11 @@ export interface Storage {
   stream(key: string, range?: ByteRange): Promise<Readable | null>
   /** Removes a key; a missing key is not an error. */
   delete(key: string): Promise<void>
+  /** Size and free space of the disk behind the storage; absent when it has no fixed size (S3). */
+  diskSpace?(): Promise<DiskSpace>
 }
+
+export interface DiskSpace { totalBytes: number; freeBytes: number }
 
 export class FsStorage implements Storage {
   readonly kind = 'fs'
@@ -41,6 +45,11 @@ export class FsStorage implements Storage {
   constructor(root: string) {
     this.root = root
     fs.mkdirSync(root, { recursive: true })
+  }
+
+  async diskSpace(): Promise<DiskSpace> {
+    const st = await fs.promises.statfs(this.root)
+    return { totalBytes: st.blocks * st.bsize, freeBytes: st.bavail * st.bsize }
   }
 
   private file(key: string) {

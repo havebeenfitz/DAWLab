@@ -16,7 +16,7 @@ interface Options {
 }
 
 // Presses on these never start a marquee — they have their own behaviour.
-const IGNORE_TARGETS = '.library-item, .list-row, button, input, textarea, select, a, [role="button"], [role="dialog"]';
+const IGNORE_TARGETS = '.library-item, .list-row, button, input, textarea, select, a, [role="button"], [role="dialog"], .selection-bar';
 const DRAG_THRESHOLD_PX = 4;
 const AUTOSCROLL_EDGE_PX = 48;
 const AUTOSCROLL_MAX_SPEED = 18;

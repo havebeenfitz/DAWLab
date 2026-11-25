@@ -411,3 +411,18 @@ describe('hidden 404s', () => {
     for (const [m, p, o] of probes) expectHidden(await call(m, p, o))
   })
 })
+
+describe('server storage', () => {
+  it('tells only the owner how much space the server has', async () => {
+    const { owner, editor, listener } = await setup()
+    const r = await call('GET', '/api/space/storage', { token: owner.token })
+    expect(r.status).toBe(200)
+    expect(r.json.kind).toBe('fs')
+    expect(r.json.totalBytes).toBeGreaterThan(0)
+    expect(r.json.freeBytes).toBeGreaterThanOrEqual(0)
+    expect(r.json.freeBytes).toBeLessThanOrEqual(r.json.totalBytes)
+    expect((await call('GET', '/api/space/storage', { token: editor.token })).status).not.toBe(200)
+    expect((await call('GET', '/api/space/storage', { token: listener.token })).status).not.toBe(200)
+    expectHidden(await call('GET', '/api/space/storage'))
+  })
+})

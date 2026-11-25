@@ -33,8 +33,9 @@ export interface SpaceDetails {
   local: SharedFolder
 }
 
-export interface InviteInfo { id: string; role: InviteRole; expiresAt: string; maxUses: number; uses: number }
-export interface CreatedInvite extends InviteInfo { code: string; link: string }
+/** `code` is there when this Mac created the invite (the hub keeps only a hash). */
+export interface InviteInfo { id: string; role: InviteRole; expiresAt: string; maxUses: number; uses: number; code?: string }
+export interface CreatedInvite extends Omit<InviteInfo, 'code'> { code: string; link: string }
 export interface InvitePreview {
   hubUrl: string
   space: { id: string; name: string }
@@ -106,6 +107,8 @@ export const hub = {
   previewInvite: (input: string) => invoke<InvitePreview>('hub-preview-invite', input),
   join: (input: string, parentDir: string) =>
     invoke<SharedFolder & { addedProjects: string[]; failed: Array<{ project: string; error: string }> }>('hub-join-space', input, parentDir),
+  /** Owner only: the hub's disk size and free space (null on S3). */
+  serverStorage: (folderId: string) => invoke<{ kind: string; totalBytes: number | null; freeBytes: number | null }>('hub-server-storage', folderId),
   listInvites: (folderId: string) => invoke<InviteInfo[]>('hub-list-invites', folderId),
   createInvite: (folderId: string, role: InviteRole, days?: number, uses?: number) =>
     invoke<CreatedInvite>('hub-create-invite', folderId, role, days, uses),

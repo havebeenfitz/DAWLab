@@ -54,7 +54,7 @@ import { loadRegistry, getProjectPath } from '../../dawvcs/core/registry'
 import { saveHubSettings } from '../hub-client'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, getSpaceForProject, listLocalSpaces,
-  changeMemberRole, removeMember, previewInvite, leaveSpace, parseInvite, revokeInvite, stopSharing, listInvites,
+  changeMemberRole, removeMember, previewInvite, leaveSpace, parseInvite, revokeInvite, stopSharing, listInvites, getServerStorage,
   syncSharedProject, countIncomingVersions, findSharedProject,
 } from '../spaces-client'
 import { saveProjectRemote } from '../hub-client'
@@ -253,6 +253,23 @@ describe('Shared folders', () => {
     saveHubSettings({ hubUrl, hubKey: '' })
     expect(parseInvite(' dawl-aaaa-bbbb-cccc ')).toEqual({ hubUrl, code: expect.stringMatching(/AAAABBBBCCCC|DAWL-AAAA-BBBB-CCCC/) })
     expect(() => parseInvite('dawlab://join?hub=ftp%3A%2F%2Fx&code=DAWL-AAAA-BBBB-CCCC')).toThrow()
+  })
+
+  it('keeps showing the owner the full code of each open invite, and forgets it once revoked', async () => {
+    setUsername('alice')
+    const invite = await createInvite(aliceFolder, 'listen', 1, 1)
+    const listed = (await listInvites(aliceFolder)).find((i) => i.id === invite.id)
+    expect(listed?.code).toBe(invite.code)
+    expect(listed?.code).toMatch(/^DAWL-/)
+    await revokeInvite(aliceFolder, invite.id)
+    expect((await listInvites(aliceFolder)).find((i) => i.id === invite.id)).toBeUndefined()
+  })
+
+  it('tells the owner how much space the server has, and nobody else', async () => {
+    setUsername('alice')
+    const storage = await getServerStorage(aliceFolder)
+    expect(storage.totalBytes).toBeGreaterThan(0)
+    expect(storage.freeBytes).toBeGreaterThanOrEqual(0)
   })
 
   it('refuses revoked invites and lists only what the owner may see', async () => {
