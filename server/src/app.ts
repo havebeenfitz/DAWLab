@@ -47,6 +47,7 @@ class HttpError extends Error {
 const HIDDEN = new HttpError(404, '')
 
 const MAX_COMMENTS = 5000
+const MAX_HASHES_PER_QUERY = 20000
 const MAX_COMMENT_BYTES = 64 * 1024
 const JSON_LIMIT = 8 * 1024 * 1024
 
@@ -103,12 +104,17 @@ export function createHub(opts: HubOptions) {
 
   async function createProject(req: http.IncomingMessage, res: http.ServerResponse) {
     if (opts.createKey) {
+      const ip = clientIp(req)
+      if (keyFailures.blocked(ip)) throw HIDDEN
       const given = String(req.headers['x-hub-key'] ?? '')
       const a = Buffer.from(sha256(given)), b = Buffer.from(sha256(opts.createKey))
-      if (!crypto.timingSafeEqual(a, b)) throw HIDDEN
+      if (!crypto.timingSafeEqual(a, b)) {
+        keyFailures.fail(ip)
+        throw HIDDEN
+      }
     }
     const body = await readJson(req)
-    const log = toSharedLog(body?.log ?? body)
+    const log = parseLog(body?.log ?? body)
     if (!log.name) throw new HttpError(400, 'Project name is required')
     const projectId = crypto.randomUUID()
     log.id = isCommitId(log.id) ? log.id : projectId
@@ -126,7 +132,7 @@ export function createHub(opts: HubOptions) {
   }
 
   async function putLog(access: Access, req: http.IncomingMessage, res: http.ServerResponse) {
-    const incoming = toSharedLog(await readJson(req))
+    const incoming = parseLog(await readJson(req))
     const merged = await withLock(keys.log(access.projectId), async () => {
       const current = await loadLog(access.projectId)
       // Only accept versions whose filemap was uploaded first, so the log never points at missing data.
@@ -146,6 +152,7 @@ export function createHub(opts: HubOptions) {
 
   async function missingObjects(access: Access, req: http.IncomingMessage, res: http.ServerResponse) {
     const body = await readJson(req)
+    if (Array.isArray(body?.hashes) && body.hashes.length > MAX_HASHES_PER_QUERY) throw new HttpError(413, 'Ask about fewer files at once')
     const hashes: string[] = Array.isArray(body?.hashes) ? body.hashes.filter(isHash) : []
     const missing: string[] = []
     for (const h of new Set(hashes)) if (!(await storage.exists(keys.object(access.projectId, h)))) missing.push(h)
@@ -195,6 +202,7 @@ export function createHub(opts: HubOptions) {
       'Content-Type': await sniffType(storage, key, size),
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'private, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
       'Content-Length': size === 0 ? 0 : range.end - range.start + 1,
     }
     if (range.kind === 'partial') headers['Content-Range'] = `bytes ${range.start}-${range.end}/${size}`
@@ -231,7 +239,8 @@ export function createHub(opts: HubOptions) {
     const key = keys.comments(access.projectId, commitId)
     const merged = await withLock(key, async () => {
       const current = (await storage.getJson<{ comments: SharedComment[] }>(key))?.comments ?? []
-      const next = mergeComments(current, incoming)
+      // Listeners can add comments and replies but never edit or remove what is already there.
+      const next = mergeComments(current, access.role === 'edit' ? incoming : onlyNew(current, incoming))
       if (next.length > MAX_COMMENTS) throw new HttpError(413, 'Too many comments on this version')
       await storage.putJson(key, { version: 1, comments: next })
       return next
@@ -304,15 +313,63 @@ export function createHub(opts: HubOptions) {
       if (status === 500) console.error('[hub]', req.method, req.url?.split('?')[0], err)
       if (res.headersSent) res.destroy()
       else if (err === HIDDEN) {
-        req.resume()
-        res.writeHead(404, { 'Content-Length': 0 })
-        res.end()
+        // Don't read whatever body an unauthenticated client is sending: answer and hang up.
+        res.writeHead(404, { 'Content-Length': 0, Connection: 'close' })
+        res.end(() => req.socket.destroy())
       } else send(res, status, { error: status === 500 ? 'Internal error' : err.message })
     }
   }
 }
 
 // ---------------------------------------------------------------- helpers
+
+function parseLog(value: unknown): SharedLog {
+  const v = value as any
+  const branchesOk = v?.branches === undefined || (Array.isArray(v.branches) && v.branches.every(
+    (b: any) => b && typeof b === 'object' && (b.commits === undefined || (Array.isArray(b.commits) && b.commits.every((c: any) => c && typeof c === 'object'))),
+  ))
+  if (!v || typeof v !== 'object' || !branchesOk) throw new HttpError(400, 'Malformed version history')
+  return toSharedLog(v)
+}
+
+/** From a listener: new comments, and new replies on existing ones. Edits to existing text are dropped. */
+function onlyNew(current: SharedComment[], incoming: SharedComment[]): SharedComment[] {
+  const out: SharedComment[] = []
+  for (const inc of incoming) {
+    const existing = current.find((c) => c.id === inc.id)
+    if (!existing) {
+      out.push(inc)
+      continue
+    }
+    const known = new Set((existing.replies ?? []).map((r) => r.id))
+    const replies = (inc.replies ?? []).filter((r) => r && typeof r.id === 'string' && !known.has(r.id))
+    if (replies.length) out.push({ ...existing, replies: [...(existing.replies ?? []), ...replies] })
+  }
+  return out
+}
+
+/** Render and most hosts put the caller first in X-Forwarded-For. */
+function clientIp(req: http.IncomingMessage): string {
+  const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim()
+  return fwd || req.socket.remoteAddress || 'unknown'
+}
+
+/** At most 10 wrong hub keys per address per 15 minutes; after that even the right key gets the hidden 404. */
+const keyFailures = (() => {
+  const WINDOW = 15 * 60 * 1000
+  const LIMIT = 10
+  const hits = new Map<string, number[]>()
+  const recent = (ip: string) => (hits.get(ip) ?? []).filter((t) => Date.now() - t < WINDOW)
+  return {
+    blocked: (ip: string) => recent(ip).length >= LIMIT,
+    fail: (ip: string) => {
+      const list = recent(ip)
+      list.push(Date.now())
+      hits.set(ip, list)
+      if (hits.size > 10_000) hits.delete(hits.keys().next().value!)
+    },
+  }
+})()
 
 function send(res: http.ServerResponse, status: number, body: unknown) {
   const data = JSON.stringify(body)

@@ -396,7 +396,7 @@ async function hubError(res: Response, hiddenMessage: string): Promise<Error> {
 }
 
 function safeName(name: string) {
-  const cleaned = String(name || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^[.\s]+/, '').trim().slice(0, 80)
+  const cleaned = String(name || '').replace(/[\\/:*?"<>|\p{Cc}]/gu, '_').replace(/^[.\s]+/, '').trim().slice(0, 80)
   return cleaned || 'Shared project'
 }
 

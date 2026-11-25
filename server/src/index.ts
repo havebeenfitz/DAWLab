@@ -10,6 +10,9 @@ if (!createKey || createKey.length < 12) {
   console.error('[hub] Set HUB_CREATE_KEY (12+ characters). It is the password for creating projects on this hub.')
   process.exit(1)
 }
+if (createKey.length < 32) {
+  console.warn('[hub] HUB_CREATE_KEY is short; use a long random one, e.g. `openssl rand -hex 32`.')
+}
 
 const server = http.createServer(createHub({
   storage,

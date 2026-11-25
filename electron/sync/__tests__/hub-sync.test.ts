@@ -179,6 +179,7 @@ describe('DAWLab Hub sharing', () => {
     // A listener's comment reaches the owner.
     const file = path.join(getCommitPath(projectName, first, commitsDir), 'comments.json')
     const mine = JSON.parse(fs.readFileSync(file, 'utf8'))
+    mine.comments[0].comment = 'rewritten by a listener' // must not reach anyone
     mine.comments.push({ id: 'w1', username: 'carol', comment: 'love it', timestamp: 3 })
     fs.writeFileSync(file, JSON.stringify(mine))
     expect((await syncProject(projectName)).pushed).toBe(0)
@@ -188,6 +189,7 @@ describe('DAWLab Hub sharing', () => {
     const aliceDirs = getProjectStorageDirs(name)
     const aliceComments = JSON.parse(fs.readFileSync(path.join(getCommitPath(name, first, aliceDirs.commitsDir), 'comments.json'), 'utf8'))
     expect(aliceComments.comments.map((c: any) => c.id)).toEqual(['c1', 'w1'])
+    expect(aliceComments.comments[0].comment).toBe('kick too loud')
 
     // And the listener token can't read project files or change history.
     const token = listenUrl.split('/s/')[1]
