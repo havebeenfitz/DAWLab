@@ -105,9 +105,12 @@ export async function rollbackProject(
     restoreFile(hash, path.join(projectPath, rel), casDir)
   }
 
-  const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)
-  log.lastCheckout = { commitId, timestamp }
-  saveProjectLog(projectName, log)
+  // Only the project folder itself is "checked out"; laying a version out elsewhere (a preview) isn't.
+  if (ownFolder) {
+    const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)
+    log.lastCheckout = { commitId, timestamp }
+    saveProjectLog(projectName, log)
+  }
 
   return { success: true, keptAs, removed, trashedAs }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { GitFork, Play, Pause, GitCompare, Check, EyeOff } from 'lucide-react';
+import { GitFork, Play, Pause, GitCompare, Check, EyeOff, Eye } from 'lucide-react';
 import { Dialog } from '@/components/ui/Dialog';
 import { useLibraryPreview } from '@/hooks/useLibraryPreview';
 import type { ParallelVersion } from '../../../../shared/forks';
@@ -18,6 +18,8 @@ interface Props {
   username: string;
   /** After "make main": reload the history. */
   onChanged: () => Promise<void> | void;
+  /** Lays the whole version out in a folder of its own to open in the DAW. */
+  onPreview?: (p: ParallelVersion) => void;
 }
 
 /**
@@ -25,7 +27,7 @@ interface Props {
  * its own alternative. This says so, and lets you listen to it, see how it
  * differs from yours, or continue the line with it.
  */
-export function ParallelVersionBanner({ projectName, versions, currentTipId, username, onChanged }: Props) {
+export function ParallelVersionBanner({ projectName, versions, currentTipId, username, onChanged, onPreview }: Props) {
   const player = useLibraryPreview();
   const [comparing, setComparing] = useState<ParallelVersion | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -85,6 +87,11 @@ export function ParallelVersionBanner({ projectName, versions, currentTipId, use
                 >
                   {playing ? <Pause size={13} aria-hidden /> : <Play size={13} aria-hidden />} {playing ? 'Pause' : 'Listen'}
                 </button>
+                {onPreview && (
+                  <button type="button" className="ui-btn ui-btn-sm parallel-preview-btn" onClick={() => onPreview(p)} title="Lay out their whole project in a folder of its own and open it. Yours stays as it is">
+                    <Eye size={13} aria-hidden /> Preview whole project
+                  </button>
+                )}
                 <button type="button" className="ui-btn ui-btn-sm" onClick={() => setComparing(p)} disabled={!currentTipId}>
                   <GitCompare size={13} aria-hidden /> Compare
                 </button>

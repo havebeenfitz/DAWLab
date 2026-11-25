@@ -17,3 +17,5 @@
 .parallel-confirm { color: var(--text-secondary); margin-right: 4px; }
 .parallel-compare-plugins { display: flex; flex-direction: column; gap: 6px; }
 .fork-notice { margin: 0 24px 12px; }
+.parallel-preview-btn { background: rgba(168, 85, 247, 0.2); border-color: rgba(192, 132, 252, 0.6); color: #f3e8ff; }
+.parallel-preview-btn:hover:not(:disabled) { background: rgba(168, 85, 247, 0.35); }

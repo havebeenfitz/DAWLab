@@ -1,0 +1,13 @@
+.branch-graph { margin: 0 24px 12px; border: 1px solid var(--border, rgba(255,255,255,0.08)); border-radius: 12px; background: rgba(255,255,255,0.02); }
+.branch-graph-toggle { display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 12px; background: none; border: 0; color: var(--text-secondary, #9ca3af); font-size: 12px; cursor: pointer; text-align: left; }
+.branch-graph-body { display: flex; padding: 0 12px 10px; }
+.branch-graph-labels { list-style: none; margin: 0; padding-left: 0; flex: none; }
+.branch-graph-labels li { display: flex; align-items: center; }
+.branch-graph-label { display: flex; align-items: center; gap: 6px; max-width: 100%; background: none; border: 0; padding: 2px 6px; border-radius: 6px; color: var(--text-secondary, #9ca3af); font-size: 12px; cursor: pointer; }
+.branch-graph-label:hover { background: rgba(255,255,255,0.05); }
+.branch-graph-label.is-selected { color: var(--text-primary, #fff); background: rgba(255,255,255,0.07); }
+.branch-graph-swatch { width: 8px; height: 8px; border-radius: 50%; background: var(--lane); flex: none; }
+.branch-graph-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-graph-tag { font-size: 10px; padding: 0 5px; border-radius: 999px; background: rgba(234,179,8,0.15); color: #f2cf6b; }
+.branch-graph-scroll { overflow-x: auto; flex: 1; }
+.branch-graph-node { cursor: pointer; }

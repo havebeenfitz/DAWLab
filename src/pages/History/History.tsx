@@ -22,6 +22,9 @@ import { useProjectAccess } from "@/hooks/useProjectAccess";
 import { useSharedProjectSync } from "@/hooks/useSharedProjectSync";
 import { ParallelVersionBanner } from "./components/ParallelVersionBanner";
 import { ForkNotice } from "./components/ForkNotice";
+import { PreviewingBar, type ActivePreview } from "./components/PreviewingBar";
+import { BranchGraph } from "./components/BranchGraph";
+import { dawInfo } from "@/lib/daw";
 import { openParallelVersions, dismissalOf } from "../../../shared/forks";
 import FeedbackView from "@/components/Feedback/FeedbackView";
 import { BranchMenu } from "@/components/BranchMenu/BranchMenu";
@@ -144,6 +147,40 @@ export const History: React.FC = () => {
     `${selectedBranch}|${projectLog?.lastCheckout?.commitId ?? ""}|${newestOn(projectLog, selectedBranch || "main") ?? ""}`,
   );
   const [showDiscard, setShowDiscard] = useState(false);
+
+  // "Preview whole project": someone else's version laid out next to yours.
+  const [preview, setPreview] = useState<ActivePreview | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  useEffect(() => {
+    if (!passedProject) return;
+    window.ipcRenderer.invoke("get-parallel-preview", passedProject).then((p) => setPreview(p ?? null)).catch(() => setPreview(null));
+  }, [passedProject]);
+  const startPreview = async (branch: string) => {
+    if (!passedProject) return;
+    setPreviewBusy(true);
+    try {
+      const p = await window.ipcRenderer.invoke("start-parallel-preview", passedProject, branch);
+      setPreview(p);
+      await openInDaw(p.path);
+    } catch (err) {
+      notify.error("Couldn't preview that version", String((err as Error)?.message ?? err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ""));
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
+  const endPreview = async () => {
+    if (!passedProject) return;
+    setPreviewBusy(true);
+    try {
+      await window.ipcRenderer.invoke("end-parallel-preview", passedProject);
+      setPreview(null);
+      notify.info("Back to yours", "The preview folder is in the Trash. Close it in your DAW if it's still open.");
+    } catch (err) {
+      notify.error("Couldn't close the preview", String((err as Error)?.message ?? err));
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
   const discardChanges = async () => {
     if (!passedProject || !working.baseCommitId) return;
     const r = await window.ipcRenderer.invoke("discard-working-changes", passedProject, working.baseCommitId);
@@ -295,12 +332,42 @@ export const History: React.FC = () => {
       />
 
       {!showSettings && (
+        <PreviewingBar
+          preview={preview}
+          dawName={dawInfo(projectLog?.daw ?? undefined).name}
+          busy={previewBusy}
+          onOpen={() => preview && openInDaw(preview.path)}
+          onBack={() => { void endPreview(); }}
+          onMakeMain={async () => {
+            if (!preview || !passedProject) return;
+            try {
+              await window.ipcRenderer.invoke("make-parallel-version-main", passedProject, preview.branch, username || "You");
+              await endPreview();
+              await log.refreshProjectLog();
+              notify.success(`${preview.author || "Their"} version is now main`, "Your version stays in the history.");
+            } catch (err) {
+              notify.error("Couldn't make it main", String((err as Error)?.message ?? err));
+            }
+          }}
+        />
+      )}
+      {!showSettings && projectLog?.branches && (
+        <BranchGraph
+          branches={projectLog.branches as any}
+          selectedBranch={selectedBranch || "main"}
+          currentCommitId={projectLog.lastCheckout?.commitId ?? null}
+          onSelectBranch={(b) => { if (b !== selectedBranch) void branches.handleSwitchBranch(b); }}
+          onSelectCommit={(b, id) => { if (b !== selectedBranch) void branches.handleSwitchBranch(b); setFocusedCommitId(id); }}
+        />
+      )}
+      {!showSettings && (
         <ParallelVersionBanner
           projectName={passedProject || ""}
           versions={openParallelVersions(projectLog, selectedBranch || "main", username || undefined)}
           currentTipId={newestOn(projectLog, selectedBranch || "main")}
           username={username || "You"}
           onChanged={log.refreshProjectLog}
+          onPreview={(p) => { void startPreview(p.branch); }}
         />
       )}
       {!showSettings && (() => {

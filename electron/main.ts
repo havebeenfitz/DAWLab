@@ -72,6 +72,7 @@ import { requestProjectSync } from "./sync/auto-sync";
 import { parseDeepLink } from "./deep-link";
 import { findVersionAudio } from "./dawvcs/operations/version-audio";
 import { makeParallelVersionMain, dismissParallelVersion } from "./dawvcs/operations/parallel";
+import { startParallelPreview, endParallelPreview, getParallelPreview } from "./dawvcs/operations/parallel-preview";
 import { fileURLToPath } from "node:url";
 
 import path from "node:path";
@@ -733,6 +734,12 @@ ipcMain.handle('get-version-changes', async (_ev, projectName: string, commitId:
 });
 
 // A parallel version (someone saved on top of the same version) becomes the next version of its alternative.
+// "Preview whole project": someone else's version in its own folder next to yours.
+ipcMain.handle('start-parallel-preview', (_ev, projectName: string, branch: string) =>
+  startParallelPreview(projectName, branch, (full) => shell.trashItem(full)));
+ipcMain.handle('end-parallel-preview', (_ev, projectName: string) =>
+  endParallelPreview(projectName, (full) => shell.trashItem(full)).then(() => true));
+ipcMain.handle('get-parallel-preview', (_ev, projectName: string) => getParallelPreview(projectName));
 ipcMain.handle('dismiss-parallel-version', async (_ev, projectName: string, forkBranch: string, by: string, comment: string) => {
   const result = dismissParallelVersion(projectName, forkBranch, by, comment);
   requestProjectSync(projectName).catch(() => undefined);
