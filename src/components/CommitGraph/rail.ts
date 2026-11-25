@@ -16,8 +16,10 @@ export interface RailCommit {
 }
 
 export interface RailFork {
-  /** The parallel alternative's name. */
+  /** The alternative's name, e.g. "elenadanilova · 25 Nov (2)". */
   branch: string;
+  /** A parallel version someone else saved (Preview, Dismiss), or an alternative made on purpose. */
+  kind?: 'parallel' | 'alternative';
   author: string;
   /** The version on this alternative both people saved on top of. */
   parent: string;

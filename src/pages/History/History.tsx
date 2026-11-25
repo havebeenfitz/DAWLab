@@ -20,10 +20,10 @@ import { ProjectSettings } from "@/components/ProjectSettings/ProjectSettings";
 import { useOptionalSharing } from "@/components/Sharing";
 import { useProjectAccess } from "@/hooks/useProjectAccess";
 import { useSharedProjectSync } from "@/hooks/useSharedProjectSync";
-import { ParallelVersionBanner, DismissDialog } from "./components/ParallelVersionBanner";
+import { DismissDialog } from "./components/ParallelVersionBanner";
+import { useParallelActions } from "./hooks/useParallelActions";
 import { ForkNotice } from "./components/ForkNotice";
 import { PreviewingBar, type ActivePreview } from "./components/PreviewingBar";
-import { BranchGraph } from "./components/BranchGraph";
 import { dawInfo } from "@/lib/daw";
 import { openParallelVersions, dismissalOf, type ParallelVersion } from "../../../shared/forks";
 import FeedbackView from "@/components/Feedback/FeedbackView";
@@ -148,13 +148,27 @@ export const History: React.FC = () => {
   // "Discard changes": shown only when the folder differs from the last saved version of this alternative.
   const [showDiscard, setShowDiscard] = useState(false);
   const [dismissTarget, setDismissTarget] = useState<ParallelVersion | null>(null);
-  // Parallel versions of this alternative, folded into the rail where they split (dismissed ones stay hidden).
-  const railForks = openParallelVersions(projectLog ?? {}, selectedBranch || "main", username || undefined).map((p) => ({
-    branch: p.branch,
-    author: p.author,
-    parent: p.parent,
-    commits: ((projectLog?.branches ?? []).find((b: any) => b.name === p.branch)?.commits ?? []) as any[],
-  }));
+  // Every line that split off this alternative, folded into the rail where it split:
+  // parallel versions (dismissed ones stay hidden) and alternatives made from it.
+  const openParallel = openParallelVersions(projectLog ?? {}, selectedBranch || "main", username || undefined);
+  const branchCommits = (name: string) => ((projectLog?.branches ?? []).find((b: any) => b.name === name)?.commits ?? []) as any[];
+  const hereIds = new Set(branchCommits(selectedBranch || "main").map((c: any) => String(c.commit_id)));
+  const railForks = [
+    ...openParallel.map((p) => ({ branch: p.branch, kind: "parallel" as const, author: p.author, parent: p.parent, commits: branchCommits(p.branch) })),
+    ...(projectLog?.branches ?? [])
+      .filter((b: any) => !b.forkOf && b.name !== (selectedBranch || "main") && (b.commits ?? []).length > 0)
+      .map((b: any) => {
+        const first = [...b.commits].sort((x: any, y: any) => String(x.timestamp).localeCompare(String(y.timestamp)))[0];
+        return { branch: b.name as string, kind: "alternative" as const, author: "", parent: String(first?.parent ?? ""), commits: b.commits as any[] };
+      })
+      .filter((f: any) => hereIds.has(f.parent)),
+  ];
+  const parallelActions = useParallelActions(passedProject || "", username || "You", newestOn(projectLog, selectedBranch || "main"), log.refreshProjectLog);
+  const forkMenu = (f: { branch: string; kind?: string }) => {
+    if (f.kind === "alternative") return [{ label: `Switch to “${f.branch}”`, onClick: () => { void branches.handleSwitchBranch(f.branch); } }];
+    const p = openParallel.find((x) => x.branch === f.branch);
+    return p ? parallelActions.menu(p) : [];
+  };
 
   // "Preview whole project": someone else's version laid out next to yours.
   const [preview, setPreview] = useState<ActivePreview | null>(null);
@@ -328,6 +342,7 @@ export const History: React.FC = () => {
         onToggleSettings={() => setShowSettings(!showSettings)}
         sync={access.folder ? { incoming: sharedSync.incoming, pulling: sharedSync.pulling, transfer: sharedSync.transfer, pull: () => { void sharedSync.pull(); } } : undefined}
       />
+      {parallelActions.dialogs}
       <DismissDialog
         projectName={passedProject || ""}
         version={dismissTarget}
@@ -363,25 +378,6 @@ export const History: React.FC = () => {
               notify.error("Couldn't make it main", String((err as Error)?.message ?? err));
             }
           }}
-        />
-      )}
-      {!showSettings && projectLog?.branches && (
-        <BranchGraph
-          branches={projectLog.branches as any}
-          selectedBranch={selectedBranch || "main"}
-          currentCommitId={projectLog.lastCheckout?.commitId ?? null}
-          onSelectBranch={(b) => { if (b !== selectedBranch) void branches.handleSwitchBranch(b); }}
-          onSelectCommit={(b, id) => { if (b !== selectedBranch) void branches.handleSwitchBranch(b); setFocusedCommitId(id); }}
-        />
-      )}
-      {!showSettings && (
-        <ParallelVersionBanner
-          projectName={passedProject || ""}
-          versions={openParallelVersions(projectLog, selectedBranch || "main", username || undefined)}
-          currentTipId={newestOn(projectLog, selectedBranch || "main")}
-          username={username || "You"}
-          onChanged={log.refreshProjectLog}
-          onPreview={(p) => { void startPreview(p.branch); }}
         />
       )}
       {!showSettings && (() => {
@@ -442,6 +438,7 @@ export const History: React.FC = () => {
               readOnly={access.isListener}
               me={username}
               forks={railForks}
+              forkMenu={forkMenu}
               onPreviewFork={access.isListener ? undefined : (b) => { void startPreview(b); }}
               onDismissFork={(b) => setDismissTarget(openParallelVersions(projectLog, selectedBranch || "main", username || undefined).find((p) => p.branch === b) ?? null)}
             />

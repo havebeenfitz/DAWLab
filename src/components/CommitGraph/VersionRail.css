@@ -1,54 +1,28 @@
 /* Version rail: one 30px line per version on a git-like rail. Colors follow the app theme. */
+/* The app is dark throughout (index.css), so the rail uses dark values only; a light theme is separate work. */
 :root {
-  --rail-main: #4f6bed;
-  --rail-fork-1: #d9822b;
-  --rail-fork-2: #2fa37a;
-  --rail-fork-3: #c2410c;
-  --rail-row-hover: rgba(15, 23, 42, 0.05);
-  --rail-row-current: rgba(79, 107, 237, 0.1);
-  --rail-row-selected: rgba(15, 23, 42, 0.08);
-  --rail-muted: #6b7080;
-  --rail-text: #1b1d24;
-  --rail-panel: #ffffff;
-  --rail-line: #dfe2ea;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --rail-main: #7f95ff; --rail-fork-1: #f0a050; --rail-fork-2: #4cc79a; --rail-fork-3: #fb923c;
-    --rail-row-hover: rgba(255, 255, 255, 0.04); --rail-row-current: rgba(127, 149, 255, 0.14); --rail-row-selected: rgba(255, 255, 255, 0.08);
-    --rail-muted: #8d93a3; --rail-text: #e7e9ef; --rail-panel: #1c1f26; --rail-line: #2c3039;
-  }
-}
-:root[data-theme="dark"] {
   --rail-main: #7f95ff; --rail-fork-1: #f0a050; --rail-fork-2: #4cc79a; --rail-fork-3: #fb923c;
   --rail-row-hover: rgba(255, 255, 255, 0.04); --rail-row-current: rgba(127, 149, 255, 0.14); --rail-row-selected: rgba(255, 255, 255, 0.08);
   --rail-muted: #8d93a3; --rail-text: #e7e9ef; --rail-panel: #1c1f26; --rail-line: #2c3039;
+  --rail-bg: #161616;
 }
 
-.version-rail { display: flex; flex-direction: column; gap: 6px; max-height: 360px; overflow-y: auto; padding: 2px 4px 2px 0; color: var(--rail-text); }
-.rail-row { display: grid; grid-template-columns: 34px 1fr; align-items: center; height: 30px; border-radius: 6px; cursor: pointer; outline: none; }
+.version-rail { display: block; max-height: 360px; overflow-y: auto; padding: 2px 4px 2px 0; color: var(--rail-text); }
+.rail-list { position: relative; display: flex; flex-direction: column; gap: 0; }
+.rail-svg { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; overflow: visible; }
+.rail-row { display: grid; grid-template-columns: var(--rail-gutter, 34px) 1fr; align-items: center; height: 30px; border-radius: 6px; cursor: pointer; outline: none; }
 .rail-row:hover { background: var(--rail-row-hover); }
 .rail-row.is-current { background: var(--rail-row-current); }
-.rail-row.is-selected { background: var(--rail-row-selected); box-shadow: inset 2px 0 0 var(--rail-main); }
+.rail-row.is-selected { background: var(--rail-row-selected); }
 .rail-row:focus-visible { box-shadow: 0 0 0 2px var(--rail-main); }
-.rail-gutter { position: relative; height: 100%; display: block; }
-.rail-line { position: absolute; top: 0; bottom: 0; width: 2px; border-radius: 2px; }
-.rail-line.main { left: 8px; background: var(--rail-main); opacity: 0.7; }
-.rail-line.main.ends { bottom: 50%; }
-.rail-line.fork { left: 24px; }
-.rail-dot { position: absolute; top: 50%; width: 10px; height: 10px; border-radius: 50%; transform: translate(-4px, -50%); border: 2px solid; box-sizing: border-box; }
-.rail-dot.lane-0 { left: 9px; }
-.rail-dot.lane-1 { left: 25px; }
-.rail-row.is-auto .rail-dot { border-style: dashed; }
 .rail-text { display: flex; align-items: center; gap: 6px; min-width: 0; padding-right: 8px; }
 .rail-msg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; font-size: 13px; }
 .rail-who { margin-left: auto; color: var(--rail-muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rail-tag { font-size: 10px; padding: 1px 6px; border-radius: 9px; background: var(--rail-row-current); color: var(--rail-main); white-space: nowrap; }
 .rail-auto, .rail-icon { color: var(--rail-muted); flex: none; }
 
-.rail-fold-head { display: grid; grid-template-columns: 34px 1fr; align-items: stretch; min-height: 30px; }
-.rail-curve { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.rail-fold { display: flex; align-items: center; gap: 6px; border: 1px solid; border-radius: 7px; padding: 2px 4px 2px 2px; margin: 2px 0; min-width: 0; }
+.rail-fold-head { display: grid; grid-template-columns: var(--rail-gutter, 34px) 1fr; align-items: center; height: 30px; }
+.rail-fold { display: flex; align-items: center; gap: 6px; height: 26px; box-sizing: border-box; border: 1px solid; border-radius: 7px; padding: 0 4px 0 2px; min-width: 0; }
 .rail-fold-toggle { display: flex; align-items: center; gap: 4px; background: none; border: 0; padding: 2px 4px; border-radius: 5px; color: var(--rail-text); font: inherit; font-size: 12px; cursor: pointer; min-width: 0; }
 .rail-fold-toggle:focus-visible, .rail-btn:focus-visible { outline: 2px solid var(--rail-main); outline-offset: 1px; }
 .rail-fold-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -64,3 +38,25 @@
 .selected-version-text span { color: var(--rail-muted); font-size: 11px; }
 .selected-version-actions { display: flex; gap: 6px; align-items: center; }
 @media (prefers-reduced-motion: reduce) { .rail-row, .rail-btn { transition: none; } }
+
+/* Unsaved changes: one compact block at the top of the rail. */
+:root { --unsaved-line: #5c4d26; --unsaved-fg: #d4b062; --unsaved-danger: #ef6f64; }
+.rail-head:empty { display: none; }
+.unsaved-block { margin-bottom: 2px; display: grid; grid-template-columns: var(--rail-gutter, 34px) auto minmax(80px, 1fr) auto auto; align-items: center; gap: 8px; height: 34px; padding-right: 6px; border: 1px dashed var(--unsaved-line); border-radius: 6px; }
+.unsaved-title { font-size: 12px; color: var(--unsaved-fg); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.unsaved-input { min-width: 0; font: inherit; font-size: 12px; height: 24px; padding: 0 8px; border-radius: 5px; border: 1px solid var(--rail-line); background: transparent; color: var(--rail-text); }
+.unsaved-input:focus-visible { outline: 2px solid var(--rail-main); outline-offset: 0; }
+.unsaved-btn { font: inherit; font-size: 11px; height: 24px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--rail-line); background: var(--rail-panel); color: var(--rail-text); cursor: pointer; white-space: nowrap; }
+.unsaved-btn.primary { background: var(--rail-main); border-color: var(--rail-main); color: #fff; }
+.unsaved-btn.danger { color: var(--unsaved-danger); }
+.unsaved-btn:disabled { opacity: 0.5; cursor: default; }
+.unsaved-btn:focus-visible { outline: 2px solid var(--rail-main); outline-offset: 1px; }
+.rail-fold-name { overflow: visible; white-space: nowrap; }
+.rail-btn.icon { padding: 2px 4px; }
+.rail-menu-wrap { position: relative; }
+.rail-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; min-width: 180px; padding: 4px; border-radius: 8px; border: 1px solid var(--rail-line); background: var(--rail-panel); box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+.rail-menu button { text-align: left; font: inherit; font-size: 12px; padding: 6px 8px; border: 0; border-radius: 5px; background: none; color: var(--rail-text); cursor: pointer; }
+.rail-menu button:hover:not(:disabled), .rail-menu button:focus-visible { background: var(--rail-row-hover); outline: none; }
+.rail-menu button:disabled { opacity: .45; cursor: default; }
+
+.rail-gutter { display: block; }

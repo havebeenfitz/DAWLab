@@ -30,10 +30,10 @@ interface Props {
   onPlayFrom: (seconds: number) => void;
 }
 
-/** Tab picker shown below 900px, where only one panel is visible at a time. */
+/** Tab picker shown below 1100px, where only one panel is visible at a time. */
 function MobileTabPicker({ activeTab, onTabChange }: Pick<Props, 'activeTab' | 'onTabChange'>) {
   return (
-    <div className="mb-8 min-[900px]:hidden">
+    <div className="mb-8 min-[1100px]:hidden">
       <div className="flex gap-8 relative">
         {TABS.map(({ id, label }) => (
           <button
@@ -58,9 +58,9 @@ function MobileTabPicker({ activeTab, onTabChange }: Pick<Props, 'activeTab' | '
   );
 }
 
-/** Classes for one panel: always shown from 900px up, otherwise only when its tab is active. */
+/** Classes for one panel: always shown from 1100px up, otherwise only when its tab is active. */
 const panelClass = (active: boolean, scrolls: boolean) =>
-  `flex-1 min-h-0 ${active ? 'flex flex-col' : 'hidden'} min-[900px]:flex min-[900px]:flex-col${scrolls ? ' overflow-y-auto' : ''}`;
+  `flex-1 min-h-0 ${active ? 'flex flex-col' : 'hidden'} min-[1100px]:flex min-[1100px]:flex-col${scrolls ? ' overflow-y-auto' : ''}`;
 
 /** Files, plugins and comments of the active version: side by side on desktop, tabbed on mobile. */
 export function HistoryBottomPanels(p: Props) {
@@ -69,7 +69,7 @@ export function HistoryBottomPanels(p: Props) {
     <div className="flex flex-col flex-1 min-h-0 px-6">
       <MobileTabPicker activeTab={p.activeTab} onTabChange={p.onTabChange} />
 
-      <div className="bottom-panels flex flex-col min-[900px]:flex-row gap-8 flex-1 min-h-0">
+      <div className="bottom-panels flex flex-col min-[1100px]:flex-row gap-8 flex-1 min-h-0">
         <div className={panelClass(p.activeTab === 'files', true)}>
           <FileExplorer
             projectName={p.projectName}

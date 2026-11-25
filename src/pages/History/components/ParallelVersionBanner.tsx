@@ -119,7 +119,7 @@ export function ParallelVersionBanner({ projectName, versions, currentTipId, use
 }
 
 /** How the parallel version differs from the newest version of yours: song, plugins, files. */
-function CompareDialog({ projectName, version, baseId, onClose }: {
+export function CompareDialog({ projectName, version, baseId, onClose }: {
   projectName: string; version: ParallelVersion | null; baseId: string | null; onClose: () => void;
 }) {
   const [changes, setChanges] = useState<VersionChanges | null>(null);

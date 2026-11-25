@@ -105,7 +105,7 @@ export function HistoryHeader(p: Props) {
               Save version
             </ActionButton>
             <button type="button" className="btn-pill group px-5" onClick={p.onOpenInDaw} title={`Open in ${daw.name}`}>
-              <span className="text-gray-400 group-hover:text-white">Open in</span>
+              <span className="text-gray-400 group-hover:text-white pill-label">Open in</span>
               {daw.logo ? <img src={daw.logo} alt={daw.name} className="w-[18px] h-[18px] object-contain" /> : <span>{daw.name}</span>}
             </button>
           </>
@@ -116,21 +116,22 @@ export function HistoryHeader(p: Props) {
             className="btn-pill group px-5 relative"
             onClick={p.sync.pull}
             disabled={p.sync.pulling}
+            aria-label={p.sync.pulling ? 'Pulling…' : p.sync.incoming > 0 ? `Pull, ${p.sync.incoming} new` : 'Pull'}
             title={p.sync.incoming > 0
               ? `${p.sync.incoming} new version${p.sync.incoming === 1 ? '' : 's'} from others. Get them and send yours`
               : 'Get everyone’s latest versions and send yours'}
           >
             <RefreshCw size={16} aria-hidden className={`text-gray-400 group-hover:text-white ${p.sync.pulling ? 'animate-spin' : ''}`} />
-            <span>{p.sync.pulling ? 'Pulling…' : 'Pull'}</span>
+            <span className="pill-label">{p.sync.pulling ? 'Pulling…' : 'Pull'}</span>
             {p.sync.incoming > 0 && !p.sync.pulling && (
               <span className="ui-badge" aria-label={`${p.sync.incoming} new from others`}>{p.sync.incoming} new</span>
             )}
           </button>
         )}
         {shared && p.sync?.pulling && p.sync.transfer && <TransferBar transfer={p.sync.transfer} compact />}
-        <button type="button" className="btn-pill group px-5" onClick={p.onShare} disabled={!p.projectName}>
+        <button type="button" className="btn-pill group px-5" onClick={p.onShare} disabled={!p.projectName} aria-label={shared ? 'Sharing' : 'Share'}>
           <Share2 size={16} aria-hidden className="text-gray-400 group-hover:text-white" />
-          <span>{shared ? 'Sharing' : 'Share'}</span>
+          <span className="pill-label">{shared ? 'Sharing' : 'Share'}</span>
         </button>
         {!p.access.isListener && (
           <button

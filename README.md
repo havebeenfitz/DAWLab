@@ -4,7 +4,7 @@
 
 Works with Ableton Live, Logic Pro, FL Studio, Pro Tools and Reaper projects.
 
-![A project in DAWLab: versions on a rail with a parallel version folded in, the Unsaved changes block, and the alternatives map](docs/screenshots/history-rail.jpg)
+![A project in DAWLab: versions on a rail, a parallel version and an alternative folded where they split, and the Unsaved changes row](docs/screenshots/history-rail.jpg)
 
 ---
 
@@ -22,11 +22,11 @@ Works with Ableton Live, Logic Pro, FL Studio, Pro Tools and Reaper projects.
 ![The Library with a shared folder and two projects](docs/screenshots/library.jpg)
 
 - **Add a project**: click **+** in the Library and pick the project folder (or drag it in). DAWLab saves the first version.
-- **Save a version**: when the project folder changes, an **Unsaved changes** block appears at the top of the history with the number of changed files. Describe what changed and click **Save**.
-- **Discard**: the same block has **Discard**, which puts the folder back to the last saved version. Your current files go to the Trash first, in a folder named after the project, so you can still get them back.
+- **Save a version**: when the project folder changes, an **Unsaved changes** row appears at the top of the history with the number of changed files. Describe what changed and click **Save**.
+- **Discard**: the same row has **Discard**, which puts the folder back to the last saved version. Your current files go to the Trash first, in a folder named after the project, so you can still get them back.
 - **Restore**: click a version on the rail, then **Restore** in the bar below. The folder becomes an exact copy of that version. Files the version doesn't have go to the Trash.
 - **Nothing is lost when you switch**: before Restore, Make main or Discard changes the folder, DAWLab keeps any unsaved work as a version marked **Kept automatically**. **Bring back** on it returns everything as it was.
-- **Alternatives**: try an idea without touching the main line. Use **Alternatives** (or Cmd+K) to create or switch. The alternatives map shows every line and where it split off.
+- **Alternatives**: try an idea without touching the main line. Use **Alternatives** (or Cmd+K) to create or switch. On the rail, each alternative is folded into one row where it split off; open it to see its versions.
 
 ## Sharing a folder
 
@@ -57,7 +57,7 @@ When two people save on top of the same version, nothing is overwritten. The sec
 
 ![Previewing someone else's parallel version in its own folder](docs/screenshots/preview.jpg)
 
-- On the rail, a parallel version is folded into one outlined row where it split off. Open it to see its versions.
+- On the rail, a parallel version is folded into one outlined row where it split off, with Preview, Dismiss and a ⋯ menu (Listen, Compare, Make main). Open it to see its versions.
 - **Preview** lays the whole project out in a folder of its own next to yours and opens it in your DAW. Your folder is not touched. **Back to mine** moves the preview folder to the Trash.
 - **Make main** continues your line with their version. Your version stays in the history.
 - **Dismiss** hides the notice for you, with a short reason that the author sees as a comment. The alternative stays for everyone. A newer version in it brings the notice back.

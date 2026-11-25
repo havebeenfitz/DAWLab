@@ -179,13 +179,12 @@
 }
 
 /* Preview Dropzone Button at the bottom */
+/* A small inline control at the end of the page: never floats over the panels. */
 .preview-dropzone-container {
-  position: fixed;
-  bottom: 1.2rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  width: auto;
+  position: static;
+  margin: 12px auto 0;
+  width: 100%;
+  max-width: 520px;
   pointer-events: none;
 }
 
@@ -193,11 +192,12 @@
   pointer-events: auto;
   background-color: #1C1C1C;
   border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 30px;
-  padding: 0 2rem; 
-  height: 70px;    
-  color: rgba(255, 255, 255, 0.3);
-  font-size: 1rem;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0 1rem;
+  height: 34px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -205,7 +205,6 @@
   box-shadow: none;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 500px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -390,4 +389,9 @@
 @keyframes bg-sync-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+/* Narrow windows: header buttons keep their icons, labels go; nothing wraps into a second row of pills. */
+@media (max-width: 1150px) {
+  .history-page .pill-label { display: none; }
+  .history-page .btn-pill { padding-left: 14px !important; padding-right: 14px !important; }
 }

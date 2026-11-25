@@ -10,7 +10,7 @@ import { notify } from "@/lib/notify";
 import "./CommitGraph.css";
 import { VersionRail } from "./VersionRail";
 import { railMessage, type RailFork } from "./rail";
-import { Bookmark, Check, RotateCcw, MoreHorizontal } from "lucide-react";
+import { Check, RotateCcw, MoreHorizontal } from "lucide-react";
 import { ContextMenu, createCommitMenuItems } from "@/components/ContextMenu";
 import { InputModal } from "@/components/InputModal";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -65,6 +65,7 @@ export interface CommitGraphProps {
   me?: string | null;
   onPreviewFork?: (branch: string) => void;
   onDismissFork?: (branch: string) => void;
+  forkMenu?: (fork: RailFork) => Array<{ label: string; onClick: () => void; disabled?: boolean }>;
 }
 
 // ============================================================================
@@ -169,11 +170,12 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   me,
   onPreviewFork,
   onDismissFork,
+  forkMenu,
 }) => {
   const [selectedCommitId, setSelectedCommitId] = useState<string | null>(null);
   const [_currentPage, _setCurrentPage] = useState<number>(0); // Keeping state for now but layout is horizontal
   const [newCommitMessage, setNewCommitMessage] = useState("");
-  const [isExiting, setIsExiting] = useState(false);
+  const [isExiting] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Use prop if provided (even if null), otherwise use local state fallback
@@ -472,82 +474,58 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
         onContextMenu={handleCommitContextMenu}
         onPreviewFork={onPreviewFork}
         onDismissFork={onDismissFork}
+        forkMenu={forkMenu}
         head={
-          <div className="commit-cards-list rail-head">
-          {/* New Commit / Save Card - show if unsaved changes OR user explicitly clicked save */}
+          <div className="rail-head">
+          {/* Unsaved changes: only when files changed (or Save was asked for), as one compact block on the rail */}
           {(hasUnsavedChanges || isCreatingCommit || isExiting) &&
             onSaveCommit && (
-              <div
-                className={`commit-card save-card modified ${isExiting ? "animate-slide-out" : "animate-slide-in"}`}
+              <form
+                className="unsaved-block"
+                aria-label="Unsaved changes"
+                data-rail-mark="unsaved"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (newCommitMessage.trim() && !isCommitting) onSaveCommit(newCommitMessage);
+                }}
               >
-                <div className="card-content">
-                  <div className="save-card-title" role="status">
-                    {hasUnsavedChanges
-                      ? `Unsaved changes · ${unsavedCount} file${unsavedCount === 1 ? '' : 's'}`
-                      : 'No changes since the last save'}
-                  </div>
-                  <textarea
-                    className="version-input"
-                    aria-label="Version message"
-                    placeholder="What changed? e.g. new chorus vocals"
-                    value={newCommitMessage}
-                    onChange={(e) => setNewCommitMessage(e.target.value)}
-                  />
-                  <div className="card-footer">
-                    <div className="flex justify-between items-center w-full mt-2">
-                      <span className="text-xs text-gray-500">
-                        {new Date().toLocaleDateString()}
-                      </span>
-                      <span className="text-xs text-gray-500">me</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="card-action">
-                  <div className="flex gap-2">
-                    {hasUnsavedChanges && onDiscard && (
-                      <button
-                        type="button"
-                        className="cancel-version-button discard-version-button"
-                        onClick={onDiscard}
-                        disabled={isCommitting || isExiting}
-                        title="Go back to the last saved version"
-                      >
-                        Discard
-                      </button>
-                    )}
-                    {isCreatingCommit && !hasUnsavedChanges && (
-                      <button
-                        className="cancel-version-button"
-                        onClick={() => {
-                          setIsExiting(true);
-                          setTimeout(() => {
-                            setNewCommitMessage("");
-                            setIsExiting(false);
-                            if (onCancelSave) onCancelSave();
-                          }, 400);
-                        }}
-                        disabled={isCommitting || isExiting}
-                      >
-                        Cancel
-                      </button>
-                    )}
-                    <button
-                      className="save-version-button"
-                      onClick={() => {
-                        onSaveCommit(newCommitMessage);
-                      }}
-                      disabled={isCommitting || !newCommitMessage.trim()}
-                    >
-                      {isCommitting ? "Saving..." : "Save"}{" "}
-                      <Bookmark
-                        className="ml-2"
-                        style={{ color: "#eab308" }}
-                        size={16}
-                      />
-                    </button>
-                  </div>
-                </div>
-              </div>
+                <span className="rail-gutter" aria-hidden />
+                <span className="unsaved-title" role="status">
+                  {hasUnsavedChanges
+                    ? `Unsaved changes · ${unsavedCount} file${unsavedCount === 1 ? "" : "s"}`
+                    : "No changes since the last save"}
+                </span>
+                <input
+                  id="version-message"
+                  className="unsaved-input"
+                  aria-label="Version message"
+                  placeholder="What changed?"
+                  value={newCommitMessage}
+                  onChange={(e) => setNewCommitMessage(e.target.value)}
+                  autoComplete="off"
+                />
+                <button type="submit" className="unsaved-btn primary" disabled={isCommitting || !newCommitMessage.trim()}>
+                  {isCommitting ? "Saving…" : "Save"}
+                </button>
+                {hasUnsavedChanges && onDiscard && (
+                  <button type="button" className="unsaved-btn danger" onClick={onDiscard} disabled={isCommitting || isExiting} title="Go back to the last saved version">
+                    Discard
+                  </button>
+                )}
+                {isCreatingCommit && !hasUnsavedChanges && (
+                  <button
+                    type="button"
+                    className="unsaved-btn"
+                    onClick={() => {
+                      setNewCommitMessage("");
+                      if (onCancelSave) onCancelSave();
+                    }}
+                    disabled={isCommitting}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </form>
             )}
 
           </div>

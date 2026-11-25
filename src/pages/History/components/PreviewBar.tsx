@@ -131,7 +131,7 @@ export function PreviewBar({ activeCommit, versionNumber, player, upload, onOpen
             <span>
               {isDraggingFile
                 ? "Drop to attach preview"
-                : "Drag and drop audio file for preview"}
+                : "Drop an audio file here to attach a preview"}
             </span>
           )}
         </div>

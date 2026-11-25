@@ -308,8 +308,10 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
         </div>
       ) : isPathValid && (
         <div className="project-path-unit">
-          <div className="project-path-box">
-            {projectPath.replace(/ /g, '\u00A0').replace(/\//g, '\u200B/')}
+          <div className="project-path-box" title={projectPath}>
+            {/* One line, cut in the middle so the project folder's name always shows. */}
+            <span className="path-head">{pathHead(projectPath)}</span>
+            <span className="path-tail">{pathTail(projectPath)}</span>
           </div>
           <div className="project-path-actions-inline">
             <button
@@ -389,3 +391,16 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
     </div>
   );
 };
+
+/** The start of a path, up to the last two parts (shown first, and cut with … when too long). */
+export function pathHead(p: string): string {
+  const parts = p.split('/');
+  return parts.length > 3 ? parts.slice(0, -2).join('/') + '/' : '';
+}
+
+/** The last two parts of a path: always shown in full. */
+export function pathTail(p: string): string {
+  const parts = p.split('/');
+  return parts.length > 3 ? parts.slice(-2).join('/') : p;
+}
+

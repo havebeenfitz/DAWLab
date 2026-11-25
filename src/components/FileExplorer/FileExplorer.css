@@ -86,15 +86,17 @@
 }
 
 .project-path-box {
+  display: flex;
+  min-width: 0;
+  white-space: nowrap;
   background: #1C1C1C;
-  border-radius: 20px;
-  padding: 1.5rem;
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
   font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
   color: #666; /* Darker grey as in screenshot */
   font-size: 0.9rem;
   line-height: 1.4;
-  overflow-wrap: break-word;
-  word-break: normal;
+
   flex: 1;
 }
 
@@ -414,3 +416,6 @@
 .file-play-btn:hover { background: var(--surface-2); color: var(--text-main); border-color: transparent; }
 .file-play-btn.is-playing { color: var(--brand); background: var(--brand-soft); }
 .change-row .file-play-btn { margin-left: auto; }
+
+.project-path-box .path-head { overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 2ch; }
+.project-path-box .path-tail { overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; max-width: calc(100% - 3ch); color: #9a9a9a; }

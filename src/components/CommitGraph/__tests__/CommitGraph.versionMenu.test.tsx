@@ -166,7 +166,7 @@ describe('CommitGraph version rail', () => {
       renderGraph({ forks, onPreviewFork, onDismissFork });
       const items = screen.getAllByRole('listitem').map((li) => li.classList.contains('rail-fold-item') ? 'fold' : li.querySelector('.rail-msg')?.textContent);
       expect(items).toEqual(['Mixdown', 'fold', 'Added drums', 'First idea']);
-      expect(screen.getByRole('button', { name: /bob · 2 versions/ })).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.getByRole('button', { name: /bob · 25 Nov · 2 versions/ })).toHaveAttribute('aria-expanded', 'false');
       expect(screen.queryByText('bob drums')).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /Preview/ }));
       fireEvent.click(screen.getByRole('button', { name: /Dismiss/ }));
@@ -174,10 +174,26 @@ describe('CommitGraph version rail', () => {
       expect(onDismissFork).toHaveBeenCalledWith('bob · 25 Nov');
     });
 
+    it('has a ⋯ menu with more actions for it', () => {
+      const listen = vi.fn();
+      renderGraph({ forks, forkMenu: () => [{ label: 'Listen', onClick: listen }, { label: 'Make main…', onClick: vi.fn(), disabled: true }] });
+      fireEvent.click(screen.getByRole('button', { name: 'More for bob · 25 Nov' }));
+      expect(screen.getByRole('menuitem', { name: 'Make main…' })).toBeDisabled();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Listen' }));
+      expect(listen).toHaveBeenCalled();
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    });
+
+    it('folds an alternative made on purpose too, without Preview or Dismiss', () => {
+      renderGraph({ forks: [{ ...forks[0], branch: 'slower tempo', kind: 'alternative' as const }], onPreviewFork: vi.fn(), onDismissFork: vi.fn() });
+      expect(screen.getByRole('button', { name: /slower tempo · 2 versions/ })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Preview/ })).not.toBeInTheDocument();
+    });
+
     it('opens to show its versions on a second lane, which can be selected', () => {
       const onCommitSelect = vi.fn();
       renderGraph({ forks, onCommitSelect });
-      fireEvent.click(screen.getByRole('button', { name: /bob · 2 versions/ }));
+      fireEvent.click(screen.getByRole('button', { name: /bob · 25 Nov · 2 versions/ }));
       const lane = screen.getByRole('list', { name: 'Versions in bob · 25 Nov' });
       expect(within(lane).getAllByRole('listitem').map((li) => li.querySelector('.rail-msg')!.textContent)).toEqual(['bob drums 2', 'bob drums']);
       fireEvent.click(within(lane).getByText('bob drums'));
@@ -196,12 +212,16 @@ describe('CommitGraph version rail', () => {
       const onSaveCommit = vi.fn();
       const onDiscard = vi.fn();
       renderGraph({ onSaveCommit, hasUnsavedChanges: true, unsavedCount: 3, onDiscard });
-      expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes · 3 files');
+      expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes');
+      expect(screen.getByRole('form', { name: 'Unsaved changes' })).toHaveTextContent('3 files');
       fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
       expect(onDiscard).toHaveBeenCalled();
       fireEvent.change(screen.getByLabelText('Version message'), { target: { value: 'new chorus' } });
       fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
       expect(onSaveCommit).toHaveBeenCalledWith('new chorus');
+      // Enter in the field saves too.
+      fireEvent.submit(screen.getByRole('form', { name: 'Unsaved changes' }));
+      expect(onSaveCommit).toHaveBeenCalledTimes(2);
     });
 
     it('when saving anyway with no changes, says so and offers Cancel, not Discard', () => {
