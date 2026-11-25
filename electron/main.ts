@@ -63,6 +63,7 @@ import { getInstalledPlugins, rescanPlugins } from "./workers/pluginScanner";
 import { startDraftWatch, stopDraftWatch, stopAllDraftWatches } from "./watchers/draftWatcher";
 import { registerHubIpc } from "./sync/ipc";
 import { removeProjectsFromLibrary, type RemoveTarget } from "./library/remove-projects";
+import { getVersionChanges } from "./dawvcs/operations/version-changes";
 import { requestProjectSync } from "./sync/auto-sync";
 import { parseDeepLink } from "./deep-link";
 import { fileURLToPath } from "node:url";
@@ -703,6 +704,16 @@ ipcMain.handle(
 ipcMain.handle("get-cas-preview-url", (_ev, hash: string) => {
   const localPath = getCasPath(hash);
   return `dawpreview://active${localPath.startsWith("/") ? "" : "/"}${localPath}`;
+});
+
+// What a version changed compared with the one before it: files and plugins, git-diff style.
+ipcMain.handle('get-version-changes', async (_ev, projectName: string, commitId: string) => {
+  try {
+    return getVersionChanges(projectName, commitId);
+  } catch (error) {
+    console.error(`[main.ts] Error getting changes for ${commitId}:`, error);
+    return null;
+  }
 });
 
 ipcMain.handle('get-commit-filemap', async (_ev, projectName: string, commitId: string) => {

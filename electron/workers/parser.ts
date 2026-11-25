@@ -7,6 +7,8 @@ export interface PluginInfo {
     manufacturer?: string;
     type?: string;
     is_instrument?: boolean;
+    /** How many times the plugin is used in the project. */
+    count?: number;
 }
 
 export interface ExtractedMetadata {
@@ -34,8 +36,11 @@ export class AbletonParser implements MetadataParser {
 
     async parse(filePath: string): Promise<ExtractedMetadata> {
         console.log(`[AbletonParser] Parsing: ${filePath}`);
-        
-        const fileBuffer = fs.readFileSync(filePath);
+        return this.parseBuffer(fs.readFileSync(filePath));
+    }
+
+    /** Parses the bytes of an .als file (gzipped or plain XML). */
+    parseBuffer(fileBuffer: Buffer): ExtractedMetadata {
         let xmlContent: string;
 
         try {
@@ -125,7 +130,7 @@ export class AbletonParser implements MetadataParser {
 
     private findPlugins(root: any): PluginInfo[] {
         const pluginsList: PluginInfo[] = [];
-        const seenKeys = new Set<string>();
+        const seenKeys = new Map<string, PluginInfo>();
         const stack: any[] = [root];
 
         while (stack.length > 0) {
@@ -180,10 +185,13 @@ export class AbletonParser implements MetadataParser {
 
                     if (name !== "Unknown") {
                         const key = `${name}|${manufacturer}|${type}|${isInstrument}`.toLowerCase();
-                        if (!seenKeys.has(key)) {
-                            seenKeys.add(key);
-                            pluginsList.push({ name, manufacturer, type, is_instrument: isInstrument });
-                            console.log(`[AbletonParser] Identified ${type}: ${name} (${manufacturer}) [${isInstrument ? 'INST' : 'FX'}]`);
+                        const seen = seenKeys.get(key);
+                        if (seen) {
+                            seen.count = (seen.count ?? 1) + 1;
+                        } else {
+                            const plugin: PluginInfo = { name, manufacturer, type, is_instrument: isInstrument, count: 1 };
+                            seenKeys.set(key, plugin);
+                            pluginsList.push(plugin);
                         }
                     }
                 }

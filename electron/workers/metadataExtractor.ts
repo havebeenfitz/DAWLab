@@ -54,12 +54,6 @@ async function run() {
 
         console.log(`[Worker] Extraction successful. Found ${metadata.plugins.length} plugins, ${metadata.total_tracks} tracks.`);
 
-        // Debug: Write metadata to temp file for inspection
-        try {
-            const debugPath = path.join(projectPath, `.dawlab-metadata-debug.json`);
-            fs.writeFileSync(debugPath, JSON.stringify(metadata, null, 2));
-            console.log(`[Worker] Debug info exported to: ${debugPath}`);
-        } catch (e) {}
 
         if (parentPort) {
             parentPort.postMessage({

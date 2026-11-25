@@ -89,6 +89,8 @@ interface AUComponentInfo {
   path: string;
 }
 
+let auCache: { at: number; index: Map<string, AUComponentInfo> } | null = null;
+
 // ─── Logic Pro Parser ────────────────────────────────────────────────────────
 
 export class LogicProParser implements MetadataParser {
@@ -110,22 +112,21 @@ export class LogicProParser implements MetadataParser {
     }
 
     console.log(`[LogicProParser] Found ProjectData: ${projectDataPath}`);
-    const data = fs.readFileSync(projectDataPath);
-    const text = data.toString('latin1'); // latin1 preserves byte values
+    return this.parseBuffer(fs.readFileSync(projectDataPath));
+  }
 
-    console.log(`[LogicProParser] Binary size: ${(data.length / 1024).toFixed(1)} KB`);
+  /** Parses the bytes of a ProjectData file. */
+  parseBuffer(data: Buffer): ExtractedMetadata {
+    const text = data.toString('latin1'); // latin1 preserves byte values
 
     // Step 1: Scan installed AU components for full names (Method 3)
     const auIndex = this.scanAUComponents();
-    console.log(`[LogicProParser] AU component index: ${auIndex.size} entries`);
 
     // Step 2: Build fallback name index from binary AU code patterns (Method 2)
     const binaryIndex = this.buildNameIndex(data);
-    console.log(`[LogicProParser] Binary name index: ${binaryIndex.size} entries`);
 
     // Step 3: Extract unique plugins from plist XML fragments (Method 1)
     const plugins = this.extractFromPlistFragments(text, auIndex, binaryIndex);
-    console.log(`[LogicProParser] Found ${plugins.length} unique third-party plugins`);
 
     return {
       daw_version: 'Logic Pro X',
@@ -146,29 +147,25 @@ export class LogicProParser implements MetadataParser {
    * Checks root level first, then inside Alternatives/ subfolders.
    */
   private findProjectData(bundlePath: string): string | null {
-    // Direct path
-    const directPath = path.join(bundlePath, 'ProjectData');
-    if (fs.existsSync(directPath)) {
-      return directPath;
-    }
-
-    // Check Alternatives directory (Logic Pro uses this for project variants)
+    // The open alternative is the one Logic saved last, so take the newest ProjectData.
+    const candidates: string[] = [path.join(bundlePath, 'ProjectData')];
     const altDir = path.join(bundlePath, 'Alternatives');
-    if (fs.existsSync(altDir) && fs.statSync(altDir).isDirectory()) {
+    try {
+      for (const entry of fs.readdirSync(altDir)) candidates.push(path.join(altDir, entry, 'ProjectData'));
+    } catch {
+      /* no alternatives */
+    }
+    let best: string | null = null;
+    let bestTime = -Infinity;
+    for (const c of candidates) {
       try {
-        const altEntries = fs.readdirSync(altDir);
-        for (const entry of altEntries) {
-          const altDataPath = path.join(altDir, entry, 'ProjectData');
-          if (fs.existsSync(altDataPath)) {
-            return altDataPath;
-          }
-        }
-      } catch (err: any) {
-        console.warn(`[LogicProParser] Could not read Alternatives: ${err.message}`);
+        const t = fs.statSync(c).mtimeMs;
+        if (t > bestTime) { best = c; bestTime = t; }
+      } catch {
+        /* missing */
       }
     }
-
-    return null;
+    return best;
   }
 
   // ─── Method 1: Embedded Plist XML Fragments ──────────────────────────────
@@ -182,7 +179,7 @@ export class LogicProParser implements MetadataParser {
     auIndex: Map<string, AUComponentInfo>,
     binaryIndex: Map<string, string>,
   ): PluginInfo[] {
-    const seen = new Set<string>();
+    const seen = new Map<string, PluginInfo>();
     const plugins: PluginInfo[] = [];
 
     const pattern =
@@ -196,8 +193,11 @@ export class LogicProParser implements MetadataParser {
       const sub = parseInt(match[3]);
       const typ = parseInt(match[4]);
       const key = `${mfr}|${sub}|${typ}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const already = seen.get(key);
+      if (already) {
+        already.count = (already.count ?? 1) + 1;
+        continue;
+      }
 
       const mfrCode = intToFourCC(mfr);
       const subCode = intToFourCC(sub);
@@ -205,20 +205,20 @@ export class LogicProParser implements MetadataParser {
 
       // Name resolution priority: AU component → binary pattern → subtype code
       const auInfo = auIndex.get(auKey);
+      // match[2] is the AU preset's name ("Untitled", "#default"...), not the plugin's, so it isn't used.
       const displayName = auInfo?.name ?? binaryIndex.get(auKey) ?? subCode;
       const manufacturer = auInfo?.manufacturerName ?? mfrCode;
       const typeName = getTypeName(typ);
 
-      plugins.push({
+      const plugin: PluginInfo = {
         name: displayName,
         manufacturer,
         type: intToFourCC(typ),
         is_instrument: typeName === 'Instrument',
-      });
-
-      console.log(
-        `[LogicProParser] Identified: ${displayName} (${manufacturer}) [${typeName}]`,
-      );
+        count: 1,
+      };
+      seen.set(key, plugin);
+      plugins.push(plugin);
     }
 
     return plugins;
@@ -286,7 +286,10 @@ export class LogicProParser implements MetadataParser {
    * a lookup map of full plugin names by mfr|subtype key.
    */
   private scanAUComponents(): Map<string, AUComponentInfo> {
+    // Installed plugins rarely change while the app runs; scan once per minute at most.
+    if (auCache && Date.now() - auCache.at < 60_000) return auCache.index;
     const index = new Map<string, AUComponentInfo>();
+    auCache = { at: Date.now(), index };
 
     for (const auDir of AU_DIRS) {
       if (!fs.existsSync(auDir)) continue;
