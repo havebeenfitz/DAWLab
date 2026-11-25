@@ -165,5 +165,32 @@ describe('CommitGraph version actions', () => {
     expect(within(card('Mixdown')).getByRole('button', { name: /Restore/ })).toBeInTheDocument();
     expect(within(card('Mixdown')).queryByText('Kept automatically')).not.toBeInTheDocument();
   });
+
+  describe('the unsaved-changes tile', () => {
+    it('is not there when nothing changed', () => {
+      renderGraph({ onSaveCommit: vi.fn(), hasUnsavedChanges: false, unsavedCount: 0, onDiscard: vi.fn() });
+      expect(screen.queryByLabelText('Version message')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Discard' })).not.toBeInTheDocument();
+    });
+
+    it('says how many files changed and offers Save and Discard together', () => {
+      const onSaveCommit = vi.fn();
+      const onDiscard = vi.fn();
+      renderGraph({ onSaveCommit, hasUnsavedChanges: true, unsavedCount: 3, onDiscard });
+      expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes · 3 files');
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      expect(onDiscard).toHaveBeenCalled();
+      fireEvent.change(screen.getByLabelText('Version message'), { target: { value: 'new chorus' } });
+      fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+      expect(onSaveCommit).toHaveBeenCalledWith('new chorus');
+    });
+
+    it('when saving anyway with no changes, says so and offers Cancel, not Discard', () => {
+      renderGraph({ onSaveCommit: vi.fn(), hasUnsavedChanges: false, isCreatingCommit: true, onDiscard: vi.fn() });
+      expect(screen.getByRole('status')).toHaveTextContent('No changes since the last save');
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Discard' })).not.toBeInTheDocument();
+    });
+  });
 });
 

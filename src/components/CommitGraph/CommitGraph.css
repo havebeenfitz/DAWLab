@@ -325,3 +325,7 @@
   color: #93c5fd;
   background: rgba(59, 130, 246, 0.12);
 }
+
+/* The unsaved-changes tile: what's pending, then Save or Discard. */
+.save-card-title { font-size: 12px; font-weight: 600; color: #eab308; margin-bottom: 6px; }
+.discard-version-button:hover:not(:disabled) { border-color: var(--color-error, #f85149) !important; color: var(--color-error, #f85149); }

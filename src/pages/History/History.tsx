@@ -38,7 +38,6 @@ import { HistoryWarningModals } from "./components/HistoryWarningModals";
 import { useProjectLog } from "./hooks/useProjectLog";
 import { usePathPrompt } from "./hooks/usePathPrompt";
 import { useProjectPath } from "./hooks/useProjectPath";
-import { useUnsavedChanges } from "./hooks/useUnsavedChanges";
 import { useDraftWatch } from "./hooks/useDraftWatch";
 import { useVersionTags } from "./hooks/useVersionTags";
 import { usePreviewPlayer } from "./hooks/usePreviewPlayer";
@@ -106,7 +105,12 @@ export const History: React.FC = () => {
   const { projectLog, selectedBranch, loadProjectLog } = log;
   const pathPrompt = usePathPrompt();
   const projectPath = useProjectPath(projectLog, () => pathPrompt.requestPath(null));
-  const hasUnsavedChanges = useUnsavedChanges(projectLog, projectPath);
+  // What differs from the last saved version of this alternative (noise ignored): drives the Save/Discard tile.
+  const working = useWorkingChanges(
+    passedProject, !access.isListener && !!projectPath,
+    `${selectedBranch}|${projectLog?.lastCheckout?.commitId ?? ""}|${newestOn(projectLog, selectedBranch || "main") ?? ""}`,
+  );
+  const hasUnsavedChanges = working.changes.length > 0;
   const tags = useVersionTags({ passedProject, projectLog, setProjectLog: log.setProjectLog, selectedBranch });
 
   /** Currently focused commit for preview/actions (independent of checkout) */
@@ -142,10 +146,6 @@ export const History: React.FC = () => {
   useDraftWatch({ passedProject, projectPath, selectedBranch, username, isListener: access.isListener });
 
   // "Discard changes": shown only when the folder differs from the last saved version of this alternative.
-  const working = useWorkingChanges(
-    passedProject, !access.isListener && !!projectPath,
-    `${selectedBranch}|${projectLog?.lastCheckout?.commitId ?? ""}|${newestOn(projectLog, selectedBranch || "main") ?? ""}`,
-  );
   const [showDiscard, setShowDiscard] = useState(false);
 
   // "Preview whole project": someone else's version laid out next to yours.
@@ -319,7 +319,6 @@ export const History: React.FC = () => {
         onShare={() => passedProject && sharing?.shareProject(passedProject)}
         onToggleSettings={() => setShowSettings(!showSettings)}
         sync={access.folder ? { incoming: sharedSync.incoming, pulling: sharedSync.pulling, transfer: sharedSync.transfer, pull: () => { void sharedSync.pull(); } } : undefined}
-        discard={!access.isListener ? { count: working.changes.length, open: () => setShowDiscard(true) } : undefined}
       />
       <DiscardChangesDialog
         open={showDiscard && working.changes.length > 0}
@@ -423,6 +422,8 @@ export const History: React.FC = () => {
               onCancelSave={commits.cancelCommitForm}
               isCommitting={commits.isCommitting}
               isCreatingCommit={commits.isCreatingCommit}
+              unsavedCount={working.changes.length}
+              onDiscard={() => setShowDiscard(true)}
               readOnly={access.isListener}
             />
           ) : (

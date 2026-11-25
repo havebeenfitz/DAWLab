@@ -46,6 +46,10 @@ export interface CommitGraphProps {
   onCancelSave?: () => void;
   isCommitting?: boolean;
   isCreatingCommit?: boolean;
+  /** Files that differ from the last saved version; with any, the Save tile shows them and offers Discard. */
+  unsavedCount?: number;
+  /** Opens the Discard dialog. */
+  onDiscard?: () => void;
   selectedCommitId?: string | null;
   onCommitSelect?: (commitId: string) => void;
   /** Saved tag colors, shared with project tags. */
@@ -183,6 +187,8 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   onCancelSave,
   isCommitting = false,
   isCreatingCommit = false,
+  unsavedCount = 0,
+  onDiscard,
   selectedCommitId: selectedCommitIdProp,
   onCommitSelect,
   tagColors = {},
@@ -489,9 +495,15 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
                 className={`commit-card save-card modified ${isExiting ? "animate-slide-out" : "animate-slide-in"}`}
               >
                 <div className="card-content">
+                  <div className="save-card-title" role="status">
+                    {hasUnsavedChanges
+                      ? `Unsaved changes · ${unsavedCount} file${unsavedCount === 1 ? '' : 's'}`
+                      : 'No changes since the last save'}
+                  </div>
                   <textarea
                     className="version-input"
-                    placeholder="Enter a version message..."
+                    aria-label="Version message"
+                    placeholder="What changed? e.g. new chorus vocals"
                     value={newCommitMessage}
                     onChange={(e) => setNewCommitMessage(e.target.value)}
                   />
@@ -506,6 +518,17 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
                 </div>
                 <div className="card-action">
                   <div className="flex gap-2">
+                    {hasUnsavedChanges && onDiscard && (
+                      <button
+                        type="button"
+                        className="cancel-version-button discard-version-button"
+                        onClick={onDiscard}
+                        disabled={isCommitting || isExiting}
+                        title="Go back to the last saved version"
+                      >
+                        Discard
+                      </button>
+                    )}
                     {isCreatingCommit && !hasUnsavedChanges && (
                       <button
                         className="cancel-version-button"
