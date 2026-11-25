@@ -48,7 +48,7 @@ import { useNewProjectModal, useOsFileDrop } from './hooks/useOsFileDrop';
 import { useFolderActions } from './hooks/useFolderActions';
 import { useAudioActions } from './hooks/useAudioActions';
 import { useProjectTags } from './hooks/useProjectTags';
-import { useRemoveFromLibrary, planFolderRemoval, planProjectRemoval, isInSharedFolder } from './hooks/useRemoveFromLibrary';
+import { useRemoveFromLibrary, REMOVE_WARNING, planFolderRemoval, planProjectRemoval, isInSharedFolder } from './hooks/useRemoveFromLibrary';
 import { WarningModal } from '@/components/WarningModal/WarningModal';
 
 const VIEW_MODE_KEY = 'dawlab-library-view-mode';
@@ -194,7 +194,7 @@ export const Library: React.FC = () => {
         remove: () => { folderActions.initiateDelete(folderId); },
         removeFromLibrary: isInSharedFolder(folders, folderId, sharing.folders)
           ? undefined
-          : () => removal.setPlan(planFolderRemoval(folders, projects, folderId)),
+          : () => void removal.request(planFolderRemoval(folders, projects, folderId)),
       });
     }
     if (contextMenu.type === 'project') {
@@ -211,7 +211,7 @@ export const Library: React.FC = () => {
           if (local.length === 0) return {};
           const finalPlan = local.length === plan.projects.length ? plan
             : { ...plan, projects: local, title: local.length === 1 ? `"${local[0].name}"` : `${local.length} projects` };
-          return { removeCount: local.length, removeFromLibrary: () => removal.setPlan(finalPlan) };
+          return { removeCount: local.length, removeFromLibrary: () => { void removal.request(finalPlan); } };
         })(),
       });
     }
@@ -499,7 +499,7 @@ export const Library: React.FC = () => {
       <WarningModal
         isOpen={!!removal.plan}
         title="Remove from DAWLab"
-        warningType="remove-from-library"
+        warningType={REMOVE_WARNING}
         message={removal.plan ? (
           <>
             <p>Remove {removal.plan.title}{removal.plan.folderIds.length ? ` and its ${removal.plan.projects.length} project${removal.plan.projects.length === 1 ? '' : 's'}` : ''} from DAWLab?</p>

@@ -82,6 +82,25 @@ describe('useRemoveFromLibrary', () => {
     return { hook, setFolders, reload };
   }
 
+  it('asks first when "Don\'t ask me again" was never ticked', async () => {
+    invoke.mockImplementation(async (ch: string) => (ch === 'should-skip-warning' ? false : { removed: [], failed: [] }));
+    const { hook } = setup();
+    await act(async () => { await hook.result.current.request(planProjectRemoval(projects, 'p4', new Set())); });
+    expect(hook.result.current.plan?.title).toBe('"snow"');
+    expect(invoke).not.toHaveBeenCalledWith('remove-projects-from-library', expect.anything());
+  });
+
+  it('removes right away once "Don\'t ask me again" was ticked', async () => {
+    invoke.mockImplementation(async (ch: string) =>
+      ch === 'should-skip-warning' ? true : ch === 'remove-projects-from-library' ? { removed: ['snow'], failed: [] } : true);
+    const { hook, reload } = setup();
+    await act(async () => { await hook.result.current.request(planProjectRemoval(projects, 'p4', new Set())); });
+    expect(invoke).toHaveBeenCalledWith('should-skip-warning', 'remove-from-library');
+    expect(invoke).toHaveBeenCalledWith('remove-projects-from-library', [{ id: 'p4', name: 'snow' }]);
+    expect(hook.result.current.plan).toBeNull();
+    expect(reload).toHaveBeenCalled();
+  });
+
   it('removes the projects, then the emptied folders, and reloads', async () => {
     invoke.mockImplementation(async (ch: string) =>
       ch === 'remove-projects-from-library' ? { removed: ['Drum Rack', 'Bass', 'Pad'], failed: [] } : true);

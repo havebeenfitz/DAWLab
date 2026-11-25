@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { notify } from '@/lib/notify';
+import { shouldSkipWarning } from '@/components/WarningModal/WarningModal';
+
+export const REMOVE_WARNING = 'remove-from-library';
 import type { Project, Folder, AudioItem } from '@/types/library';
 
 export interface RemovalPlan {
@@ -72,7 +75,7 @@ export function useRemoveFromLibrary({ setFolders, audioItems, reload }: Options
   const [plan, setPlan] = useState<RemovalPlan | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const confirm = async () => {
+  const run = async (plan: RemovalPlan | null) => {
     if (!plan || busy) return;
     setBusy(true);
     try {
@@ -101,5 +104,16 @@ export function useRemoveFromLibrary({ setFolders, audioItems, reload }: Options
     }
   };
 
-  return { plan, setPlan, busy, confirm, cancel: () => { if (!busy) setPlan(null); } };
+  const confirm = () => run(plan);
+
+  /** Shows the confirmation, or removes right away when the user ticked "Don't ask me again". */
+  const request = async (next: RemovalPlan | null) => {
+    if (!next) return;
+    let skip = false;
+    try { skip = await shouldSkipWarning(REMOVE_WARNING); } catch { skip = false; }
+    if (skip) await run(next);
+    else setPlan(next);
+  };
+
+  return { plan, setPlan, request, busy, confirm, cancel: () => { if (!busy) setPlan(null); } };
 }

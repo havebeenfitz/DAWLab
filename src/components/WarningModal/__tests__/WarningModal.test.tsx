@@ -72,4 +72,23 @@ describe('WarningModal', () => {
             expect(onAction).toHaveBeenCalled();
         });
     });
+
+    it('does not turn the warning off when Cancel is pressed', async () => {
+        mockIpcRenderer.invoke.mockClear();
+        const onCancel = vi.fn();
+        render(
+            <WarningModal
+                isOpen={true}
+                warningType="test-warning"
+                title="Warning"
+                message="Msg"
+                actions={[{ label: 'Cancel', onClick: onCancel, variant: 'cancel' }]}
+                onCancel={onCancel}
+            />
+        );
+        fireEvent.click(screen.getByLabelText("Don't ask me again"));
+        fireEvent.click(screen.getByText('Cancel'));
+        await waitFor(() => expect(onCancel).toHaveBeenCalled());
+        expect(mockIpcRenderer.invoke).not.toHaveBeenCalledWith('set-warning-preference', 'test-warning', true);
+    });
 });

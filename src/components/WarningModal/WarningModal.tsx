@@ -62,7 +62,8 @@ export const WarningModal: React.FC<WarningModalProps> = ({
     if (!isOpen) return null;
 
     const handleAction = async (action: WarningAction) => {
-        if (dontAskAgain) {
+        // Cancelling must not turn the warning off.
+        if (dontAskAgain && action.variant !== 'cancel') {
             await window.ipcRenderer.invoke('set-warning-preference', warningType, true);
         }
         action.onClick();
