@@ -2,6 +2,8 @@
   padding: 0;
   width: 100%;
   min-width: 0;
+  /* Let the panel shrink to the space it has, so a long list scrolls instead of being cut off. */
+  min-height: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -41,7 +43,9 @@
   border: 1px solid var(--border-card);
   border-radius: 20px;
   padding: 0.75rem;
-  scrollbar-width: none;
+  /* Show that there is more below when the list is long. */
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
 }
 
 .plugin-container::-webkit-scrollbar {
@@ -225,3 +229,14 @@
 .plugin-row-added { background: rgba(63, 185, 80, 0.08); }
 .plugin-row-removed { background: rgba(248, 81, 73, 0.08); }
 .plugin-row-removed .plugin-name { text-decoration: line-through; text-decoration-color: rgba(248, 81, 73, 0.6); color: #b0b0b0; }
+
+/* Tracks a plugin is used on: one line, the full list in the tooltip */
+.plugin-tracks {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

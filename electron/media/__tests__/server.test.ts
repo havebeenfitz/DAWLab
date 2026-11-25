@@ -34,6 +34,16 @@ describe('media server', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it('serves stored audio without an extension with the type the URL names', async () => {
+    const stored = path.join(dir, 'a1b2c3'); // how DAWLab keeps files of a version: by hash, no extension
+    fs.writeFileSync(stored, bytes);
+    const mp3 = await request(await getMediaUrl(stored, '.MP3'));
+    expect(mp3.status).toBe(200);
+    expect(mp3.headers['content-type']).toBe('audio/mpeg');
+    expect((await request(await getMediaUrl(stored, 'aiff'))).headers['content-type']).toBe('audio/x-aiff');
+    expect((await request(await getMediaUrl(stored, '.flac'))).headers['content-type']).toBe('audio/flac');
+  });
+
   it('serves the full file', async () => {
     const res = await request(await getMediaUrl(file));
     expect(res.status).toBe(200);

@@ -355,6 +355,6 @@ export function useLibraryPreview() {
 
   return {
     playingId, loadingId, activeId, status, dismissStatus, retry,
-    toggle, toggleAudio, play, playAudio, pause, seek, getElement, stop,
+    toggle, toggleAudio, play, playAudio, pause, seek, getElement, stop, toggleSource,
   };
 }

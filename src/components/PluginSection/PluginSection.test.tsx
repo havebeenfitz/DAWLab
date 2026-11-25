@@ -40,4 +40,11 @@ describe('PluginSection with changes', () => {
     expect(container.querySelector('.plugin-row-missing')?.textContent).toContain('Serum');
     expect(container.querySelectorAll('.plugin-row-missing')).toHaveLength(1);
   });
+
+  it('shows the tracks a plugin is on in one line, the full list in the tooltip', async () => {
+    render(<PluginSection plugins={[{ name: 'Pro-C 2', manufacturer: 'FabFilter', tracks: ['Bass', 'Vocals', 'Drum bus'] }]} changes={null} />);
+    const tracks = await screen.findByText('Bass, Vocals, Drum bus');
+    expect(tracks).toHaveClass('plugin-tracks');
+    expect(tracks).toHaveAttribute('title', 'On Bass, Vocals, Drum bus');
+  });
 });

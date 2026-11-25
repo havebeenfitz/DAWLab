@@ -92,6 +92,8 @@ export interface DiffPlugin {
   count?: number
   /** One of the DAW's own plugins (Channel EQ, EQ Eight…). */
   builtin?: boolean
+  /** Tracks the plugin is used on, when known. */
+  tracks?: string[]
 }
 
 export type PluginChangeKind = 'added' | 'removed' | 'count' | 'same'

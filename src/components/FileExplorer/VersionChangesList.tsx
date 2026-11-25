@@ -1,10 +1,12 @@
 import type { FileChange, FileDiff } from '../../../shared/version-diff';
+import type { VersionAudio } from '@/hooks/useVersionAudio';
+import { PlayFileButton } from './PlayFileButton';
 
 const MARK: Record<FileChange['kind'], string> = { added: '+', removed: '−', modified: 'M', renamed: 'R' };
 const WORD: Record<FileChange['kind'], string> = { added: 'Added', removed: 'Removed', modified: 'Changed', renamed: 'Moved' };
 
 /** One line per changed file, like `git status`: + added, − removed, M changed, R moved. */
-export function VersionChangesList({ diff, hasParent, parentMessage }: { diff: FileDiff; hasParent: boolean; parentMessage: string | null }) {
+export function VersionChangesList({ diff, hasParent, parentMessage, audio }: { diff: FileDiff; hasParent: boolean; parentMessage: string | null; audio?: VersionAudio }) {
   return (
     <div className="changes-view">
       <div className="changes-summary" aria-label="Summary of changes">
@@ -32,6 +34,7 @@ export function VersionChangesList({ diff, hasParent, parentMessage }: { diff: F
                 {c.from && <span className="change-from">{c.from} → </span>}
                 {c.path}
               </span>
+              {c.kind !== 'removed' && <PlayFileButton path={c.path} audio={audio} />}
             </li>
           ))}
         </ul>

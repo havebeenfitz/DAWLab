@@ -45,6 +45,22 @@ describe('AbletonParser', () => {
     expect(byName['Instrument Rack']).toMatchObject({ builtin: true, is_instrument: true, count: 1 })
     expect(byName['Reverb']).toMatchObject({ count: 1 })
     expect(plugins.find((p) => p.name === 'Plugin Device')).toBeUndefined()
+    // Which tracks use what, racks included
+    expect(byName['Pro-Q 3'].tracks).toEqual(['Vox', 'Keys'])
+    expect(byName['EQ Eight'].tracks).toEqual(['Vox'])
+    expect(byName['Simpler'].tracks).toEqual(['Keys'])
+  })
+
+  it('names the main track and prefers names the user gave', async () => {
+    const file = path.join(tmp, 'Named.als')
+    const xml = `<?xml version="1.0"?><Ableton><LiveSet><Tracks>
+      <AudioTrack Id="1"><Name><EffectiveName Value="1-Audio"/><UserName Value="Lead vocal"/></Name><DeviceChain><DeviceChain><Devices><Eq8 Id="1"/></Devices></DeviceChain></DeviceChain></AudioTrack>
+      </Tracks><MasterTrack><Name><EffectiveName Value="Main"/></Name><DeviceChain><DeviceChain><Devices><Limiter Id="2"/><Eq8 Id="3"/></Devices></DeviceChain></DeviceChain></MasterTrack></LiveSet></Ableton>`
+    fs.writeFileSync(file, zlib.gzipSync(Buffer.from(xml)))
+    const { plugins } = await new AbletonParser().parse(file)
+    const byName = Object.fromEntries(plugins.map((p) => [p.name, p]))
+    expect(byName['EQ Eight'].tracks).toEqual(['Lead vocal', 'Main'])
+    expect(byName['Limiter'].tracks).toEqual(['Main'])
   })
 
   it('reads uncompressed sets and refuses files that are not Live sets', async () => {

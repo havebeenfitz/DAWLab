@@ -5,6 +5,8 @@ import './FileExplorer.css';
 import type { VersionChanges } from '@/hooks/useVersionChanges';
 import { VersionChangesList, CHANGE_MARK, CHANGE_WORD } from './VersionChangesList';
 import { SongChanges } from './SongChanges';
+import { PlayFileButton } from './PlayFileButton';
+import { useVersionAudio } from '@/hooks/useVersionAudio';
 
 interface FileMapEntry {
   path: string;
@@ -31,6 +33,7 @@ interface TreeNode {
 
 export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitId, projectPath, onSelectPath, changes, changesLoading }) => {
   const [view, setView] = useState<'changes' | 'all'>('changes');
+  const audio = useVersionAudio(projectName, commitId);
   const changeByPath = useMemo(() => {
     const m = new Map<string, keyof typeof CHANGE_MARK>();
     for (const c of changes?.files.changes ?? []) if (c.kind !== 'removed') m.set(c.path, c.kind);
@@ -242,6 +245,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
               <Icon size={16} className={`tree-type-icon ${isFolder ? 'folder-icon' : 'file-icon'}`} />
             </span>
             <span className="tree-label">{node.name}</span>
+            {!isFolder && node.tracked && <PlayFileButton path={node.path} audio={audio} />}
             {changeByPath.has(node.path) && (
               <span className={`tree-change-mark change-${changeByPath.get(node.path)}`} title={CHANGE_WORD[changeByPath.get(node.path)!]}>
                 {CHANGE_MARK[changeByPath.get(node.path)!]}
@@ -351,8 +355,8 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
             <div className="file-tree-loading">Comparing with the previous version...</div>
           ) : changes ? (
             <>
-              {changes.song && <SongChanges song={changes.song} diff={changes.parentId ? changes.songChanges ?? null : null} />}
-              <VersionChangesList diff={changes.files} hasParent={!!changes.parentId} parentMessage={changes.parentMessage} />
+              {changes.song && <SongChanges song={changes.song} diff={changes.parentId ? changes.songChanges ?? null : null} audio={audio} />}
+              <VersionChangesList diff={changes.files} hasParent={!!changes.parentId} parentMessage={changes.parentMessage} audio={audio} />
             </>
           ) : (
             <div className="file-tree-empty">Changes for this version aren't available</div>

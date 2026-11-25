@@ -12,6 +12,8 @@ export interface PluginInfo {
   count?: number;
   /** One of the DAW's own plugins (Channel EQ, EQ Eight…), always available. */
   builtin?: boolean;
+  /** Tracks the plugin is used on, when known. */
+  tracks?: string[];
 }
 
 /**

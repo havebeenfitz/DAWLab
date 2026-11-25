@@ -12,6 +12,8 @@ export interface PluginInfo {
     count?: number;
     /** One of the DAW's own plugins (Channel EQ, EQ Eight…), not a third-party one. */
     builtin?: boolean;
+    /** Names of the tracks the plugin is used on, when the DAW's file says so reliably. */
+    tracks?: string[];
 }
 
 export interface ExtractedMetadata {
@@ -117,8 +119,8 @@ export class AbletonParser implements MetadataParser {
 
         processTracks(liveSet.Tracks);
 
-        // Exhaustive Search
-        const pluginsList = [...this.findPlugins(jsonObj), ...this.findNativeDevices(jsonObj)];
+        // Exhaustive Search, then the tracks each plugin sits on
+        const pluginsList = this.withTracks(liveSet, [...this.findPlugins(jsonObj), ...this.findNativeDevices(jsonObj)]);
         console.log(`[AbletonParser] Found ${pluginsList.length} unique plugins`);
 
         return {
@@ -129,6 +131,32 @@ export class AbletonParser implements MetadataParser {
             plugins: pluginsList,
             track_summary: tracks
         };
+    }
+
+    /** Adds to each plugin the names of the tracks (including returns and the main track) whose chains use it, racks included. */
+    private withTracks(liveSet: any, plugins: PluginInfo[]): PluginInfo[] {
+        const asArray = (x: any) => (Array.isArray(x) ? x : x ? [x] : []);
+        const trackName = (t: any, fallback: string) => {
+            const user = t?.Name?.UserName?.['@_Value'];
+            const effective = t?.Name?.EffectiveName?.['@_Value'];
+            return String(user && String(user).trim() ? user : effective || fallback).trim();
+        };
+        const owners: Array<{ name: string; node: any }> = [];
+        for (const kind of ['AudioTrack', 'MidiTrack', 'GroupTrack', 'ReturnTrack']) {
+            for (const t of asArray(liveSet.Tracks?.[kind])) owners.push({ name: trackName(t, 'Untitled Track'), node: t });
+        }
+        const main = liveSet.MasterTrack ?? liveSet.MainTrack;
+        if (main) owners.push({ name: trackName(main, 'Main'), node: main });
+
+        const key = (p: PluginInfo) => `${p.builtin ? 'b' : 'p'}|${(p.manufacturer ?? '').toLowerCase()}|${p.name.toLowerCase()}`;
+        const tracksOf = new Map<string, string[]>();
+        for (const { name, node } of owners) {
+            for (const p of [...this.findPlugins(node), ...this.findNativeDevices(node)]) {
+                const list = tracksOf.get(key(p)) ?? [];
+                if (!list.includes(name)) tracksOf.set(key(p), [...list, name]);
+            }
+        }
+        return plugins.map((p) => (tracksOf.has(key(p)) ? { ...p, tracks: tracksOf.get(key(p)) } : p));
     }
 
     /** Live's own devices (EQ Eight, Operator, racks…), counted per instance, wherever they sit (tracks, racks, chains). */

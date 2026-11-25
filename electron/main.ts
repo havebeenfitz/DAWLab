@@ -66,6 +66,7 @@ import { removeProjectsFromLibrary, type RemoveTarget } from "./library/remove-p
 import { getVersionChanges } from "./dawvcs/operations/version-changes";
 import { requestProjectSync } from "./sync/auto-sync";
 import { parseDeepLink } from "./deep-link";
+import { findVersionAudio } from "./dawvcs/operations/version-audio";
 import { fileURLToPath } from "node:url";
 
 import path from "node:path";
@@ -714,6 +715,12 @@ ipcMain.handle('get-version-changes', async (_ev, projectName: string, commitId:
     console.error(`[main.ts] Error getting changes for ${commitId}:`, error);
     return null;
   }
+});
+
+// Plays an audio file exactly as it was in a version, from DAWLab storage.
+ipcMain.handle('get-version-audio-url', async (_ev, projectName: string, commitId: string, relPath: string) => {
+  const found = findVersionAudio(projectName, commitId, relPath);
+  return found ? getMediaUrl(found.file, found.extension) : null;
 });
 
 ipcMain.handle('get-commit-filemap', async (_ev, projectName: string, commitId: string) => {

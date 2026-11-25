@@ -1,11 +1,13 @@
 import type { SongDiff, SongInfo } from '../../../shared/song-diff';
+import type { VersionAudio } from '@/hooks/useVersionAudio';
+import { PlayFileButton } from './PlayFileButton';
 
 /**
  * The song itself: tempo, tracks, key, time signature, sample rate, and what of
  * that changed since the previous version, plus audio files added to or
  * removed from the song.
  */
-export function SongChanges({ song, diff }: { song: SongInfo; diff: SongDiff | null }) {
+export function SongChanges({ song, diff, audio }: { song: SongInfo; diff: SongDiff | null; audio?: VersionAudio }) {
   const facts = [
     song.tempo ? `${Math.round(song.tempo * 100) / 100} BPM` : null,
     song.tracks !== undefined ? `${song.tracks} track${song.tracks === 1 ? '' : 's'}` : null,
@@ -33,6 +35,7 @@ export function SongChanges({ song, diff }: { song: SongInfo; diff: SongDiff | n
             <li key={`+${f}`} className="change-row change-added" title="Audio file added to the song">
               <span className="change-mark" aria-label="Added to the song">+</span>
               <span className="change-path">{f}</span>
+              <PlayFileButton path={f} audio={audio} />
             </li>
           ))}
           {diff!.audioRemoved.map((f) => (

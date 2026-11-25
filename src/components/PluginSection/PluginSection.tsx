@@ -242,8 +242,14 @@ const PluginRow: React.FC<PluginRowProps> = ({ plugin, installed, onGetPlugin, c
             <span className="plugin-count chg-modified" title="Times used: before → now"> ×{change.before} → ×{change.after}</span>
           )}
         </span>
-        {plugin.manufacturer && plugin.manufacturer !== 'Unknown' && (
+        {/* The DAW's own plugins carry its badge already; their maker would only crowd out the tracks. */}
+        {plugin.manufacturer && plugin.manufacturer !== 'Unknown' && !plugin.builtin && (
           <span className="plugin-manufacturer">{plugin.manufacturer}</span>
+        )}
+        {plugin.tracks && plugin.tracks.length > 0 && (
+          <span className="plugin-tracks" title={`On ${plugin.tracks.join(', ')}`}>
+            {plugin.tracks.join(', ')}
+          </span>
         )}
       </span>
       {!installed ? (

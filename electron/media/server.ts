@@ -29,7 +29,7 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse, port: numbe
   if (req.headers.host !== `127.0.0.1:${port}`) return fail(403);
   if (req.method !== 'GET' && req.method !== 'HEAD') return fail(405, { Allow: 'GET, HEAD' });
 
-  const [, reqToken, encoded] = (req.url ?? '').split('?')[0].split('/');
+  const [, reqToken, encoded, typeHint] = (req.url ?? '').split('?')[0].split('/');
   if (reqToken !== token || !encoded) return fail(404);
 
   let filePath: string;
@@ -47,7 +47,8 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse, port: numbe
     if (range.kind === 'unsatisfiable') return fail(416, { 'Content-Range': `bytes */${size}` });
 
     const headers: http.OutgoingHttpHeaders = {
-      'Content-Type': audioMimeType(path.extname(filePath)),
+      // Stored versions have no extension on disk; the URL then says what kind of audio it is.
+      'Content-Type': audioMimeType(typeHint ? `.${decodeURIComponent(typeHint).replace(/^\./, '')}` : path.extname(filePath)),
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'no-store',
       'Content-Length': size === 0 ? 0 : range.end - range.start + 1,
@@ -83,9 +84,10 @@ function ensureServer(): Promise<number> {
 }
 
 /** URL the renderer's <audio> element can play (and seek) for a local audio file. */
-export async function getMediaUrl(filePath: string): Promise<string> {
+export async function getMediaUrl(filePath: string, extension?: string): Promise<string> {
   const port = await ensureServer();
-  return `http://127.0.0.1:${port}/${token}/${Buffer.from(filePath, 'utf8').toString('base64url')}`;
+  const typeHint = extension ? `/${encodeURIComponent(extension.replace(/^\./, '').toLowerCase())}` : '';
+  return `http://127.0.0.1:${port}/${token}/${Buffer.from(filePath, 'utf8').toString('base64url')}${typeHint}`;
 }
 
 export function stopMediaServer(): void {
