@@ -54,8 +54,9 @@ import { loadRegistry, getProjectPath } from '../../dawvcs/core/registry'
 import { saveHubSettings } from '../hub-client'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, getSpaceForProject, listLocalSpaces,
-  changeMemberRole, removeMember, previewInvite, leaveSpace, parseInvite,
+  changeMemberRole, removeMember, previewInvite, leaveSpace, parseInvite, revokeInvite, stopSharing, listInvites,
 } from '../spaces-client'
+import { saveProjectRemote } from '../hub-client'
 import { createHub } from '../../../server/src/app.ts'
 import { FsStorage } from '../../../server/src/storage.ts'
 
@@ -218,5 +219,65 @@ describe('Shared folders', () => {
     await leaveSpace(bobFolder)
     expect(listLocalSpaces()).toEqual([])
     expect(fs.existsSync(path.join(getProjectPath('Snow'), 'Snow.als'))).toBe(true)
+  })
+
+  it('reads invites as codes or app links, and explains bad ones', () => {
+    setUsername('dave')
+    expect(() => parseInvite('hello')).toThrow(/not a DAWLab invite/)
+    expect(() => parseInvite('DAWL-AAAA-BBBB-CCCC')).toThrow(/needs a DAWLab server/)
+    saveHubSettings({ hubUrl, hubKey: '' })
+    expect(parseInvite(' dawl-aaaa-bbbb-cccc ')).toEqual({ hubUrl, code: expect.stringMatching(/AAAABBBBCCCC|DAWL-AAAA-BBBB-CCCC/) })
+    expect(() => parseInvite('dawlab://join?hub=ftp%3A%2F%2Fx&code=DAWL-AAAA-BBBB-CCCC')).toThrow()
+  })
+
+  it('refuses revoked invites and lists only what the owner may see', async () => {
+    setUsername('alice')
+    const invite = await createInvite(aliceFolder, 'edit', 1, 1)
+    await revokeInvite(aliceFolder, invite.id)
+    expect((await listInvites(aliceFolder)).find((i) => i.id === invite.id)).toBeUndefined()
+    setUsername('dave')
+    await expect(joinSpace(invite.link, path.join(work, 'dave'))).rejects.toThrow(/not valid/)
+  })
+
+  it('keeps listeners from uploading or managing, and owners from leaving', async () => {
+    setUsername('alice')
+    const listen = await createInvite(aliceFolder, 'listen')
+    await expect(leaveSpace(aliceFolder)).rejects.toThrow(/You own this folder/)
+
+    setUsername('dave')
+    const joined = await joinSpace(listen.link, path.join(work, 'dave'))
+    await expect(stopSharing(joined.folderId)).rejects.toThrow(/Only the owner/)
+    await expect(createInvite(joined.folderId, 'edit')).rejects.toThrow()
+
+    const dir = path.join(work, 'dave', 'Mine')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'Mine.als'), 'mine')
+    await initProject('Mine', dir, { storageMode: 'project', author: 'dave' })
+    getUserConfigManager('dave').moveProject(projectId('Mine'), joined.folderId)
+    expect((await syncSpace(joined.folderId)).addedProjects).toEqual([])
+    expect(getSpaceForProject('Mine')?.folderId).toBe(joined.folderId)
+  })
+
+  it('leaves projects that were shared on their own before folders alone', async () => {
+    setUsername('alice')
+    const dir = path.join(work, 'alice', 'Old')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'Old.als'), 'old')
+    await initProject('Old', dir, { storageMode: 'project', author: 'alice' })
+    saveProjectRemote('Old', { hubUrl, token: 'x'.repeat(32), role: 'edit', editUrl: `${hubUrl}/s/${'x'.repeat(32)}` })
+    getUserConfigManager('alice').moveProject(projectId('Old'), aliceFolder)
+    expect((await syncSpace(aliceFolder)).addedProjects).toEqual([])
+    expect(getSpaceForProject('Nope')).toBeNull()
+  })
+
+  it('stops sharing for everyone when the owner says so; copies stay', async () => {
+    setUsername('alice')
+    await stopSharing(aliceFolder)
+    expect(listLocalSpaces()).toEqual([])
+    expect(fs.existsSync(path.join(getProjectPath('Snow'), 'Snow.als'))).toBe(true)
+
+    setUsername('dave')
+    const daveFolder = listLocalSpaces()[0].folderId
+    await expect(syncSpace(daveFolder)).rejects.toThrow(/no longer have access/)
   })
 })

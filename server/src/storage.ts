@@ -109,16 +109,24 @@ export class S3Storage implements Storage {
   private readonly bucket: string
   private readonly prefix: string
   private readonly config: { endpoint?: string; region?: string; forcePathStyle?: boolean }
+  /** Loads the AWS SDK on first use (it's only installed where S3 is used); tests pass a fake. */
+  private readonly loadSdk: () => Promise<any>
 
-  constructor(bucket: string, prefix: string, config: { endpoint?: string; region?: string; forcePathStyle?: boolean }) {
+  constructor(
+    bucket: string,
+    prefix: string,
+    config: { endpoint?: string; region?: string; forcePathStyle?: boolean },
+    loadSdk: () => Promise<any> = () => import('@aws-sdk/client-s3'),
+  ) {
     this.bucket = bucket
     this.prefix = prefix
     this.config = config
+    this.loadSdk = loadSdk
   }
 
   private async s3() {
     if (!this.client) {
-      this.sdk = await import('@aws-sdk/client-s3')
+      this.sdk = await this.loadSdk()
       this.client = new this.sdk.S3Client({
         region: this.config.region || 'auto',
         endpoint: this.config.endpoint || undefined,

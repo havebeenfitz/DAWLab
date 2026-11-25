@@ -63,6 +63,7 @@ import { getInstalledPlugins, rescanPlugins } from "./workers/pluginScanner";
 import { startDraftWatch, stopDraftWatch, stopAllDraftWatches } from "./watchers/draftWatcher";
 import { registerHubIpc } from "./sync/ipc";
 import { requestProjectSync } from "./sync/auto-sync";
+import { parseDeepLink } from "./deep-link";
 import { fileURLToPath } from "node:url";
 
 import path from "node:path";
@@ -180,44 +181,18 @@ if (!gotTheLock) {
 // Parse deep link URL and send to renderer
 function handleDeepLink(url: string) {
   try {
-    console.log("[main.ts] Processing deep link:", url);
-
-    // Invite to a shared folder: dawlab://join?hub=...&code=DAWL-...
-    if (/^dawlab:\/\/join\b/i.test(url)) {
+    const link = parseDeepLink(url);
+    if (link?.kind === "join") {
       if (win && !win.webContents.isLoading()) {
-        win.webContents.send("join-shared", url);
+        win.webContents.send("join-shared", link.url);
         if (win.isMinimized()) win.restore();
         win.focus();
       } else {
-        pendingJoinLink = url;
+        pendingJoinLink = link.url;
       }
-      return;
-    }
-
-    // Handle project open link: dawlab://open/project?name=xxx&id=xxx&commit=xxx
-    if (url.includes("open/project")) {
-      const queryIndex = url.indexOf("?");
-      if (queryIndex !== -1) {
-        const params = new URLSearchParams(url.substring(queryIndex + 1));
-        const projectName = params.get("name");
-        const projectId = params.get("id");
-        const commitId = params.get("commit");
-
-        if (projectName && projectId) {
-          console.log("[main.ts] Sending open-project to renderer:", {
-            projectName,
-            projectId,
-            commitId,
-          });
-          if (win) {
-            win.webContents.send("open-project", {
-              projectName,
-              projectId,
-              commitId,
-            });
-          }
-        }
-      }
+    } else if (link?.kind === "open-project" && win) {
+      const { projectName, projectId, commitId } = link;
+      win.webContents.send("open-project", { projectName, projectId, commitId });
     }
   } catch (error) {
     console.error("[main.ts] Error parsing deep link URL:", error);

@@ -9,7 +9,7 @@ export default defineConfig({
     environment: 'happy-dom',
     setupFiles: './src/test/setup.ts',
     css: true,
-    exclude: ['node_modules', 'dist', 'e2e/**'],
+    exclude: ['node_modules', 'dist', 'e2e/**', '.claude/**', 'release/**'],
     // Run tests sequentially to prevent registry file conflicts
     fileParallelism: false,
     coverage: {
