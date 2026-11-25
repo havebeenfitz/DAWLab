@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { invokeCalls, mockInvoke, remoteError } from '@/components/Sharing/__tests__/ipcTestUtils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SharedFolder, SyncStatus } from '@/components/Sharing';
 import { sharedFolder, owner, bob, cleo } from '@/components/Sharing/__tests__/fixtures';
@@ -127,5 +128,44 @@ describe('SharedFolderBar', () => {
     sharing.value.status = { f1: { folderId: 'f1', state: 'syncing' } };
     render(<SharedFolderBar folderId="f1" />);
     expect(screen.getByRole('button', { name: 'Syncing…' })).toBeDisabled();
+  });
+
+  describe('when access was closed (removed, or the owner stopped sharing)', () => {
+    beforeEach(() => {
+      sharing.value.folders = { f1: sharedFolder({ role: 'edit', accessClosed: true, lastError: 'You no longer have access' }) };
+      sharing.value.join.mockReset();
+      sharing.value.refresh.mockReset();
+    });
+
+    it('says so plainly and that the copies are still here, instead of a sync error', () => {
+      render(<SharedFolderBar folderId="f1" />);
+      expect(bar()).toHaveTextContent('Access to “Album” was closed. Your copies are still on this Mac.');
+      expect(bar()).not.toHaveTextContent('You no longer have access');
+      expect(screen.queryByRole('button', { name: /Sync now/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /People|Invite/ })).not.toBeInTheDocument();
+    });
+
+    it('Enter a new code opens the join dialog', () => {
+      render(<SharedFolderBar folderId="f1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Enter a new code' }));
+      expect(sharing.value.join).toHaveBeenCalledWith();
+    });
+
+    it('Stop syncing this folder forgets the share and keeps the folder', async () => {
+      mockInvoke({ 'hub-leave-space': () => true });
+      render(<SharedFolderBar folderId="f1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Stop syncing this folder' }));
+      await waitFor(() => expect(sharing.value.refresh).toHaveBeenCalled());
+      expect(invokeCalls('hub-leave-space')).toEqual([['f1']]);
+    });
+
+    it('explains when stopping fails, and lets you try again', async () => {
+      mockInvoke({ 'hub-leave-space': () => { throw remoteError('hub-leave-space', 'Disk full'); } });
+      render(<SharedFolderBar folderId="f1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Stop syncing this folder' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Disk full');
+      expect(screen.getByRole('button', { name: 'Stop syncing this folder' })).toBeEnabled();
+      expect(sharing.value.refresh).not.toHaveBeenCalled();
+    });
   });
 });

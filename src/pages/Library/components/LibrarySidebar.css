@@ -116,3 +116,10 @@
 }
 .lib-sidebar-sync:hover:not(:disabled) { background: var(--surface-1); color: var(--text-main); border-color: transparent; }
 .lib-sidebar-sync:disabled { cursor: default; color: var(--brand); }
+
+/* Access closed: neutral, not an error colour — nothing was lost. */
+.shared-folder-bar.is-closed {
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border-color: var(--border, rgba(255, 255, 255, 0.12));
+}
+.shared-folder-bar.is-closed strong { color: var(--text-primary); }

@@ -56,7 +56,7 @@ import { loadRegistry, getProjectPath } from '../../dawvcs/core/registry'
 import { saveHubSettings } from '../hub-client'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, listLocalSpaces, getLocalSpace,
-  removeMember, previewInvite, leaveSpace, revokeInvite, listInvites, changeMemberRole,
+  removeMember, previewInvite, leaveSpace, revokeInvite, listInvites, changeMemberRole, stopSharing,
 } from '../spaces-client'
 import { createHub } from '../../../server/src/app.ts'
 import { FsStorage } from '../../../server/src/storage.ts'
@@ -376,3 +376,62 @@ describe('invites that cannot be used', () => {
     expect(listLocalSpaces()).toHaveLength(2)
   })
 })
+
+describe('when access is closed', () => {
+  it('a removed member sees the folder as closed, keeps everything, and a new code reopens it', async () => {
+    const w = await world('closed')
+    const bob = w.u('bob')
+    const joined = await w.join(bob, (await w.invite()).code)
+    as(w.owner)
+    await removeMember(w.folderId, joined.space.memberId)
+    as(bob)
+    await expect(syncSpace(joined.folderId)).rejects.toThrow(/no longer have access/)
+    expect(getLocalSpace(joined.folderId)?.accessClosed).toBe(true)
+    expect(projectNames()).toEqual(['Intro', 'Snow'])
+    expect(fs.existsSync(path.join(getProjectPath('Snow'), 'Snow.als'))).toBe(true)
+
+    const again = await w.join(bob, (await w.invite()).code)
+    as(bob)
+    expect(getLocalSpace(again.folderId)?.accessClosed).toBeUndefined()
+  })
+
+  it('members see it closed when the owner stops sharing', async () => {
+    const w = await world('stopped')
+    const joined = await w.join(w.u('bob'), (await w.invite()).code)
+    as(w.owner)
+    await stopSharing(w.folderId)
+    as(w.u('bob'))
+    await expect(syncSpace(joined.folderId)).rejects.toThrow()
+    expect(getLocalSpace(joined.folderId)?.accessClosed).toBe(true)
+  })
+
+  it('"Stop syncing this folder" forgets the share but keeps the Library folder and the copies', async () => {
+    const w = await world('stopsync')
+    const bob = w.u('bob')
+    const joined = await w.join(bob, (await w.invite()).code)
+    as(w.owner)
+    await removeMember(w.folderId, joined.space.memberId)
+    as(bob)
+    await syncSpace(joined.folderId).catch(() => undefined)
+    await leaveSpace(joined.folderId)
+    expect(getLocalSpace(joined.folderId)).toBeNull()
+    expect(albumFolders(bob)).toHaveLength(1)
+    expect(getUserConfigManager(bob).getProjectFolder(projectId('Snow'))).toBe(joined.folderId)
+    expect(versionCount('Snow')).toBe(1)
+  })
+
+  it('being offline is not a closed folder', async () => {
+    const w = await world('flaky')
+    const bob = w.u('bob')
+    const joined = await w.join(bob, (await w.invite()).code)
+    as(bob)
+    const spacesFile = path.join(MOCK_HOME, '.dawlab', 'users', bob, 'spaces.json')
+    const all = JSON.parse(fs.readFileSync(spacesFile, 'utf8'))
+    all[joined.folderId].hubUrl = 'http://127.0.0.1:9'
+    fs.writeFileSync(spacesFile, JSON.stringify(all))
+    await expect(syncSpace(joined.folderId)).rejects.toThrow()
+    expect(getLocalSpace(joined.folderId)?.accessClosed).toBeFalsy()
+    expect(getLocalSpace(joined.folderId)?.lastError).toBeTruthy()
+  })
+})
+

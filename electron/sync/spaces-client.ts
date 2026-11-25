@@ -42,6 +42,8 @@ export interface LocalSpace {
   members?: SpaceMember[]
   lastSync?: string
   lastError?: string
+  /** The hub no longer lets this Mac in: you were removed, or the owner stopped sharing. Copies stay. */
+  accessClosed?: boolean
 }
 
 export interface SpaceSyncResult {
@@ -188,11 +190,13 @@ export async function syncSpace(folderId: string, onProgress: SyncProgress = () 
       }
     }
 
-    space = { ...space, lastSync: new Date().toISOString(), lastError: result.failed[0]?.error }
+    space = { ...space, lastSync: new Date().toISOString(), lastError: result.failed[0]?.error, accessClosed: undefined }
     writeSpace(space)
     return { ...result, space }
   } catch (err) {
-    writeSpace({ ...space, lastError: messageOf(err) })
+    // Only the hub's own "no such member" (an empty 404) closes access; being offline doesn't.
+    const closed = (err as { status?: number })?.status === 404 || undefined
+    writeSpace({ ...space, lastError: messageOf(err), accessClosed: closed ?? space.accessClosed })
     throw err
   }
 }
@@ -468,7 +472,7 @@ export async function joinSpace(input: string, parentDir: string, onProgress: Sy
   // take the new access, and sync so everything missed since comes down.
   const already = findJoined(hubUrl, joined.space.id)
   if (already) {
-    writeSpace({ ...already, token: joined.token, memberId: joined.me.id, role: joined.me.role, name: joined.space.name, lastError: undefined })
+    writeSpace({ ...already, token: joined.token, memberId: joined.me.id, role: joined.me.role, name: joined.space.name, lastError: undefined, accessClosed: undefined })
     return syncSpace(ensureLibraryFolder(getLocalSpace(already.folderId)!).folderId, onProgress)
   }
 

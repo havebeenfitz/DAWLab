@@ -155,6 +155,15 @@ describe('LibrarySidebar', () => {
     expect(within(item('Live set')).queryByLabelText('2 people')).not.toBeInTheDocument();
   });
 
+  it('shows a lock, not a sync problem, when access to a shared folder was closed', () => {
+    sharing.value.folders = { ...sharing.value.folders, s3: { ...sharing.value.folders.s3, accessClosed: true } };
+    renderSidebar();
+    const row = item('Live set');
+    expect(within(row).getByLabelText('Access closed')).toBeInTheDocument();
+    expect(within(row).queryByLabelText('Sync problem')).not.toBeInTheDocument();
+    expect(row).toHaveAttribute('title', 'Live set · access closed, your copies are still here');
+  });
+
   it('live status wins over the cached state', () => {
     sharing.value.status = {
       s1: { folderId: 's1', state: 'syncing' },

@@ -23,6 +23,8 @@ export interface SharedFolder {
   members: SpaceMember[]
   lastSync?: string
   lastError?: string
+  /** You were removed or the owner stopped sharing; your copies are still on this Mac. */
+  accessClosed?: boolean
 }
 
 export interface SpaceDetails {

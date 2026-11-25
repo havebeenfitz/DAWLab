@@ -1,4 +1,4 @@
-import { Folder as FolderIcon, Library as LibraryIcon, Users, Headphones, LogIn, Settings as SettingsIcon, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Folder as FolderIcon, Library as LibraryIcon, Users, Headphones, LogIn, Settings as SettingsIcon, Loader2, AlertCircle, RefreshCw, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Folder } from '@/types/library';
 import { useSharing } from '@/components/Sharing';
@@ -59,18 +59,20 @@ export function LibrarySidebar({ folders, currentFolderId, onNavigate }: Props) 
           const st = status[f.id];
           const listening = s.role === 'listen';
           const state = st?.state ?? (s.lastError ? 'error' : 'synced');
+          const closed = !!s.accessClosed && state !== 'syncing';
           return (
             <div key={f.id} className="lib-sidebar-row">
               <button
                 type="button"
                 className={`lib-sidebar-item ${activeTop === f.id || currentFolderId === f.id ? 'is-active' : ''}`}
                 onClick={() => onNavigate(f.id)}
-                title={`${f.name} · ${listening ? 'listener' : s.role === 'owner' ? 'you share it' : 'collaborator'}`}
+                title={closed ? `${f.name} · access closed, your copies are still here` : `${f.name} · ${listening ? 'listener' : s.role === 'owner' ? 'you share it' : 'collaborator'}`}
               >
                 {listening ? <Headphones size={15} aria-hidden /> : <Users size={15} aria-hidden />}
                 <span>{f.name}</span>
                 <span className="lib-sidebar-meta">
-                  {state === 'error' && <AlertCircle size={12} className="lib-sidebar-error" aria-label="Sync problem" />}
+                  {closed ? <Lock size={12} className="lib-sidebar-error" aria-label="Access closed" />
+                    : state === 'error' && <AlertCircle size={12} className="lib-sidebar-error" aria-label="Sync problem" />}
                   {state === 'synced' && s.members.length > 1 && <span aria-label={`${s.members.length} people`}>{s.members.length}</span>}
                 </span>
               </button>

@@ -19,7 +19,7 @@ import { requestProjectSync, requestSharedProjectSync, requestSpaceSync, startAu
 const publicSpace = (s: ReturnType<typeof getLocalSpace>) => s && {
   folderId: s.folderId, hubUrl: s.hubUrl, spaceId: s.spaceId, memberId: s.memberId, role: s.role, name: s.name,
   localRoot: s.localRoot, projectCount: Object.keys(s.projects).length, members: s.members ?? [],
-  lastSync: s.lastSync, lastError: s.lastError,
+  lastSync: s.lastSync, lastError: s.lastError, accessClosed: !!s.accessClosed,
 }
 
 /**

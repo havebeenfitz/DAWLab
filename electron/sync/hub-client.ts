@@ -445,8 +445,8 @@ async function syncComments(projectName: string, commitId: string, client: HubCl
 /** A hub answers an unknown key or token with an empty 404 and nothing else, so say what that usually means. */
 export async function hubError(res: Response, hiddenMessage: string): Promise<Error> {
   const body: any = await res.json().catch(() => null)
-  if (res.status === 404 && !body) return new Error(hiddenMessage)
-  return new Error(body?.error || `The DAWLab server answered ${res.status} ${res.statusText}.`)
+  const message = res.status === 404 && !body ? hiddenMessage : body?.error || `The DAWLab server answered ${res.status} ${res.statusText}.`
+  return Object.assign(new Error(message), { status: res.status })
 }
 
 function safeName(name: string) {
