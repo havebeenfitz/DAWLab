@@ -112,7 +112,7 @@ export function useCommitActions(o: CommitActionsOptions) {
    * Catches a DAW that saved an older copy over a newer version.
    */
   const confirmNoLoss = async (): Promise<boolean> => {
-    let check: { parentMessage: string | null; lost: Array<{ text: string; items?: string[] }> } | null = null;
+    let check: { parentMessage: string | null; lost: Array<{ text: string; items?: string[] }> } | null;
     try {
       check = await window.ipcRenderer.invoke("check-save-losses", passedProject, o.selectedBranch);
     } catch {

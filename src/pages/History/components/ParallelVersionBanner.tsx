@@ -134,7 +134,11 @@ export function CompareDialog({ projectName, version, baseId, onClose }: {
     let cancelled = false;
     setChanges(null); setError('');
     (window.ipcRenderer.invoke('get-version-changes', projectName, version.tip.commit_id, baseId) as Promise<VersionChanges | null>)
-      .then((c) => { if (!cancelled) c ? setChanges(c) : setError('These versions can’t be compared on this Mac.'); })
+      .then((c) => {
+        if (cancelled) return;
+        if (c) setChanges(c);
+        else setError('These versions can’t be compared on this Mac.');
+      })
       .catch((err) => { if (!cancelled) setError(errorMessage(err)); });
     return () => { cancelled = true; };
   }, [projectName, version, baseId]);

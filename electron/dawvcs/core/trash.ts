@@ -45,7 +45,7 @@ export async function trashFiles(projectPath: string, rels: string[], what: stri
     await trash(staging)
   } catch (err) {
     putBack()
-    throw new Error(`Couldn't move files to the Trash, so nothing was changed. ${(err as Error)?.message ?? ''}`.trim())
+    throw new Error(`Couldn't move files to the Trash, so nothing was changed. ${(err as Error)?.message ?? ''}`.trim(), { cause: err })
   }
   return name
 }

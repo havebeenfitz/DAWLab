@@ -109,7 +109,7 @@ export function useRemoveFromLibrary({ setFolders, audioItems, reload }: Options
   /** Shows the confirmation, or removes right away when the user ticked "Don't ask me again". */
   const request = async (next: RemovalPlan | null) => {
     if (!next) return;
-    let skip = false;
+    let skip: boolean;
     try { skip = await shouldSkipWarning(REMOVE_WARNING); } catch { skip = false; }
     if (skip) await run(next);
     else setPlan(next);

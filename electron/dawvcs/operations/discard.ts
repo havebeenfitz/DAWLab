@@ -177,11 +177,11 @@ export async function discardWorkingChanges(projectName: string, expectedBaseId:
   saveProjectLog(projectName, { ...restoreTo, lastCheckout: log.lastCheckout ?? null })
 
   const replaced = changes.filter((c) => c.kind !== 'deleted').map((c) => c.path)
-  let trashedAs: string | null = null
+  let trashedAs: string | null
   try {
     trashedAs = await trashFiles(projectPath, replaced, 'discarded changes', trash)
   } catch (err) {
-    throw new Error(`Couldn't move your current files to the Trash, so nothing was changed. ${String((err as Error)?.message ?? '').replace(/^Couldn't move files to the Trash, so nothing was changed\.\s*/, '')}`.trim())
+    throw new Error(`Couldn't move your current files to the Trash, so nothing was changed. ${String((err as Error)?.message ?? '').replace(/^Couldn't move files to the Trash, so nothing was changed\.\s*/, '')}`.trim(), { cause: err })
   }
 
   let restored = 0

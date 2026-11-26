@@ -67,7 +67,7 @@ export async function saveUnsavedWork(projectName: string, target: string, autho
     const saved = await commitProject(projectName, `${AUTO_SNAPSHOT_PREFIX} ${target}`, branch, author || 'DAWLab', { auto: true })
     commitId = saved.commitId
   } catch (err) {
-    throw new Error(`Couldn't save your unsaved work first, so nothing was switched. ${(err as Error)?.message ?? ''}`.trim())
+    throw new Error(`Couldn't save your unsaved work first, so nothing was switched. ${(err as Error)?.message ?? ''}`.trim(), { cause: err })
   }
   // Every file of the snapshot must be in storage before the folder may change.
   const { casDir, commitsDir } = getProjectStorageDirs(projectName)

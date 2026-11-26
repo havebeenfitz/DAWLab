@@ -50,7 +50,7 @@ export class AbletonParser implements MetadataParser {
 
         try {
             xmlContent = zlib.gunzipSync(fileBuffer).toString('utf-8');
-        } catch (e) {
+        } catch {
             xmlContent = fileBuffer.toString('utf-8');
         }
 
@@ -78,13 +78,13 @@ export class AbletonParser implements MetadataParser {
         let tempo = 120;
         try {
             tempo = liveSet.MasterTrack?.DeviceChain?.Mixer?.Tempo?.Manual?.['@_Value'] || 120;
-        } catch (e) {}
+        } catch {}
 
         let timeSignature = '4/4';
         try {
             const num = liveSet.MasterTrack?.DeviceChain?.Mixer?.TimeSignature?.TimeSignature?.['@_Value'] || 4;
             timeSignature = `${num}/4`; 
-        } catch (e) {}
+        } catch {}
 
         const tracks = {
             audio: [] as string[],

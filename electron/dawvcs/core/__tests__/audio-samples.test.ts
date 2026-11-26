@@ -11,7 +11,8 @@ afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }) })
 const chunk = (id: string, body: Buffer, le = true) => {
   const h = Buffer.alloc(8)
   h.write(id, 0, 'latin1')
-  le ? h.writeUInt32LE(body.length, 4) : h.writeUInt32BE(body.length, 4)
+  if (le) h.writeUInt32LE(body.length, 4)
+  else h.writeUInt32BE(body.length, 4)
   return Buffer.concat([h, body, body.length & 1 ? Buffer.alloc(1) : Buffer.alloc(0)])
 }
 function wav(samples: Buffer, extra: Buffer[] = []) {

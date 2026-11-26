@@ -68,7 +68,7 @@ function allStores(): Store[] {
 /** Hashes some version still needs (files and previews), with a name and the projects using each. */
 function hashesInUse(stores: Store[]) {
   const usage = new Map<string, { filename: string; projects: Set<string> }>()
-  const use = (hash: string | undefined, filename: string, project: string) => {
+  const record = (hash: string | undefined, filename: string, project: string) => {
     if (!hash || hash === 'empty') return
     const known = usage.get(hash)
     if (known) known.projects.add(project)
@@ -80,7 +80,7 @@ function hashesInUse(stores: Store[]) {
       for (const commitId of subdirs(path.join(commitsDir, project))) {
         const filemap = readJson(path.join(commitsDir, project, commitId, 'filemap.json'))
         if (!Array.isArray(filemap)) continue
-        for (const entry of filemap as FileMapEntry[]) use(entry.hash, path.basename(entry.path), project)
+        for (const entry of filemap as FileMapEntry[]) record(entry.hash, path.basename(entry.path), project)
       }
     }
   }
@@ -88,13 +88,13 @@ function hashesInUse(stores: Store[]) {
   // Previews are kept in the stores too; the project log is what points at them.
   const logDirs = [LOGS_DIR, ...listUsers().map((u) => getLogsDir(u))]
   for (const dir of logDirs) {
-    let files: string[] = []
+    let files: string[]
     try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')) } catch { continue }
     for (const file of files) {
       const log = readJson(path.join(dir, file))
       const project = String(log?.project_name ?? log?.name ?? file.replace(/\.json$/, ''))
       for (const branch of log?.branches ?? []) {
-        for (const commit of branch?.commits ?? []) use(commit?.preview_file, 'Preview', project)
+        for (const commit of branch?.commits ?? []) record(commit?.preview_file, 'Preview', project)
       }
     }
   }
@@ -106,7 +106,7 @@ function storedFiles(casDir: string): Map<string, number> {
   const out = new Map<string, number>()
   for (const a of subdirs(casDir)) {
     for (const b of subdirs(path.join(casDir, a))) {
-      let hashes: string[] = []
+      let hashes: string[]
       try { hashes = fs.readdirSync(path.join(casDir, a, b)) } catch { continue }
       for (const hash of hashes) {
         try { out.set(hash, fs.statSync(getCasPath(hash, casDir)).size) } catch { /* skip unreadable */ }
