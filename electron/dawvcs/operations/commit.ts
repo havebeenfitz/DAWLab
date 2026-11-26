@@ -8,6 +8,7 @@ import { getProjectPath } from '../core/registry'
 import { saveCommit, getCommitPath } from '../core/commits'
 import { getProjectStorageDirs } from '../core/storage-location'
 import { extractMetadataInBackground } from '../../workers/metadataManager'
+import { filesStillRecording, RecordingInProgressError } from '../core/audio-recording'
 import fs from 'fs'
 import path from 'path'
 
@@ -41,6 +42,9 @@ async function snapshotProjectFiles(
 
   const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)
   const files = await getAllFiles(projectPath, log.ignoredFiles || [])
+  // A take still being recorded is half a file: keep it out of every version.
+  const recording = filesStillRecording(files)
+  if (recording.length) throw new RecordingInProgressError(recording)
 
   const fileMap: FileMapEntry[] = []
   for (const [rel, full] of Object.entries(files)) {
@@ -155,7 +159,14 @@ export async function captureDraft(
     return { skipped: true }
   }
 
-  const { commitId, timestamp, commitsDir } = await snapshotProjectFiles(projectName, log, projectPath)
+  let snap: Awaited<ReturnType<typeof snapshotProjectFiles>>
+  try {
+    snap = await snapshotProjectFiles(projectName, log, projectPath)
+  } catch (err) {
+    if (err instanceof RecordingInProgressError) return { skipped: true } // the watcher tries again after the take
+    throw err
+  }
+  const { commitId, timestamp, commitsDir } = snap
 
   // Overwrite the previous draft: drop its commit dir unless it's the same id
   // we just wrote (same-second re-capture reuses the directory).

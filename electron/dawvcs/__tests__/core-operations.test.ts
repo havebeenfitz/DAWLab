@@ -256,6 +256,36 @@ describe("Core VCS Operations", () => {
     expect(mainBranch.commits[1].message).toBe("Second commit");
   });
 
+  describe("A take still being recorded", () => {
+    // Logic's header while recording: FORM size is a placeholder far larger than the file.
+    const recordingAiff = () => {
+      const b = Buffer.alloc(64);
+      b.write("FORM", 0, "latin1"); b.writeUInt32BE(0x7ffffff0, 4); b.write("AIFF", 8, "latin1");
+      return b;
+    };
+    const finishedAiff = () => {
+      const b = Buffer.alloc(64);
+      b.write("FORM", 0, "latin1"); b.writeUInt32BE(56, 4); b.write("AIFF", 8, "latin1");
+      return b;
+    };
+
+    it("is never saved into a version or a draft; once finished it is", async () => {
+      await initProject(projectName, projectPath, { author: "test-author" });
+      const take = path.join(projectPath, "Samples", "bass amp #53.aif");
+      fs.writeFileSync(take, recordingAiff());
+      const before = loadLocalProjectLog(projectName).branches[0].commits.length;
+      await new Promise((r) => setTimeout(r, 1100));
+
+      await expect(commitProjectLocal(projectName, "+ guitar", "main", "max")).rejects.toThrow(/still recording “bass amp #53\.aif”/);
+      expect(loadLocalProjectLog(projectName).branches[0].commits.length).toBe(before);
+      expect(await captureDraft(projectName, "main", "max")).toEqual({ skipped: true });
+
+      fs.writeFileSync(take, finishedAiff());
+      const saved = await commitProjectLocal(projectName, "+ guitar", "main", "max");
+      expect(getCommitFileMap(projectName, saved.commitId).some((f) => f.path.endsWith("bass amp #53.aif"))).toBe(true);
+    });
+  });
+
   describe("Auto-draft capture", () => {
     it("captures an unnamed draft without adding it to the branch log", async () => {
       await initProject(projectName, projectPath, { author: "test-author" });
