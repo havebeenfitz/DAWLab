@@ -24,3 +24,13 @@ describe('noise files', () => {
     expect(diff.unchanged).toBe(0)
   })
 })
+
+describe('Logic layout files', () => {
+  it('are window and screen state inside a Logic project, nothing else', async () => {
+    const { isLayoutPath } = await import('../noise')
+    expect(isLayoutPath('Song.logicx/Alternatives/000/DisplayState.plist')).toBe(true)
+    expect(isLayoutPath('Song.logicx/Alternatives/000/WindowImage.jpg')).toBe(true)
+    expect(isLayoutPath('Song.logicx/Alternatives/000/ProjectData')).toBe(false)
+    expect(isLayoutPath('Bounces/WindowImage.jpg')).toBe(false)
+  })
+})

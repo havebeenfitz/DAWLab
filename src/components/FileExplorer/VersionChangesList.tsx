@@ -43,8 +43,23 @@ export function VersionChangesList({ diff, hasParent, parentMessage, audio }: { 
           ))}
         </ul>
       )}
+      {diff.quiet && diff.quiet.length > 0 && (
+        <div className="changes-quiet" title={diff.quiet.map((c) => c.path).join('\n')}>
+          Not counted as changes: {describeQuiet(diff.quiet.map((c) => c.path))}
+        </div>
+      )}
     </div>
   );
+}
+
+/** "Logic window layout, 3 audio files re-saved with the same sound". */
+function describeQuiet(paths: string[]): string {
+  const audio = paths.filter((p) => /\.(wav|wave|aif|aiff|aifc|caf)$/i.test(p)).length;
+  const layout = paths.length - audio;
+  return [
+    layout ? 'Logic window layout and thumbnail' : '',
+    audio ? `${audio} audio file${audio === 1 ? '' : 's'} re-saved by the DAW with the same sound` : '',
+  ].filter(Boolean).join(', ');
 }
 
 export const CHANGE_MARK = MARK;

@@ -13,8 +13,10 @@ import { getProjectPath } from '../core/registry'
 import { getProjectStorageDirs } from '../core/storage-location'
 import { getAllFiles } from '../core/fs-utils'
 import { isNoisePath } from '../core/noise'
+import { isLayoutPath } from '../../../shared/noise'
+import { AUDIO_EXT, sampleHashOfBlob, sampleHashOfWorkingFile, sampleCacheFile } from '../core/audio-samples'
 import { parentForNewVersion } from './commit'
-import { saveUnsavedWork } from './guard'
+import { saveUnsavedWork, assertNotOpenInDaw } from './guard'
 import { trashFiles, pruneEmptyDirs, type TrashFn } from '../core/trash'
 
 export type WorkingChangeKind = 'added' | 'modified' | 'deleted'
@@ -23,12 +25,21 @@ export interface WorkingChange {
   /** Project-relative, `/`-separated. */
   path: string
   kind: WorkingChangeKind
+  /**
+   * Set when the difference says nothing about the song: Logic's window layout
+   * ("layout"), or an audio file whose sound is the same and only its header was
+   * rewritten ("audio-header"). Kept and restored like any file, never shown as a change.
+   */
+  quiet?: 'layout' | 'audio-header'
 }
 
 export interface WorkingChanges {
   /** The version the folder would go back to; null when nothing is saved yet. */
   baseCommitId: string | null
+  /** Changes to the song: what "unsaved" means. */
   changes: WorkingChange[]
+  /** Differences that aren't changes to the song (see WorkingChange.quiet). */
+  quiet: WorkingChange[]
 }
 
 export interface DiscardResult {
@@ -87,38 +98,54 @@ export const checkedOutVersion = (log: any): string | null => {
 
 const savedState = (projectName: string) => projectState(projectName, lastSaved)
 
+
 /** Files that differ between the folder and `files` (a version's), ignoring noise. */
 async function compare(projectPath: string, ignored: string[], casDir: string, files: Map<string, string>): Promise<WorkingChange[]> {
   const working = fs.existsSync(projectPath) ? await getAllFiles(projectPath, ignored) : {}
   const changes: WorkingChange[] = []
+  const push = (path: string, kind: WorkingChangeKind, quiet?: WorkingChange['quiet']) =>
+    changes.push(quiet ? { path, kind, quiet } : { path, kind })
   for (const [rel, full] of Object.entries(working)) {
     if (full === 'empty' || isNoisePath(rel)) continue
+    const layout = isLayoutPath(rel) ? 'layout' as const : undefined
     const saved = files.get(rel)
-    if (!saved) { changes.push({ path: rel, kind: 'added' }); continue }
+    if (!saved) { push(rel, 'added', layout); continue }
     const stat = fs.statSync(full)
-    // Different size means different content: no need to read the file.
+    // Different size means different content: no need to read the whole file.
     let savedSize = -1
     try { savedSize = fs.statSync(getCasPath(saved, casDir)).size } catch { /* not stored: compare by hash */ }
-    if (savedSize >= 0 && savedSize !== stat.size) { changes.push({ path: rel, kind: 'modified' }); continue }
-    if ((await hashFile(full, stat)) !== saved) changes.push({ path: rel, kind: 'modified' })
+    const differs = (savedSize >= 0 && savedSize !== stat.size) || (await hashFile(full, stat)) !== saved
+    if (!differs) continue
+    if (!layout && AUDIO_EXT.test(rel) && await sameSound(full, stat, saved, casDir)) { push(rel, 'modified', 'audio-header'); continue }
+    push(rel, 'modified', layout)
   }
   for (const rel of files.keys()) {
-    if (!(rel in working)) changes.push({ path: rel, kind: 'deleted' })
+    if (!(rel in working)) push(rel, 'deleted', isLayoutPath(rel) ? 'layout' : undefined)
   }
   return changes.sort(byPath)
 }
 
+/** True when an audio file in the folder sounds exactly like the stored one (format and samples equal). */
+async function sameSound(full: string, stat: fs.Stats, savedHash: string, casDir: string): Promise<boolean> {
+  const mine = await sampleHashOfWorkingFile(full, stat)
+  if (!mine) return false
+  const theirs = await sampleHashOfBlob(savedHash, getCasPath(savedHash, casDir), full, sampleCacheFile(casDir))
+  return theirs === mine
+}
+
+const split = (all: WorkingChange[]) => ({ changes: all.filter((c) => !c.quiet), quiet: all.filter((c) => c.quiet) })
+
 /** What differs between the project folder and the last saved version, ignoring noise. */
 export async function getWorkingChanges(projectName: string): Promise<WorkingChanges> {
   const { log, projectPath, casDir, baseCommitId, files } = savedState(projectName)
-  if (!baseCommitId) return { baseCommitId: null, changes: [] }
-  return { baseCommitId, changes: await compare(projectPath, log.ignoredFiles || [], casDir, files) }
+  if (!baseCommitId) return { baseCommitId: null, changes: [], quiet: [] }
+  return { baseCommitId, ...split(await compare(projectPath, log.ignoredFiles || [], casDir, files)) }
 }
 
 /** What differs from the version the folder was put on; with no version yet, every file counts. */
 export async function getUnsavedChanges(projectName: string): Promise<WorkingChanges> {
   const { log, projectPath, casDir, baseCommitId, files } = projectState(projectName, checkedOutVersion)
-  return { baseCommitId, changes: await compare(projectPath, log.ignoredFiles || [], casDir, files) }
+  return { baseCommitId, ...split(await compare(projectPath, log.ignoredFiles || [], casDir, files)) }
 }
 
 /**
@@ -131,7 +158,10 @@ export async function discardWorkingChanges(projectName: string, expectedBaseId:
   const { log, projectPath, casDir, commitsDir, baseCommitId, files } = savedState(projectName)
   if (!baseCommitId) throw new Error('There is no saved version to go back to yet.')
   if (baseCommitId !== expectedBaseId) throw new Error('The saved version changed in the meantime. Look at the changes again.')
-  const { changes } = await getWorkingChanges(projectName)
+  await assertNotOpenInDaw(projectName)
+  // Discard puts back everything, the window layout and audio headers too.
+  const working = await getWorkingChanges(projectName)
+  const changes = [...working.changes, ...working.quiet]
 
   // Everything we will restore must be in storage before touching anything.
   for (const c of changes) {

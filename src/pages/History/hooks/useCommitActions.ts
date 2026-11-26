@@ -5,6 +5,8 @@ import { shouldSkipWarning } from "@/components/WarningModal/WarningModal";
 import { detectChangesSinceCheckout } from "../utils/checkoutTime";
 import type { PendingPathAction } from "./usePathPrompt";
 import { STORAGE_LIMIT_MESSAGE, type useStorageWarning } from "./useStorageWarning";
+import { ensureClosedInDaw } from '@/lib/dawGuard';
+import { askConfirm } from '@/lib/confirm';
 
 type StorageWarning = ReturnType<typeof useStorageWarning>;
 
@@ -100,7 +102,32 @@ export function useCommitActions(o: CommitActionsOptions) {
       return;
     }
 
+    if (!(await confirmNoLoss())) return;
     await performCommit(messageToUse);
+  };
+
+  /**
+   * Before saving: if the folder no longer has markers, channel strips, regions,
+   * plugins or notes the version it builds on had, say so and let the person decide.
+   * Catches a DAW that saved an older copy over a newer version.
+   */
+  const confirmNoLoss = async (): Promise<boolean> => {
+    let check: { parentMessage: string | null; lost: Array<{ text: string; items?: string[] }> } | null = null;
+    try {
+      check = await window.ipcRenderer.invoke("check-save-losses", passedProject, o.selectedBranch);
+    } catch {
+      return true; // A check that can't run must not block saving.
+    }
+    if (!check?.lost?.length) return true;
+    const items = check.lost.flatMap((l) => (l.items?.length ? l.items : [l.text]));
+    return askConfirm({
+      title: "This version would lose things",
+      message: `Compared with ${check.parentMessage ? `“${check.parentMessage}”` : "the version it builds on"}, these are no longer in the project. If you removed them on purpose, save anyway. If not, the project may have been saved from an older copy: check it in your DAW first.`,
+      items,
+      confirmLabel: "Save anyway",
+      cancelLabel: "Don't save",
+      danger: true,
+    });
   };
 
   /** Resumes a save that was waiting on the path prompt (only if a message was typed). */
@@ -146,6 +173,7 @@ export function useCommitActions(o: CommitActionsOptions) {
   /** Performs the actual rollback to a commit */
   const performCheckout = async (commitId: string, bypassLimit = false) => {
     if (!projectLog) return;
+    if (!(await ensureClosedInDaw(passedProject, "restore it"))) return;
     setRestoringCommitId(commitId);
 
     try {

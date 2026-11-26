@@ -419,3 +419,7 @@
 
 .project-path-box .path-head { overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 2ch; }
 .project-path-box .path-tail { overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; max-width: calc(100% - 3ch); color: #9a9a9a; }
+.project-change-group summary { cursor: pointer; }
+.project-change-group ul { list-style: none; margin: 4px 0 2px; padding: 0 0 0 2px; color: var(--text-secondary); font-size: 0.8rem; }
+.project-change-group li { padding: 1px 0; }
+.changes-quiet { margin-top: 10px; font-size: 0.78rem; color: var(--text-muted); }

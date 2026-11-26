@@ -6,6 +6,8 @@ import './Layout.css';
 import { ActivityPanel } from '../ActivityPanel';
 import { PreviewNotification } from '../PreviewNotification';
 import { Toaster } from '../ui/Toaster';
+import { DawGuardHost } from '../DawGuard/DawGuardHost';
+import { ConfirmHost } from '../DawGuard/ConfirmHost';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -50,6 +52,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       {!isLibraryPage && <ActivityPanel />}
       <PreviewNotification />
       <Toaster />
+      <DawGuardHost />
+      <ConfirmHost />
     </div>
   );
 };

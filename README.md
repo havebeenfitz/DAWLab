@@ -32,6 +32,17 @@ Works with Ableton Live, Logic Pro, FL Studio, Pro Tools and Reaper projects.
 - **Nothing is lost when you switch**: before Restore, Make main or Discard changes the folder, DAWLab keeps any unsaved work as a version marked **Kept automatically**. **Bring back** on it returns everything as it was.
 - **Alternatives**: try an idea without touching the main line. Use **Alternatives** (or Cmd+K) to create or switch. On the rail, each alternative is folded into one row where it split off; open it to see its versions.
 
+### Logic projects in words
+
+![A Logic project version: what changed in the song in words, the unsaved tempo change on the Unsaved changes row, and Logic's window files not counted as changes](docs/screenshots/logic-changes.jpg)
+
+For Logic Pro projects DAWLab reads the project itself, so a version says what changed in the song, not just which files: markers added, moved or removed (with bars), tempo changes, channel strips added, renamed, louder or quieter, panned, muted or soloed, plugins added, removed or bypassed, regions moved, trimmed, added or removed, and how many MIDI notes and automation points changed. The same lines appear on the **Unsaved changes** row, in a version's details and in notifications about collaborators' versions.
+
+- **Only real changes count**: moving Logic's windows or its project screenshot is not a change, and an audio file whose header Logic rewrote on open is compared by its sound, not its bytes. Versions still store every file exactly as it was.
+- **Warning before a loss**: if a new version would no longer have markers, tracks, regions, plugins or MIDI notes that the version before it had, DAWLab lists them and asks before saving.
+- **Not while it's open**: Restore, Make main and Discard wait until the project is closed in Logic, because Logic would save its open copy over the version you picked.
+- For a Logic version DAWLab can't read with confidence, it says only that the project changed and never warns from a guess.
+
 ## Sharing a folder
 
 ![The Share dialog: invites as collaborator or listener, open invite codes (blurred here), server space and people](docs/screenshots/share-folder.jpg)
@@ -63,6 +74,7 @@ When two people save on top of the same version, nothing is overwritten. The sec
 
 - On the rail, a parallel version is folded into one outlined row where it split off, with Preview, Dismiss and a ⋯ menu (Listen, Compare, Make main). Open it to see its versions.
 - **Preview** lays the whole project out in a folder of its own next to yours and opens it in your DAW. Your folder is not touched. **Back to mine** moves the preview folder to the Trash.
+- **Compare** shows how their version differs from yours. For Logic projects it also lists what to bring over from theirs into yours (File > Import > Logic Projects in Logic), marks the things you both changed differently, and **Check my folder again** ticks off what your folder already has after you saved in Logic.
 - **Make main** continues your line with their version. Your version stays in the history.
 - **Dismiss** hides the notice for you, with a short reason that the author sees as a comment. The alternative stays for everyone. A newer version in it brings the notice back.
 

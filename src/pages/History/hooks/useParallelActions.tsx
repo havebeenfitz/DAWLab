@@ -4,6 +4,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { notify, errorMessage } from '@/lib/notify';
 import { CompareDialog } from '../components/ParallelVersionBanner';
 import type { ParallelVersion } from '../../../../shared/forks';
+import { ensureClosedInDaw } from '@/lib/dawGuard';
 
 /**
  * Listen, Compare and Make main for a parallel version, used from the ⋯ menu
@@ -22,6 +23,7 @@ export function useParallelActions(projectName: string, username: string, curren
   };
 
   const makeMain = async (p: ParallelVersion) => {
+    if (!(await ensureClosedInDaw(projectName, 'make it main'))) return;
     setBusy(true);
     try {
       await window.ipcRenderer.invoke('make-parallel-version-main', projectName, p.branch, username);

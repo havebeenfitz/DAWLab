@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 
 import './MergeModal.css';
+import { ensureClosedInDaw } from '@/lib/dawGuard';
 
 interface Branch {
   name: string;
@@ -222,8 +223,11 @@ export const MergeModal: React.FC<MergeModalProps> = ({
             console.log('Rollback clicked for', branch.name);
 
             // switch to the branch and rollback
-            window.ipcRenderer.invoke('switch-branch', projectName, branch.name).then(() => {
-              window.ipcRenderer.invoke('rollback-project-latest', projectName, branch.name);
+            void ensureClosedInDaw(projectName, 'restore it').then((go) => {
+              if (!go) return;
+              window.ipcRenderer.invoke('switch-branch', projectName, branch.name).then(() => {
+                window.ipcRenderer.invoke('rollback-project-latest', projectName, branch.name);
+              });
             });
 
             console.log('Switched to branch and rolled back to latest commit of', branch.name);

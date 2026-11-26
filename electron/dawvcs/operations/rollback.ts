@@ -7,7 +7,7 @@ import { getCommitFileMap } from '../core/commits'
 import { restoreFile } from '../core/cas'
 import { getProjectPath } from '../core/registry'
 import { getProjectStorageDirs } from '../core/storage-location'
-import { saveUnsavedWork } from './guard'
+import { saveUnsavedWork, assertNotOpenInDaw } from './guard'
 import { getAllFiles } from '../core/fs-utils'
 import { isNoisePath } from '../core/noise'
 import { trashFiles, pruneEmptyDirs, type TrashFn } from '../core/trash'
@@ -81,6 +81,7 @@ export async function rollbackProject(
   let removed = 0
   let trashedAs: string | null = null
   if (ownFolder) {
+    await assertNotOpenInDaw(projectName)
     const message = opts.target ?? describeTarget(log, commitId)
     const snapshot = await saveUnsavedWork(projectName, message, opts.author)
     if (snapshot) {

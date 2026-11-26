@@ -1,3 +1,4 @@
+import type { LogicChangeLine } from '@/pages/History/hooks/useWorkingChanges';
 import { useEffect, useState } from 'react';
 import type { FileDiff, PluginDiff } from '../../shared/version-diff';
 import type { SongDiff, SongInfo } from '../../shared/song-diff';
@@ -10,6 +11,8 @@ export interface VersionChanges {
   plugins: PluginDiff | null;
   song?: SongInfo | null;
   songChanges?: SongDiff | null;
+  /** What changed inside the Logic project, in words; null when not a Logic project. */
+  logic?: LogicChangeLine[] | null;
 }
 
 /** What a version changed compared with the one before it (files and plugins). */

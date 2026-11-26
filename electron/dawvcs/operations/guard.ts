@@ -16,6 +16,31 @@ import { getUnsavedChanges } from './discard'
 
 export const AUTO_SNAPSHOT_PREFIX = 'Unsaved work before switching to'
 
+/**
+ * A project open in its DAW must not have its files replaced: the DAW keeps its
+ * own copy in memory and its next save would silently put the old song back
+ * over the version you switched to. The desktop app plugs in the real check
+ * (is Logic running, does it hold this project's files); tests plug in their own.
+ */
+export type DawOpenCheck = (projectName: string) => Promise<{ app: string | null; holdsFiles: boolean }>
+let dawOpenCheck: DawOpenCheck | null = null
+export function setDawOpenCheck(check: DawOpenCheck | null) { dawOpenCheck = check }
+
+export class ProjectOpenInDawError extends Error {
+  readonly code = 'DAW_OPEN'
+  constructor(readonly app: string, projectName: string) {
+    super(`“${projectName}” is open in ${app}. Close it in ${app} first, then try again: otherwise ${app} would save its open copy over this version.`)
+  }
+}
+
+/** Refuses (throws ProjectOpenInDawError) while the project is open in its DAW. */
+export async function assertNotOpenInDaw(projectName: string): Promise<void> {
+  if (!dawOpenCheck) return
+  let state: { app: string | null; holdsFiles: boolean }
+  try { state = await dawOpenCheck(projectName) } catch { return }
+  if (state.app && state.holdsFiles) throw new ProjectOpenInDawError(state.app, projectName)
+}
+
 const usableFolder = (p: string | null | undefined): p is string =>
   !!p && p !== 'NA' && p !== '/' && fs.existsSync(p)
 

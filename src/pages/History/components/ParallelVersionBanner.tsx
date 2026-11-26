@@ -6,8 +6,11 @@ import type { ParallelVersion } from '../../../../shared/forks';
 import type { VersionChanges } from '@/hooks/useVersionChanges';
 import { SongChanges } from '@/components/FileExplorer/SongChanges';
 import { VersionChangesList } from '@/components/FileExplorer/VersionChangesList';
+import { ProjectChanges } from '@/components/FileExplorer/ProjectChanges';
+import { LogicMergePlan } from './LogicMergePlan';
 import { notify, errorMessage } from '@/lib/notify';
 import './ParallelVersionBanner.css';
+import { ensureClosedInDaw } from '@/lib/dawGuard';
 
 interface Props {
   projectName: string;
@@ -42,6 +45,7 @@ export function ParallelVersionBanner({ projectName, versions, currentTipId, use
   };
 
   const makeMain = async (p: ParallelVersion) => {
+    if (!(await ensureClosedInDaw(projectName, 'make it main'))) return;
     setBusy(true);
     try {
       await window.ipcRenderer.invoke('make-parallel-version-main', projectName, p.branch, username);
@@ -150,6 +154,10 @@ export function CompareDialog({ projectName, version, baseId, onClose }: {
       {changes && (
         <>
           {changes.song && <SongChanges song={changes.song} diff={changes.songChanges ?? null} />}
+          {changes.logic && changes.logic.length > 0 && <ProjectChanges lines={changes.logic} hideSongTempo />}
+          {changes.logic && version && baseId && (
+            <LogicMergePlan projectName={projectName} author={version.author} parentId={version.parent} mineId={baseId} theirsId={version.tip.commit_id} />
+          )}
           <section className="parallel-compare-plugins" aria-label="Plugin differences">
             <div className="ui-label">Plugins</div>
             {plugins.length === 0 ? <p className="ui-hint">Same plugins in both.</p> : (

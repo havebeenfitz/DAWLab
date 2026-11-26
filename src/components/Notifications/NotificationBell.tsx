@@ -24,6 +24,7 @@ function Row({ n, onOpen }: { n: VersionNotice; onOpen: (id: string) => void }) 
           {n.parallel && <GitBranch size={12} aria-hidden className="notice-fork" />}
         </span>
         <span className="notice-msg" title={n.message}>“{n.message || 'Untitled version'}”</span>
+        {n.summary && <span className="notice-summary" title={n.summary}>{n.summary}</span>}
         <span className="notice-where">{n.projectName} · {n.folderName} · {ago(n.at)}</span>
       </span>
     </button>

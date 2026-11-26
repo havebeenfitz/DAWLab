@@ -28,6 +28,8 @@ export interface FileDiff {
   modified: number
   renamed: number
   unchanged: number
+  /** Differences that aren't changes to the song (window layout, audio headers); counted as unchanged. */
+  quiet?: FileChange[]
 }
 
 /** DAWLab's storage, undo history, autosaves and Finder files are never shown as changes. */

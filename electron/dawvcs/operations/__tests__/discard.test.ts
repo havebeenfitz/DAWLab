@@ -141,7 +141,7 @@ describe('what Discard would undo', () => {
     const l = JSON.parse(fs.readFileSync(file, 'utf8'))
     l.branches.find((b: any) => b.name === 'empty').commits = []
     fs.writeFileSync(file, JSON.stringify({ ...l, current_branch: 'empty', lastCheckout: null }))
-    expect(await getWorkingChanges(name)).toEqual({ baseCommitId: null, changes: [] })
+    expect(await getWorkingChanges(name)).toEqual({ baseCommitId: null, changes: [], quiet: [] })
   })
 })
 
@@ -255,5 +255,55 @@ describe('is the DAW open?', async () => {
     expect(dawAppIn(ps, 'Ableton Live')).toBe('Ableton Live')
     expect(dawAppIn(['/sbin/launchd'], 'Logic Pro X')).toBeNull()
     expect(dawAppIn(['/Applications/Logic Pro Helper/x'], 'Logic Pro X')).toBeNull()
+  })
+})
+
+describe('what isn’t a change', () => {
+  const quiet = async () => (await getWorkingChanges(name)).quiet.map((c) => `${c.quiet} ${c.path}`)
+  /** A tiny mono 16-bit WAV, with an optional extra chunk before the samples (what Logic adds on open). */
+  const wav = (samples: number[], extra = '') => {
+    const data = Buffer.alloc(samples.length * 2)
+    samples.forEach((s, i) => data.writeInt16LE(s, i * 2))
+    const fmt = Buffer.alloc(16)
+    fmt.writeUInt16LE(1, 0); fmt.writeUInt16LE(1, 2); fmt.writeUInt32LE(48000, 4); fmt.writeUInt32LE(96000, 8); fmt.writeUInt16LE(2, 12); fmt.writeUInt16LE(16, 14)
+    const chunk = (id: string, body: Buffer) => { const h = Buffer.alloc(8); h.write(id, 0, 'latin1'); h.writeUInt32LE(body.length, 4); return Buffer.concat([h, body]) }
+    const body = Buffer.concat([Buffer.from('WAVE'), chunk('fmt ', fmt), ...(extra ? [chunk('LGWV', Buffer.from(extra.padEnd(8)))] : []), chunk('data', data)])
+    return Buffer.concat([Buffer.from('RIFF'), Buffer.from(Uint32Array.of(body.length).buffer), body])
+  }
+
+  it('Logic’s window layout and screenshot are listed apart, not as changes', async () => {
+    write(`${name}.logicx/Alternatives/000/DisplayState.plist`, 'windows moved')
+    write(`${name}.logicx/Alternatives/000/WindowImage.jpg`, 'new screenshot')
+    expect(await changes()).toEqual([])
+    expect(await quiet()).toEqual([
+      `layout ${name}.logicx/Alternatives/000/DisplayState.plist`,
+      `layout ${name}.logicx/Alternatives/000/WindowImage.jpg`,
+    ])
+  })
+
+  it('audio whose header was rewritten but sounds the same is not a change; new samples are', async () => {
+    fs.writeFileSync(path.join(dir, 'Audio Files/bass.wav'), wav([1, 2, 3, 4]))
+    await commitProject(name, 'bass', 'main', 'max')
+    fs.writeFileSync(path.join(dir, 'Audio Files/bass.wav'), wav([1, 2, 3, 4], 'overview'))
+    expect(await changes()).toEqual([])
+    expect(await quiet()).toEqual(['audio-header Audio Files/bass.wav'])
+    fs.writeFileSync(path.join(dir, 'Audio Files/bass.wav'), wav([1, 2, 3, 5], 'overview'))
+    expect(await changes()).toEqual(['M Audio Files/bass.wav'])
+  })
+})
+
+describe('Discard while the project is open in the DAW', () => {
+  afterAll(async () => (await import('../guard')).setDawOpenCheck(null))
+
+  it('refuses and changes nothing when the DAW holds the project’s files', async () => {
+    const { setDawOpenCheck } = await import('../guard')
+    write('Audio Files/kick.wav', 'kick v2')
+    const id = await base()
+    setDawOpenCheck(async () => ({ app: 'Logic Pro', holdsFiles: true }))
+    await expect(discardWorkingChanges(name, id, trash)).rejects.toMatchObject({ code: 'DAW_OPEN' })
+    expect(read('Audio Files/kick.wav')).toBe('kick v2')
+    setDawOpenCheck(async () => ({ app: 'Logic Pro', holdsFiles: false }))
+    await discardWorkingChanges(name, id, trash)
+    expect(read('Audio Files/kick.wav')).toBe('kick')
   })
 })

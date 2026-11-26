@@ -70,7 +70,9 @@ import { cleanUpPreviewProjects } from "./library/preview-cleanup";
 import { removeProjectFromSpace, forgetSharedProject, sharedProjectNames } from "./sync/spaces-client";
 import { getVersionChanges } from "./dawvcs/operations/version-changes";
 import { getWorkingChanges, discardWorkingChanges } from "./dawvcs/operations/discard";
-import { runningDawApp } from "./dawvcs/core/daw-running";
+import { runningDawApp, dawProjectState } from "./dawvcs/core/daw-running";
+import { setDawOpenCheck } from "./dawvcs/operations/guard";
+import { workingLogicChanges, lossesBeforeSave, mergePlanFor } from "./dawvcs/operations/logic-changes";
 import { requestProjectSync } from "./sync/auto-sync";
 import { parseDeepLink } from "./deep-link";
 import { findVersionAudio } from "./dawvcs/operations/version-audio";
@@ -822,7 +824,31 @@ ipcMain.handle(
 ipcMain.handle("get-working-changes", async (_ev, projectName: string) => {
   const changes = await getWorkingChanges(projectName);
   const daw = loadRegistry()[projectName]?.daw;
-  return { ...changes, dawOpen: changes.changes.length ? await runningDawApp(daw) : null };
+  // The Logic project changed: say what, in words.
+  const logicTouched = changes.changes.some((c) => /\.logicx\/(?:Alternatives\/[^/]+\/)?ProjectData$/.test(c.path));
+  let logic = null;
+  if (logicTouched) {
+    try { logic = workingLogicChanges(projectName, changes.baseCommitId); } catch { logic = null; }
+  }
+  return { ...changes, logic, dawOpen: changes.changes.length ? await runningDawApp(daw) : null };
+});
+
+// A project open in its DAW must not have its files replaced (switch, restore, discard, make main).
+setDawOpenCheck((projectName) => dawProjectState(getProjectPath(projectName) || "", loadRegistry()[projectName]?.daw));
+ipcMain.handle("daw-project-state", async (_ev, projectName: string) => {
+  const path = getProjectPath(projectName);
+  if (!path || path === "NA") return { app: null, holdsFiles: false };
+  return dawProjectState(path, loadRegistry()[projectName]?.daw);
+});
+// Before saving: what the new version would no longer have that its parent had.
+ipcMain.handle("check-save-losses", async (_ev, projectName: string, branch?: string) => {
+  try { return lossesBeforeSave(projectName, branch); } catch { return { parentId: null, parentMessage: null, lost: [] }; }
+});
+
+// Parallel versions in Logic: what to bring over from theirs, and what the folder already has.
+ipcMain.handle("logic-merge-plan", async (_ev, projectName: string, parentId: string, mineId: string, theirsId: string) => {
+  if (![projectName, parentId, mineId, theirsId].every((x) => typeof x === "string" && x)) return null;
+  try { return mergePlanFor(projectName, parentId, mineId, theirsId); } catch (err) { console.warn("[merge-plan]", (err as Error)?.message ?? err); return null; }
 });
 ipcMain.handle("discard-working-changes", async (_ev, projectName: string, baseCommitId: string) =>
   discardWorkingChanges(projectName, baseCommitId, (full) => shell.trashItem(full)),

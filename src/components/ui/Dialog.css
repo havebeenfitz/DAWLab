@@ -176,3 +176,7 @@
 .ui-badge-ok { background: rgba(34, 197, 94, 0.14); color: #7fe0a8; }
 .ui-badge-warn { background: rgba(234, 179, 8, 0.14); color: #f2cf6b; }
 .ui-badge-error { background: rgba(239, 68, 68, 0.14); color: #ff9a9a; }
+
+/* Lines listed under a question, e.g. what a save would lose. */
+.confirm-items { margin: 10px 0 0; padding: 10px 12px 10px 28px; border-radius: 8px; background: var(--color-surface-2, rgba(255,255,255,0.04)); max-height: 240px; overflow: auto; font-size: 13px; line-height: 1.5; }
+.confirm-items li { margin: 2px 0; }

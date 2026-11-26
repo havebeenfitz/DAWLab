@@ -49,6 +49,8 @@ export interface CommitGraphProps {
   isCreatingCommit?: boolean;
   /** Files that differ from the last saved version; with any, the Save tile shows them and offers Discard. */
   unsavedCount?: number;
+  /** What the unsaved changes are, in words (Logic projects): shown under the title. */
+  unsavedSummary?: string[];
   /** Opens the Discard dialog. */
   onDiscard?: () => void;
   selectedCommitId?: string | null;
@@ -160,6 +162,7 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   isCommitting = false,
   isCreatingCommit = false,
   unsavedCount = 0,
+  unsavedSummary,
   onDiscard,
   selectedCommitId: selectedCommitIdProp,
   onCommitSelect,
@@ -497,6 +500,12 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
                       <span className="unsaved-count">· {unsavedCount} file{unsavedCount === 1 ? "" : "s"}</span>
                     )}
                   </div>
+                  {hasUnsavedChanges && unsavedSummary && unsavedSummary.length > 0 && (
+                    <ul className="unsaved-summary" aria-label="What changed">
+                      {unsavedSummary.slice(0, 3).map((line) => <li key={line}>{line}</li>)}
+                      {unsavedSummary.length > 3 && <li className="more">and {unsavedSummary.length - 3} more</li>}
+                    </ul>
+                  )}
                   <div className="unsaved-line">
                     <input
                       id="version-message"

@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type WorkingChangeKind = 'added' | 'modified' | 'deleted';
-export interface WorkingChange { path: string; kind: WorkingChangeKind }
+export interface WorkingChange { path: string; kind: WorkingChangeKind; quiet?: 'layout' | 'audio-header' }
+export interface LogicChangeLine { kind: string; text: string; loss?: boolean; items?: string[] }
 export interface WorkingChanges {
   baseCommitId: string | null;
+  /** Changes to the song. */
   changes: WorkingChange[];
+  /** Differences that aren't changes to the song: Logic's window layout, audio headers rewritten on open. */
+  quiet?: WorkingChange[];
+  /** What changed inside the Logic project, in words; null when not read. */
+  logic?: LogicChangeLine[] | null;
   /** "Logic Pro" / "Ableton Live" when that app is running, else null. */
   dawOpen: string | null;
 }
 
-const EMPTY: WorkingChanges = { baseCommitId: null, changes: [], dawOpen: null };
+const EMPTY: WorkingChanges = { baseCommitId: null, changes: [], quiet: [], logic: null, dawOpen: null };
 /** How often to look again while the project is open; only changed files are read again. */
 export const RECHECK_MS = 8000;
 
@@ -44,4 +50,14 @@ export function useWorkingChanges(projectName: string | undefined, enabled: bool
   }, [check, enabled, versionKey]);
 
   return { ...state, recheck: check };
+}
+
+const PROJECT_DATA = /\.logicx\/(?:Alternatives\/[^/]+\/)?ProjectData$/;
+
+/** The unsaved changes in words for the Save card; undefined when there is nothing to say beyond the file count. */
+export function unsavedSummary(w: Pick<WorkingChanges, 'changes' | 'logic'>): string[] | undefined {
+  const touched = w.changes.some((c) => PROJECT_DATA.test(c.path));
+  if (!touched || !w.logic) return undefined;
+  if (w.logic.length === 0) return ['Logic project changed (no details for this kind of edit yet)'];
+  return w.logic.map((l) => l.text);
 }

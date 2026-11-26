@@ -10,6 +10,10 @@ import { AbletonParser } from '../../workers/parser'
 import { LogicProParser } from '../../workers/logicProParser'
 import { diffSong, type SongDiff, type SongInfo } from '../../../shared/song-diff'
 import { songInfoOfVersion } from './song-info'
+import { isLayoutPath } from '../../../shared/noise'
+import { AUDIO_EXT, sampleHashOfBlob, sampleCacheFile } from '../core/audio-samples'
+import { logicChangesBetween } from './logic-changes'
+import { summarizeChanges, type LogicChange } from '../../../shared/logic-project'
 
 export interface VersionChanges {
   commitId: string
@@ -23,6 +27,8 @@ export interface VersionChanges {
   song: SongInfo | null
   /** What changed in the song since the previous version; null without a readable song. */
   songChanges: SongDiff | null
+  /** What changed inside the Logic project (markers, mixer, regions…); null when it isn't a Logic project. */
+  logic: LogicChange[] | null
 }
 
 interface LogCommit { commit_id: string; timestamp: string; message: string; parent?: string }
@@ -137,7 +143,7 @@ export function workedOnAlternative(current: FileMapEntry[], previous: FileMapEn
 
 /** What changed in `commitId` compared with the version before it. */
 /** What changed in `commitId` compared with the version before it, or with `baseId` when given. */
-export function getVersionChanges(projectName: string, commitId: string, baseId?: string): VersionChanges {
+export async function getVersionChanges(projectName: string, commitId: string, baseId?: string): Promise<VersionChanges> {
   const log = loadLocalProjectLog(projectName)
   if (!log) throw new Error(`Project '${projectName}' not found`)
   const { commitsDir, casDir } = getProjectStorageDirs(projectName)
@@ -168,8 +174,62 @@ export function getVersionChanges(projectName: string, commitId: string, baseId?
     songChanges: song ? diffSong(previousSong, song) : null,
     parentId: parent?.commit_id ?? null,
     parentMessage: parent?.message ?? null,
-    files: diffFileMaps(previous, current),
+    files: await withQuietChanges(diffFileMaps(previous, current), previous, current, casDir),
+    logic: /logic/i.test(daw)
+      ? logicChangesBetween(previous ? { kind: 'version', map: previous, casDir } : null, { kind: 'version', map: current, casDir })
+      : null,
     // An earlier version whose plugins can't be read is treated as unchanged rather than "all new".
     plugins: currentPlugins ? diffPlugins(previous ? previousPlugins ?? currentPlugins : null, currentPlugins) : null,
+  }
+}
+
+/**
+ * Moves what isn't a change to the song out of the list: Logic's window layout,
+ * and audio files whose sound is identical (only the header was rewritten).
+ */
+export async function withQuietChanges(diff: FileDiff, previous: FileMapEntry[] | null, current: FileMapEntry[], casDir: string): Promise<FileDiff> {
+  const before = new Map((previous ?? []).map((e) => [e.path, e.hash]))
+  const after = new Map(current.map((e) => [e.path, e.hash]))
+  const keep: FileDiff['changes'] = []
+  const quiet: FileDiff['changes'] = []
+  for (const c of diff.changes) {
+    if (isLayoutPath(c.path)) { quiet.push(c); continue }
+    if (c.kind === 'modified' && AUDIO_EXT.test(c.path)) {
+      const a = before.get(c.path), b = after.get(c.path)
+      const cache = sampleCacheFile(casDir)
+      const sa = a ? await sampleHashOfBlob(a, getCasPath(a, casDir), c.path, cache) : null
+      const sb = b ? await sampleHashOfBlob(b, getCasPath(b, casDir), c.path, cache) : null
+      if (sa && sa === sb) { quiet.push(c); continue }
+    }
+    keep.push(c)
+  }
+  const count = (k: string) => keep.filter((c) => c.kind === k).length
+  return {
+    ...diff, changes: keep, quiet,
+    added: count('added'), removed: count('removed'), modified: count('modified'), renamed: count('renamed'),
+    unchanged: diff.unchanged + quiet.length,
+  }
+}
+
+/**
+ * One line on what changed in a Logic project's version, for a notification.
+ * Null when the version (or its parent) isn't on this Mac yet, it isn't a
+ * Logic project, or nothing readable changed.
+ */
+export function logicSummaryOfVersion(projectName: string, commitId: string): string | null {
+  try {
+    const log = loadLocalProjectLog(projectName)
+    if (!log || !/logic/i.test(String(log.daw ?? ''))) return null
+    const { commitsDir, casDir } = getProjectStorageDirs(projectName)
+    const current = getCommitFileMap(projectName, commitId, commitsDir)
+    const parent = findParent(log, commitId)
+    if (!parent) return null
+    const previous = getCommitFileMap(projectName, parent.commit_id, commitsDir)
+    const lines = logicChangesBetween({ kind: 'version', map: previous, casDir }, { kind: 'version', map: current, casDir })
+    // A loss leads, so it is never cut off.
+    const sorted = (lines ?? []).filter((l) => l.kind !== 'other').sort((a, b) => Number(!!b.loss) - Number(!!a.loss))
+    return summarizeChanges(sorted, 2) || null
+  } catch {
+    return null
   }
 }

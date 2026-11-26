@@ -20,3 +20,18 @@
 .parallel-preview-btn { background: rgba(168, 85, 247, 0.2); border-color: rgba(192, 132, 252, 0.6); color: #f3e8ff; }
 .parallel-preview-btn:hover:not(:disabled) { background: rgba(168, 85, 247, 0.35); }
 .fork-notice { padding: 6px 12px; font-size: 12px; border-radius: 8px; gap: 8px; }
+.merge-plan { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; padding: 12px; border: 1px solid rgba(192, 132, 252, 0.35); border-radius: 10px; background: rgba(168, 85, 247, 0.06); }
+.merge-plan-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.merge-plan-how { margin: 0; padding-left: 18px; font-size: 12px; color: #b9b9c2; line-height: 1.6; }
+.merge-plan-alt { font-size: 12px; font-weight: 600; color: #d4d4da; }
+.merge-plan-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.merge-step { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: #e8e8ea; }
+.merge-box { flex: none; width: 12px; height: 12px; margin-top: 3px; border: 1.5px solid #8b8b93; border-radius: 3px; }
+.merge-conflict { display: flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 12px; color: #fbbf24; }
+.merge-step.conflict .merge-box { border-color: #fbbf24; }
+.merge-plan-ok { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: #86efac; }
+.merge-plan-done { font-size: 12px; color: #8b8b93; }
+.merge-plan-done ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.merge-plan-done li { display: flex; gap: 6px; align-items: center; }
+.merge-plan .spin { animation: merge-spin 1s linear infinite; }
+@keyframes merge-spin { to { transform: rotate(360deg); } }

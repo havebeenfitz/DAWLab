@@ -3,7 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { describe, it, expect, vi } from 'vitest'
-import { addNotices, alertsFor, emptyFeed, markRead, parseFeed, readProject, setMuted, setSound, soundPlan, unreadCount, versionTime, type FeedState } from '../version-feed'
+import { addNotices, alertsFor, withSummaries, emptyFeed, markRead, parseFeed, readProject, setMuted, setSound, soundPlan, unreadCount, versionTime, type FeedState } from '../version-feed'
 import { checkForNewVersions, feedStore, type WatcherDeps } from '../version-watcher'
 
 const now = new Date('2026-11-25T20:00:00Z')
@@ -47,6 +47,14 @@ describe('the feed', () => {
       { title: 'elena saved a version', body: '“аудио” in test · Chigura', target: expect.objectContaining({ commitId: '10' }) },
     ])
     expect(alertsFor(emptyFeed(), [notice('10', { parallel: true })])[0].title).toBe('elena saved a parallel version')
+  })
+
+  it('says what changed in the project once the version is on this Mac', () => {
+    const summary = 'Marker “Intro” added at bar 1; “Bass”: volume up'
+    expect(alertsFor(emptyFeed(), [notice('10', { message: 'аудио', summary })])[0].body).toBe(`“аудио” in test · Chigura\n${summary}`)
+    const state = withSummaries(addNotices(emptyFeed(), [notice('10'), notice('11')]).state, new Map([['p1:10', summary]]))
+    expect(state.notices.map((n) => n.summary)).toEqual([undefined, summary])
+    expect(parseFeed(JSON.parse(JSON.stringify(state))).notices[1].summary).toBe(summary)
   })
 
   it('groups several into one per shared folder, opening the newest', () => {

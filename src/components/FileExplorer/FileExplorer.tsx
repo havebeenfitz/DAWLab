@@ -4,6 +4,7 @@ import dawlabLogo from '@/assets/logo.png';
 import './FileExplorer.css';
 import type { VersionChanges } from '@/hooks/useVersionChanges';
 import { VersionChangesList, CHANGE_MARK, CHANGE_WORD } from './VersionChangesList';
+import { ProjectChanges } from './ProjectChanges';
 import { SongChanges } from './SongChanges';
 import { PlayFileButton } from './PlayFileButton';
 import { useVersionAudio } from '@/hooks/useVersionAudio';
@@ -358,6 +359,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
           ) : changes ? (
             <>
               {changes.song && <SongChanges song={changes.song} diff={changes.parentId ? changes.songChanges ?? null : null} audio={audio} />}
+              {changes.parentId && changes.logic && <ProjectChanges lines={changes.logic} hideSongTempo={!!changes.songChanges?.changes.some((c) => c.field === 'tempo')} />}
               <VersionChangesList diff={changes.files} hasParent={!!changes.parentId} parentMessage={changes.parentMessage} audio={audio} />
             </>
           ) : (

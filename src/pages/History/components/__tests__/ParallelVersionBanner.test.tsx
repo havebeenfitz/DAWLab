@@ -79,7 +79,8 @@ describe('ParallelVersionBanner', () => {
     fireEvent.click(screen.getByRole('button', { name: /Make main/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByRole('button', { name: /Compare/ })).toBeInTheDocument();
-    invoke.mockRejectedValueOnce(new Error('disk full'));
+    // The DAW check comes first (nothing running), then making it main fails.
+    invoke.mockResolvedValueOnce({ app: null, holdsFiles: false }).mockRejectedValueOnce(new Error('disk full'));
     fireEvent.click(screen.getByRole('button', { name: /Make main/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Make main' }));
     await waitFor(() => expect(notify.error).toHaveBeenCalledWith('Couldn’t make it main', 'disk full'));

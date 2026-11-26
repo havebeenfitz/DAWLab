@@ -20,6 +20,8 @@ export interface VersionNotice {
   /** When the version was saved (ISO). */
   at: string
   read: boolean
+  /** What changed in the project, in words, once the version is on this Mac (e.g. "Marker “Intro” added at bar 1"). */
+  summary?: string
 }
 
 export interface ProjectCursor {
@@ -147,7 +149,7 @@ export function alertsFor(state: FeedState, added: VersionNotice[]): Alert[] {
     if (sorted.length === 1) {
       return {
         title: `${newest.author} saved ${newest.parallel ? 'a parallel version' : 'a version'}`,
-        body: `${quote(newest.message)} in ${newest.projectName} · ${newest.folderName}`,
+        body: `${quote(newest.message)} in ${newest.projectName} · ${newest.folderName}${newest.summary ? `\n${newest.summary}` : ''}`,
         target: newest,
       }
     }
@@ -216,4 +218,10 @@ export function setSound(state: FeedState, sound: unknown, file?: unknown): Feed
   const ext = (f ?? '').split('.').pop()?.toLowerCase() ?? ''
   if (!f || !SOUND_EXTENSIONS.includes(ext)) throw new Error('Choose a sound file (WAV, AIFF, MP3, M4A or CAF).')
   return { ...state, sound: 'custom', soundFile: f }
+}
+
+/** Adds what changed to the notices it knows a summary for; the rest stay as they are. */
+export function withSummaries(state: FeedState, summaries: Map<string, string>): FeedState {
+  if (summaries.size === 0) return state
+  return { ...state, notices: state.notices.map((n) => (summaries.has(n.id) && !n.summary ? { ...n, summary: summaries.get(n.id) } : n)) }
 }

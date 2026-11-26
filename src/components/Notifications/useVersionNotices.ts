@@ -11,6 +11,8 @@ export interface VersionNotice {
   author: string;
   message: string;
   parallel: boolean;
+  /** What changed in the project, in words, once the version is on this Mac. */
+  summary?: string;
   at: string;
   read: boolean;
 }

@@ -14,8 +14,12 @@ import { getUserDir, getUsername } from '../dawvcs/core/constants'
 import { loadRegistry } from '../dawvcs/core/registry'
 import { listLocalSpaces, listSpaceProjects, readSpaceProjectLog, localNameOf } from '../sync/spaces-client'
 import { requestSpaceSync } from '../sync/auto-sync'
-import { markRead, setMuted, setSound, soundPlan, unreadCount, SOUND_EXTENSIONS, type Alert, type FeedState, type SoundPlan, type VersionNotice } from './version-feed'
+import { alertsFor, withSummaries, markRead, setMuted, setSound, soundPlan, unreadCount, SOUND_EXTENSIONS, type Alert, type FeedState, type SoundPlan, type VersionNotice } from './version-feed'
 import { checkForNewVersions, feedStore, startWatching } from './version-watcher'
+import { logicSummaryOfVersion } from '../dawvcs/operations/version-changes'
+
+/** How long a notification waits for the new versions to come down, so it can say what changed. */
+const SUMMARY_WAIT_MS = 45_000
 
 const store = feedStore(() => getUserDir())
 
@@ -101,9 +105,28 @@ export function registerNotificationIpc(ipcMain: IpcMain, getWindow: () => Brows
     })
     if (!r.added.length) return
     publish()
-    if (r.alerts.length) announce(r.alerts)
-    // Bring the new versions down, so they are there when the project opens.
-    for (const folderId of r.changedFolders) void requestSpaceSync(folderId)
+    // Bring the new versions down, so they are there when the project opens and
+    // the notification can say what changed. It waits a little, never long.
+    const synced = Promise.allSettled(r.changedFolders.map((folderId) => requestSpaceSync(folderId)))
+    const describe = () => {
+      const local = (n: VersionNotice) => localNameOf(n.folderId, n.hubProjectId) ?? n.projectName
+      const summaries = new Map<string, string>()
+      for (const n of r.added) {
+        const s = logicSummaryOfVersion(local(n), n.commitId)
+        if (s) summaries.set(n.id, s)
+      }
+      if (summaries.size) {
+        store.save(withSummaries(store.load(), summaries))
+        publish()
+      }
+      return summaries
+    }
+    const inTime = await Promise.race([synced.then(() => true), new Promise<boolean>((res) => setTimeout(() => res(false), SUMMARY_WAIT_MS))])
+    const summaries = inTime ? describe() : new Map<string, string>()
+    const added = r.added.map((n) => (summaries.has(n.id) ? { ...n, summary: summaries.get(n.id) } : n))
+    const alerts = alertsFor(store.load(), added)
+    if (alerts.length) announce(alerts)
+    if (!inTime) void synced.then(describe)
   }
 
   ipcMain.handle('notifications-get', () => publish())

@@ -46,10 +46,11 @@ import { usePreviewUpload } from "./hooks/usePreviewUpload";
 import { useStorageWarning } from "./hooks/useStorageWarning";
 import { useCommitActions } from "./hooks/useCommitActions";
 import { useBranchActions } from "./hooks/useBranchActions";
-import { useWorkingChanges } from "./hooks/useWorkingChanges";
+import { useWorkingChanges, unsavedSummary } from "./hooks/useWorkingChanges";
 import { useHistoryColumn, HISTORY_COL_MIN, HISTORY_COL_MAX } from "./hooks/useHistoryColumn";
 import { DiscardChangesDialog } from "./components/DiscardChangesDialog";
 import "./History.css";
+import { ensureClosedInDaw } from '@/lib/dawGuard';
 
 /** The focused commit, falling back to the checked-out one. */
 /** Newest version on an alternative, or null. */
@@ -215,6 +216,7 @@ export const History: React.FC = () => {
   };
   const discardChanges = async () => {
     if (!passedProject || !working.baseCommitId) return;
+    if (!(await ensureClosedInDaw(passedProject, "discard"))) return;
     const r = await window.ipcRenderer.invoke("discard-working-changes", passedProject, working.baseCommitId);
     setShowDiscard(false);
     await working.recheck();
@@ -262,7 +264,7 @@ export const History: React.FC = () => {
       await window.ipcRenderer.invoke("update-project-path", projectId || passedProject, path + "/" + passedProject);
       await loadProjectLog(passedProject);
 
-      if (pendingAction?.type === "checkout") {
+      if (pendingAction?.type === "checkout" && (await ensureClosedInDaw(passedProject, "restore it"))) {
         await window.ipcRenderer.invoke("rollback-project", passedProject, pendingAction.commitId);
       }
       if (pendingAction?.type === "commit") {
@@ -279,6 +281,7 @@ export const History: React.FC = () => {
 
   const handleMerge = async (fromBranch: string, toBranch: string) => {
     try {
+      if (!(await ensureClosedInDaw(passedProject, "merge"))) return;
       await window.ipcRenderer.invoke(
         "merge-branches",
         passedProject,
@@ -404,6 +407,7 @@ export const History: React.FC = () => {
               onBack={() => { void endPreview(); }}
               onMakeMain={async () => {
                 if (!preview || !passedProject) return;
+                if (!(await ensureClosedInDaw(passedProject, "make it main"))) return;
                 try {
                   await window.ipcRenderer.invoke("make-parallel-version-main", passedProject, preview.branch, username || "You");
                   await endPreview();
@@ -446,6 +450,7 @@ export const History: React.FC = () => {
                 isCommitting={commits.isCommitting}
                 isCreatingCommit={commits.isCreatingCommit}
                 unsavedCount={working.changes.length}
+                unsavedSummary={unsavedSummary(working)}
                 onDiscard={() => setShowDiscard(true)}
                 readOnly={access.isListener}
                 me={username}
