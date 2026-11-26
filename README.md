@@ -102,7 +102,7 @@ HUB_CREATE_KEY=<your-secret> docker compose up -d
 
 ## Build from source
 
-Requires Node.js 22 or newer (DAWLab uses [mise](https://mise.jdx.dev) to pin it) and npm.
+Requires Node.js 26, the current LTS (pinned for [mise](https://mise.jdx.dev) in mise.toml), and npm.
 
 ```bash
 npm install

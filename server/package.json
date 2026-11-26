@@ -5,7 +5,7 @@
   "description": "Self-hostable sharing hub for DAWLab projects: push/pull versions, share links, web player with comments.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
-  "engines": { "node": ">=22.18" },
+  "engines": { "node": ">=26" },
   "scripts": {
     "start": "node src/index.ts",
     "dev": "node --watch src/index.ts"

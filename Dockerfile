@@ -1,7 +1,7 @@
 # DAWLab Hub: the self-hostable sharing server (not the desktop app).
 #   docker build -t dawlab-hub .
 #   docker run -p 8080:8080 -v dawlab-hub:/data -e HUB_CREATE_KEY=change-me dawlab-hub
-FROM node:22-alpine
+FROM node:26-alpine
 
 WORKDIR /app
 ENV NODE_ENV=production PORT=8080 DATA_DIR=/data
@@ -9,7 +9,7 @@ ENV NODE_ENV=production PORT=8080 DATA_DIR=/data
 COPY server/package.json server/package-lock.json* server/
 RUN cd server && npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-# The hub runs its TypeScript directly (Node >= 22.18 strips types) and shares
+# The hub runs its TypeScript directly (Node strips types) and shares
 # the sync protocol and HTTP range parsing with the desktop app.
 COPY shared/ shared/
 COPY electron/media/range.ts electron/media/range.ts
