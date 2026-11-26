@@ -1,68 +1,64 @@
-name: Build Electron App
+name: Release
+
+# Push a tag like v1.5.2 (matching "version" in package.json) and this builds
+# the macOS DMGs and publishes the GitHub release with them. Run it by hand
+# (Actions > Release > Run workflow) to build the DMGs without releasing.
 
 on:
-  # Manual trigger for testing
   workflow_dispatch:
-
-  # Trigger on version tags
   push:
     tags:
       - "v*"
 
-  # Optional: trigger on main branch pushes
-  # push:
-  #   branches: [main]
-
 permissions:
-  contents: write # Required for creating releases
+  contents: write
 
 jobs:
-  build:
-    name: Build ${{ matrix.os }} (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    # Linux is the newest target — don't let it block the macOS/Windows release
-    continue-on-error: ${{ matrix.os == 'linux' }}
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci --legacy-peer-deps
+
+      - name: The tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          want="v$(node -p "require('./package.json').version")"
+          if [ "$want" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match package.json ($want)."
+            exit 1
+          fi
+
+      - run: npx tsc --noEmit -p tsconfig.json
+      - run: npm run lint
+      - run: npx vitest run
+
+  build:
+    name: macOS ${{ matrix.arch }}
+    needs: test
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # macOS builds (both architectures built on macOS runner)
-          - os: macos
-            runner: macos-latest
-            arch: x64
-          - os: macos
-            runner: macos-latest
-            arch: arm64
-
-          # Windows builds (both architectures built on Windows runner)
-          - os: windows
-            runner: windows-latest
-            arch: x64
-          - os: windows
-            runner: windows-latest
-            arch: arm64
-
-          # Linux build (AppImage, x64)
-          - os: linux
-            runner: ubuntu-latest
-            arch: x64
-
+        arch: [arm64, x64]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
+      - run: npm ci --legacy-peer-deps
 
-      - name: Build App UI
-        run: npm run build:renderer
+      - run: npm run build:renderer
 
       # Signing + notarization kick in when these repository secrets exist:
       #   MAC_CERTS            base64 of the "Developer ID Application" .p12
@@ -70,11 +66,9 @@ jobs:
       #   APPLE_API_KEY_P8     contents of the App Store Connect API key (.p8)
       #   APPLE_API_KEY_ID     the key's ID
       #   APPLE_API_ISSUER     the issuer ID shown above the keys list
-      # Without them the DMG is built unsigned, as before.
-      - name: Build Electron App (macOS)
-        if: matrix.os == 'macos'
+      # Without them the DMG gets an ad-hoc signature (not notarized).
+      - name: Build the DMG
         env:
-          EP_DRAFT: true
           MAC_CERTS: ${{ secrets.MAC_CERTS }}
           MAC_CERTS_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
@@ -88,56 +82,39 @@ jobs:
               export APPLE_API_KEY="$RUNNER_TEMP/AuthKey.p8"
             fi
           else
-            echo "No signing secrets: building an unsigned DMG."
             export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi
           npm run pack -- --mac --${{ matrix.arch }}
 
-      - name: Build Electron App (Windows)
-        if: matrix.os == 'windows'
-        run: npm run pack -- --win --${{ matrix.arch }}
-        env:
-          EP_DRAFT: true
-
-      - name: Build Electron App (Linux)
-        if: matrix.os == 'linux'
-        run: npm run pack -- --linux --${{ matrix.arch }}
-        env:
-          EP_DRAFT: true
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: DAWLab-${{ matrix.os }}-${{ matrix.arch }}
-          path: |
-            release/**/*-Installer.dmg
-            release/**/*-Setup.exe
-            release/**/*.AppImage
-          retention-days: 1
-          if-no-files-found: ignore
+          name: DAWLab-mac-${{ matrix.arch }}
+          path: release/**/*-Installer.dmg
+          retention-days: 3
+          if-no-files-found: error
 
   release:
-    name: Create Release
+    name: Publish the release
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/**/*-Installer.dmg
-            artifacts/**/*-Setup.exe
-            artifacts/**/*.AppImage
+          name: DAWLab ${{ github.ref_name }}
+          files: artifacts/**/*-Installer.dmg
           draft: false
+          make_latest: true
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            Download the DMG for your Mac: arm64 for Apple Silicon (M1 and newer), x64 for Intel.
+
+            Not notarized. After installing run:
+            ```
+            xattr -dr com.apple.quarantine /Applications/DAWLab.app && codesign --force --deep --sign - /Applications/DAWLab.app
+            ```
