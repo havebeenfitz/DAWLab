@@ -36,6 +36,12 @@ describe('a take still being recorded', () => {
     expect(isRecordingInProgress(write('d.caf', caf(-1n)))).toBe(true)
     expect(isRecordingInProgress(write('e.caf', caf(16n)))).toBe(false)
   })
+  it('an old file with a broken header is not: nobody is recording into it', () => {
+    const f = write('old.wav', riff(0xfffffff0))
+    const hourAgo = new Date(Date.now() - 3600_000)
+    fs.utimesSync(f, hourAgo, hourAgo)
+    expect(isRecordingInProgress(f)).toBe(false)
+  })
   it('other files are never checked', () => {
     expect(isRecordingInProgress(write('Song.als', riff(0)))).toBe(false)
     expect(isRecordingInProgress(path.join(dir, 'missing.wav'))).toBe(false)

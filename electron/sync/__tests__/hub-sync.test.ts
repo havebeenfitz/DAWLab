@@ -85,7 +85,7 @@ describe('DAWLab Hub sharing', () => {
 
     fs.mkdirSync(path.join(aliceDir, 'Samples'), { recursive: true })
     fs.writeFileSync(path.join(aliceDir, 'Song.als'), 'ableton v1')
-    fs.writeFileSync(path.join(aliceDir, 'Samples', 'kick.wav'), 'RIFF....WAVEkick')
+    fs.writeFileSync(path.join(aliceDir, 'Samples', 'kick.wav'), 'fake wav: kick')
     fs.mkdirSync(bobParent, { recursive: true })
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-01-01T10:00:00Z'))
@@ -130,7 +130,7 @@ describe('DAWLab Hub sharing', () => {
     const { projectName, projectPath } = await openSharedProject(editUrl, bobParent)
     expect(projectName).toBe(name)
     expect(fs.readFileSync(path.join(projectPath, 'Song.als'), 'utf8')).toBe('ableton v1')
-    expect(fs.readFileSync(path.join(projectPath, 'Samples', 'kick.wav'), 'utf8')).toBe('RIFF....WAVEkick')
+    expect(fs.readFileSync(path.join(projectPath, 'Samples', 'kick.wav'), 'utf8')).toBe('fake wav: kick')
 
     const [first] = commitIds(name)
     const { commitsDir } = getProjectStorageDirs(name)

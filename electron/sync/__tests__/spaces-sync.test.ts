@@ -89,7 +89,7 @@ describe('Shared folders', () => {
       const dir = path.join(work, 'alice', song)
       fs.mkdirSync(path.join(dir, 'Samples'), { recursive: true })
       fs.writeFileSync(path.join(dir, `${song}.als`), `${song} v1`)
-      fs.writeFileSync(path.join(dir, 'Samples', 'kick.wav'), `RIFF....WAVE${song}`)
+      fs.writeFileSync(path.join(dir, 'Samples', 'kick.wav'), `fake wav: ${song}`)
     }
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-02-01T10:00:00Z'))

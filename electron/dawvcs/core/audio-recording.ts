@@ -10,14 +10,23 @@ import path from 'path'
 const WAV = new Set(['.wav', '.wave', '.bwf'])
 const AIFF = new Set(['.aif', '.aiff', '.aifc'])
 
-/** True when the header says the file isn't finished: its declared size doesn't fit the file. */
-export function isRecordingInProgress(file: string): boolean {
+/** A recording is written to all the time; a file left untouched this long isn't being recorded. */
+const RECENT_MS = 10 * 60 * 1000
+
+/**
+ * True when the header says the file isn't finished (its declared size doesn't
+ * fit the file) and it was written to just now. An old file with a broken
+ * header is just a broken file: it must not block saving forever.
+ */
+export function isRecordingInProgress(file: string, now = Date.now()): boolean {
   const ext = path.extname(file).toLowerCase()
   if (!WAV.has(ext) && !AIFF.has(ext) && ext !== '.caf') return false
   let fd: number | null = null
   try {
     fd = fs.openSync(file, 'r')
-    const size = fs.fstatSync(fd).size
+    const stat = fs.fstatSync(fd)
+    if (now - stat.mtimeMs > RECENT_MS) return false
+    const size = stat.size
     const head = Buffer.alloc(12)
     if (fs.readSync(fd, head, 0, 12, 0) < 12) return false
     const id = head.toString('latin1', 0, 4)
