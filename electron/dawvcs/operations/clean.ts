@@ -68,7 +68,7 @@ function allStores(): Store[] {
 /** Hashes some version still needs (files and previews), with a name and the projects using each. */
 function hashesInUse(stores: Store[]) {
   const usage = new Map<string, { filename: string; projects: Set<string> }>()
-  const use = (hash: string | undefined, filename: string, project: string) => {
+  const markInUse = (hash: string | undefined, filename: string, project: string) => {
     if (!hash || hash === 'empty') return
     const known = usage.get(hash)
     if (known) known.projects.add(project)
@@ -80,7 +80,7 @@ function hashesInUse(stores: Store[]) {
       for (const commitId of subdirs(path.join(commitsDir, project))) {
         const filemap = readJson(path.join(commitsDir, project, commitId, 'filemap.json'))
         if (!Array.isArray(filemap)) continue
-        for (const entry of filemap as FileMapEntry[]) use(entry.hash, path.basename(entry.path), project)
+        for (const entry of filemap as FileMapEntry[]) markInUse(entry.hash, path.basename(entry.path), project)
       }
     }
   }
@@ -94,7 +94,7 @@ function hashesInUse(stores: Store[]) {
       const log = readJson(path.join(dir, file))
       const project = String(log?.project_name ?? log?.name ?? file.replace(/\.json$/, ''))
       for (const branch of log?.branches ?? []) {
-        for (const commit of branch?.commits ?? []) use(commit?.preview_file, 'Preview', project)
+        for (const commit of branch?.commits ?? []) markInUse(commit?.preview_file, 'Preview', project)
       }
     }
   }

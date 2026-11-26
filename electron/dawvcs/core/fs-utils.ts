@@ -49,7 +49,7 @@ export async function getAllFiles(root: string, ignoredPaths: string[] = []) {
               console.warn(`[getAllFiles] Skipping symlink outside project: ${full} -> ${realPath}`)
               continue
             }
-          } catch (symlinkErr) {
+          } catch {
             console.warn(`[getAllFiles] Skipping broken symlink: ${full}`)
             continue
           }

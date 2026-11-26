@@ -3,6 +3,8 @@ import { ipcRenderer, contextBridge, webUtils } from 'electron'
 // Try to require tty, but handle if it fails in sandbox
 let tty: any;
 try {
+  // Optional at runtime (sandboxed preload may not have it), so a static import won't do.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   tty = require('tty');
 } catch (err) {
   console.warn('Could not load tty module in preload:', err);

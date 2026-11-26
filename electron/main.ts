@@ -1014,7 +1014,7 @@ ipcMain.handle(
         let commitFiles: any[] = [];
         try {
           commitFiles = getCommitFileMap(projectName, commitId, commitsDir);
-        } catch (e) {
+        } catch {
           console.warn(
             `[main.ts] Could not load filemap for commit ${commitId}, it may have partial data`,
           );
@@ -1050,7 +1050,7 @@ ipcMain.handle(
                     otherHashes.add(f.hash);
                   }
                 });
-              } catch (err) {
+              } catch {
                 // Skip missing filemaps
               }
             }
