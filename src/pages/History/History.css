@@ -465,3 +465,6 @@
   .history-panels { display: grid !important; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto; gap: 16px; }
   .history-panels > div:nth-child(1) { grid-row: 1 / span 2; }
 }
+
+/* Project settings scroll on their own: on wide windows the page itself doesn't. */
+.history-settings { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 32px; }
