@@ -1,5 +1,9 @@
 # DAWLab
 
+> initial release by https://dawlab.online/
+>
+> The verison here has diverted too much from the initial one, use at your own risk
+
 **Version control for music producers.** DAWLab saves versions of your DAW projects, shows their history, lets you try ideas on alternatives and go back to any version. It works on your Mac with no account. When you want to work with others, share a folder through your own DAWLab Hub.
 
 Works with Ableton Live, Logic Pro, FL Studio, Pro Tools and Reaper projects.
