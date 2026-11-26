@@ -7,7 +7,6 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { Layout } from "./components/Layout";
-import { SplashScreen } from "./components/SplashScreen";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { Library } from "./pages/Library";
 import { Settings } from "./pages/Settings";
@@ -54,7 +53,6 @@ const VersionAlertToasts: React.FC = () => {
 type AppPhase = "loading" | "onboarding" | "app";
 
 function App() {
-  const [showSplash, setShowSplash] = useState(true);
   // "loading" until we know whether a user exists; first run (no user) →
   // "onboarding". The routed app only mounts in the "app" phase so the Library
   // always loads fresh once a user and any imported projects exist.
@@ -85,7 +83,7 @@ function App() {
     setPhase("app");
   };
 
-  // Dev-only shader playground — bypasses splash/onboarding/routing entirely.
+  // Dev-only shader playground — bypasses onboarding/routing entirely.
   // Reachable at `#/dev/dither-lab` in dev builds only.
   if (import.meta.env.DEV && hash.startsWith("#/dev/dither-lab")) {
     return <DitherLab />;
@@ -93,7 +91,6 @@ function App() {
 
   return (
     <Router>
-      {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
       {phase === "onboarding" && <Onboarding onComplete={finishOnboarding} />}
       {phase === "app" && (
         <DeepLinkHandler>
