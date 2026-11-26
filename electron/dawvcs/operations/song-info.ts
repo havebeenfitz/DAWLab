@@ -135,6 +135,7 @@ export function songInfoOfVersion(
   daw: string,
   casDir: string,
   previous: FileMapEntry[] | null = null,
+  read: (e: FileMapEntry) => Buffer = (e) => fs.readFileSync(getCasPath(e.hash, casDir)),
 ): SongInfo | null {
   const files = fileMap.filter((e) => e.hash !== 'empty')
   try {
@@ -145,13 +146,13 @@ export function songInfoOfVersion(
       const projectData = files.filter((e) => /ProjectData$/.test(e.path))
       const changedAlt = projectData.find((e) => before.has(e.path) && before.get(e.path) !== e.hash)
       const pick = (changedAlt && metas.find((m) => m.path === metadataPathFor(changedAlt.path))) ?? metas[0]
-      return cached(`logic:${pick.hash}`, () => songInfoFromLogicMetadata(fs.readFileSync(getCasPath(pick.hash, casDir))))
+      return cached(`logic:${pick.hash}`, () => songInfoFromLogicMetadata(read(pick)))
     }
     if (/ableton/i.test(daw)) {
       const als = files.filter((e) => e.path.toLowerCase().endsWith('.als') && !/(^|\/)backup\//i.test(e.path))
       const pick = als.find((e) => !e.path.includes('/')) ?? als[0]
       if (!pick) return null
-      return cached(`ableton:${pick.hash}`, () => songInfoFromAls(fs.readFileSync(getCasPath(pick.hash, casDir))))
+      return cached(`ableton:${pick.hash}`, () => songInfoFromAls(read(pick)))
     }
   } catch (err) {
     console.warn('[song-info] Could not read song info:', (err as Error).message)

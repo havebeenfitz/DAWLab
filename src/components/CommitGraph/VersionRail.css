@@ -79,3 +79,7 @@
   content: ''; position: absolute; z-index: 2; left: 2px; top: 50%; width: 12px; height: 12px; margin-top: -6px;
   box-sizing: border-box; border-radius: 50%; border: 2px solid var(--unsaved-fg); background: var(--rail-bg);
 }
+.unsaved-card { cursor: pointer; }
+.unsaved-card.selected { border-color: rgba(234, 179, 8, 0.7); box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.35); }
+.selected-version.unsaved { border-color: rgba(234, 179, 8, 0.45); }
+.selected-version.unsaved strong { color: var(--unsaved-fg); }

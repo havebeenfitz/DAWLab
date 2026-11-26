@@ -16,8 +16,10 @@ interface Props {
   activeTab: BottomPanelTab;
   onTabChange: (tab: BottomPanelTab) => void;
   projectName: string;
-  /** Version shown in the file explorer. */
+  /** Version shown in the file explorer (UNSAVED_ID: the unsaved changes). */
   fileCommitId: string | undefined;
+  /** Changes whenever the unsaved changes do, so their comparison is read again. */
+  changesKey?: string;
   projectPath: string | null;
   onSelectPath: () => void;
   plugins: any[];
@@ -64,7 +66,7 @@ const panelClass = (active: boolean, scrolls: boolean) =>
 
 /** Files, plugins and comments of the active version: side by side on desktop, tabbed on mobile. */
 export function HistoryBottomPanels(p: Props) {
-  const { changes, loading: changesLoading } = useVersionChanges(p.projectName, p.fileCommitId);
+  const { changes, loading: changesLoading } = useVersionChanges(p.projectName, p.fileCommitId, p.changesKey);
   return (
     <div className="history-panels-wrap flex flex-col flex-1 min-h-0 mt-4">
       <MobileTabPicker activeTab={p.activeTab} onTabChange={p.onTabChange} />

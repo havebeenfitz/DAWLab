@@ -307,3 +307,23 @@ describe('Discard while the project is open in the DAW', () => {
     expect(read('Audio Files/kick.wav')).toBe('kick')
   })
 })
+
+describe('the unsaved changes, shown like a version', () => {
+  it('compares the folder with the last saved version', async () => {
+    const { getUnsavedVersionChanges } = await import('../version-changes')
+    write('Audio Files/kick.wav', 'kick v2')
+    write('Audio Files/vox.wav', 'vox')
+    fs.rmSync(path.join(dir, 'Audio Files/snare.wav'))
+    write(`${name}.logicx/Alternatives/000/WindowImage.jpg`, 'screen')
+    const u = (await getUnsavedVersionChanges(name))!
+    expect(u.commitId).toBe('unsaved')
+    expect(u.parentId).toBe(await base())
+    expect(u.files.changes.map((c) => `${c.kind} ${c.path}`)).toEqual([
+      'modified Audio Files/kick.wav',
+      'removed Audio Files/snare.wav',
+      'added Audio Files/vox.wav',
+    ])
+    expect([u.files.added, u.files.removed, u.files.modified, u.files.unchanged]).toEqual([1, 1, 1, 2])
+    expect(u.files.quiet?.map((c) => c.path)).toEqual([`${name}.logicx/Alternatives/000/WindowImage.jpg`])
+  })
+})

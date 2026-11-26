@@ -68,7 +68,7 @@ import { registerNotificationIpc } from "./notify/ipc";
 import { removeProjectsFromLibrary, type RemoveTarget } from "./library/remove-projects";
 import { cleanUpPreviewProjects } from "./library/preview-cleanup";
 import { removeProjectFromSpace, forgetSharedProject, sharedProjectNames } from "./sync/spaces-client";
-import { getVersionChanges } from "./dawvcs/operations/version-changes";
+import { getVersionChanges, getUnsavedVersionChanges, UNSAVED_ID } from "./dawvcs/operations/version-changes";
 import { getWorkingChanges, discardWorkingChanges } from "./dawvcs/operations/discard";
 import { runningDawApp, dawProjectState } from "./dawvcs/core/daw-running";
 import { setDawOpenCheck } from "./dawvcs/operations/guard";
@@ -772,7 +772,8 @@ ipcMain.handle("get-cas-preview-url", (_ev, hash: string) => {
 // What a version changed compared with the one before it: files and plugins, git-diff style.
 ipcMain.handle('get-version-changes', async (_ev, projectName: string, commitId: string, baseId?: string) => {
   try {
-    return getVersionChanges(projectName, commitId, baseId);
+    if (commitId === UNSAVED_ID) return await getUnsavedVersionChanges(projectName);
+    return await getVersionChanges(projectName, commitId, baseId);
   } catch (error) {
     console.error(`[main.ts] Error getting changes for ${commitId}:`, error);
     return null;

@@ -5,14 +5,16 @@ import { getCommitFileMap } from '../core/commits'
 import { getCasPath } from '../core/cas'
 import { getProjectStorageDirs } from '../core/storage-location'
 import type { FileMapEntry } from '../types'
-import { diffFileMaps, diffPlugins, type FileDiff, type PluginDiff, type DiffPlugin } from '../../../shared/version-diff'
+import { diffFileMaps, diffPlugins, type FileChange, type FileDiff, type PluginDiff, type DiffPlugin } from '../../../shared/version-diff'
 import { AbletonParser } from '../../workers/parser'
 import { LogicProParser } from '../../workers/logicProParser'
 import { diffSong, type SongDiff, type SongInfo } from '../../../shared/song-diff'
 import { songInfoOfVersion } from './song-info'
 import { isLayoutPath } from '../../../shared/noise'
 import { AUDIO_EXT, sampleHashOfBlob, sampleCacheFile } from '../core/audio-samples'
-import { logicChangesBetween } from './logic-changes'
+import { logicChangesBetween, workingLogicChanges } from './logic-changes'
+import { getWorkingChanges } from './discard'
+import { getProjectPath } from '../core/registry'
 import { summarizeChanges, type LogicChange } from '../../../shared/logic-project'
 
 export interface VersionChanges {
@@ -82,10 +84,11 @@ export function projectFilesForPlugins(fileMap: FileMapEntry[], daw: string): Fi
 const pluginCache = new Map<string, DiffPlugin[]>()
 const MAX_CACHE = 200
 
-function pluginsOfBlob(hash: string, kind: 'logic' | 'ableton', casDir: string): DiffPlugin[] {
+function pluginsOfBlob(entry: FileMapEntry, kind: 'logic' | 'ableton', read: (e: FileMapEntry) => Buffer): DiffPlugin[] {
+  const hash = entry.hash
   const cached = pluginCache.get(`${kind}:${hash}`)
   if (cached) return cached
-  const data = fs.readFileSync(getCasPath(hash, casDir))
+  const data = read(entry)
   const meta = kind === 'logic' ? new LogicProParser().parseBuffer(data) : new AbletonParser().parseBuffer(data)
   const plugins = meta.plugins.map(p => ({ ...p }))
   if (pluginCache.size >= MAX_CACHE) pluginCache.delete(pluginCache.keys().next().value as string)
@@ -98,7 +101,10 @@ function pluginsOfBlob(hash: string, kind: 'logic' | 'ableton', casDir: string):
  * as many times as the alternative that uses it most. Ableton sets are merged
  * the same way.
  */
-export function pluginsOfVersion(fileMap: FileMapEntry[], daw: string, casDir: string, alternative?: string | null): DiffPlugin[] | null {
+export function pluginsOfVersion(
+  fileMap: FileMapEntry[], daw: string, casDir: string, alternative?: string | null,
+  read: (e: FileMapEntry) => Buffer = (e) => fs.readFileSync(getCasPath(e.hash, casDir)),
+): DiffPlugin[] | null {
   const kind = /logic/i.test(daw) ? 'logic' : /ableton/i.test(daw) ? 'ableton' : null
   if (!kind) return null
   const all = projectFilesForPlugins(fileMap, daw)
@@ -111,7 +117,7 @@ export function pluginsOfVersion(fileMap: FileMapEntry[], daw: string, casDir: s
   for (const src of sources) {
     let list: DiffPlugin[]
     try {
-      list = pluginsOfBlob(src.hash, kind, casDir)
+      list = pluginsOfBlob(src, kind, read)
       readAny = true
     } catch (err) {
       console.warn(`[version-changes] Could not read plugins from ${path.basename(src.path)}:`, (err as Error).message)
@@ -231,5 +237,74 @@ export function logicSummaryOfVersion(projectName: string, commitId: string): st
     return summarizeChanges(sorted, 2) || null
   } catch {
     return null
+  }
+}
+
+/** The id the renderer uses for "the unsaved changes in the folder" in place of a version id. */
+export const UNSAVED_ID = 'unsaved'
+
+/**
+ * The unsaved changes in the project folder, compared with the version the
+ * folder was last saved as (or restored to): files, song, plugins and, for
+ * Logic, what changed inside the project. Null when there is nothing saved yet.
+ */
+export async function getUnsavedVersionChanges(projectName: string): Promise<VersionChanges | null> {
+  const working = await getWorkingChanges(projectName)
+  const baseId = working.baseCommitId
+  if (!baseId) return null
+  const log = loadLocalProjectLog(projectName)
+  const root = getProjectPath(projectName)
+  if (!log || !root || root === 'NA') return null
+  const { commitsDir, casDir } = getProjectStorageDirs(projectName)
+  const base = getCommitFileMap(projectName, baseId, commitsDir)
+  const parent = (log.branches ?? []).flatMap((b: any) => b.commits ?? []).find((c: any) => String(c.commit_id) === baseId) ?? null
+  const daw = String(log.daw ?? '')
+
+  // The folder as a file map: the saved version with the changed files swapped for what is on disk.
+  const changedPaths = new Map([...working.changes, ...working.quiet].map((c) => [c.path, c]))
+  const onDisk = (p: string): FileMapEntry | null => {
+    try {
+      const st = fs.statSync(path.join(root, p))
+      return { path: p, hash: `folder:${p}:${st.size}:${st.mtimeMs}` } as FileMapEntry
+    } catch { return null }
+  }
+  const folder: FileMapEntry[] = []
+  for (const e of base) {
+    const c = changedPaths.get(e.path)
+    if (!c) folder.push(e)
+    else if (c.kind !== 'deleted') { const d = onDisk(e.path); if (d) folder.push(d) }
+  }
+  for (const c of changedPaths.values()) if (c.kind === 'added') { const d = onDisk(c.path); if (d) folder.push(d) }
+  const read = (e: FileMapEntry) => (e.hash.startsWith('folder:') ? fs.readFileSync(path.join(root, e.path)) : fs.readFileSync(getCasPath(e.hash, casDir)))
+
+  const asChange = (c: { kind: string; path: string }): FileChange => ({ kind: c.kind === 'deleted' ? 'removed' : (c.kind as 'added' | 'modified'), path: c.path })
+  const byPath = (a: FileChange, b: FileChange) => a.path.localeCompare(b.path)
+  const changes = working.changes.map(asChange).sort(byPath)
+  const count = (k: string) => changes.filter((c) => c.kind === k).length
+  const files: FileDiff = {
+    changes,
+    added: count('added'),
+    removed: count('removed'),
+    modified: count('modified'),
+    renamed: 0,
+    unchanged: base.filter((e) => e.hash !== 'empty').length - count('modified') - count('removed'),
+    quiet: working.quiet.map(asChange).sort(byPath),
+  }
+
+  const isLogic = /logic/i.test(daw)
+  const alternative = isLogic ? workedOnAlternative(folder, base) : null
+  const before = pluginsOfVersion(base, daw, casDir, alternative)
+  const now = pluginsOfVersion(folder, daw, casDir, alternative, read)
+  const song = songInfoOfVersion(folder, daw, casDir, base, read)
+  const previousSong = songInfoOfVersion(base, daw, casDir)
+  return {
+    commitId: UNSAVED_ID,
+    parentId: baseId,
+    parentMessage: parent?.message ?? null,
+    files,
+    plugins: now ? diffPlugins(before ?? now, now) : null,
+    song,
+    songChanges: song ? diffSong(previousSong, song) : null,
+    logic: isLogic ? workingLogicChanges(projectName, baseId) : null,
   }
 }

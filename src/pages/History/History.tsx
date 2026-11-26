@@ -47,6 +47,7 @@ import { useStorageWarning } from "./hooks/useStorageWarning";
 import { useCommitActions } from "./hooks/useCommitActions";
 import { useBranchActions } from "./hooks/useBranchActions";
 import { useWorkingChanges, unsavedSummary } from "./hooks/useWorkingChanges";
+import { UNSAVED_ID } from "@/hooks/useVersionChanges";
 import { useHistoryColumn, HISTORY_COL_MIN, HISTORY_COL_MAX } from "./hooks/useHistoryColumn";
 import { DiscardChangesDialog } from "./components/DiscardChangesDialog";
 import "./History.css";
@@ -133,7 +134,22 @@ export const History: React.FC = () => {
   const [isMerging, setIsMerging] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(location.state?.openSettings === true);
 
-  const activeCommit = useMemo(() => findActiveCommit(projectLog, focusedCommitId), [projectLog, focusedCommitId]);
+  // With unsaved changes the right side shows them, compared with the last saved version, until a version is picked.
+  // New unsaved changes bring them back to the right side (not while a version opened from a notification is shown).
+  const showUnsaved = hasUnsavedChanges && !access.isListener && (focusedCommitId === null || focusedCommitId === UNSAVED_ID);
+  useEffect(() => {
+    if (hasUnsavedChanges && !location.state?.focusedCommitId) setFocusedCommitId(UNSAVED_ID);
+    // Only when unsaved changes appear.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasUnsavedChanges]);
+  const versionFocus = focusedCommitId === UNSAVED_ID ? null : focusedCommitId;
+  const activeCommit = useMemo(() => findActiveCommit(projectLog, versionFocus), [projectLog, versionFocus]);
+  const unsavedKey = working.changes.map((c) => `${c.kind[0]}${c.path}`).join("|");
+  const baseMessage = useMemo(() => {
+    const id = working.baseCommitId;
+    for (const b of projectLog?.branches ?? []) for (const c of b.commits) if (String(c.commit_id) === String(id)) return c.message;
+    return null;
+  }, [projectLog, working.baseCommitId]);
   const versionNumber = useMemo(
     () => findVersionNumber(projectLog, selectedBranch, activeCommit?.commit_id),
     [activeCommit, projectLog, selectedBranch],
@@ -437,8 +453,11 @@ export const History: React.FC = () => {
                 onDeleteCommit={commits.handleDeleteCommitRequest}
                 onBranchCreate={branches.handleBranchFromCommit}
                 currentCommitId={projectLog.lastCheckout?.commitId}
-                selectedCommitId={focusedCommitId}
+                selectedCommitId={versionFocus}
                 onCommitSelect={setFocusedCommitId}
+                unsavedSelected={showUnsaved}
+                onSelectUnsaved={() => setFocusedCommitId(UNSAVED_ID)}
+                unsavedBaseMessage={baseMessage}
                 lastCheckoutTimestamp={projectLog.lastCheckout?.timestamp}
                 hasUnsavedChanges={hasUnsavedChanges}
                 restoringCommitId={commits.restoringCommitId}
@@ -475,11 +494,12 @@ export const History: React.FC = () => {
             activeTab={activeMobileTab}
             onTabChange={setActiveMobileTab}
             projectName={passedProject}
-            fileCommitId={activeCommit?.commit_id || projectLog.lastCheckout?.commitId}
+            fileCommitId={showUnsaved ? UNSAVED_ID : activeCommit?.commit_id || projectLog.lastCheckout?.commitId}
+            changesKey={showUnsaved ? unsavedKey : undefined}
             projectPath={projectPath}
             onSelectPath={pathPrompt.openPathModal}
             plugins={(projectLog as any).metadata?.plugins || []}
-            commentsCommitId={activeCommit ? String(activeCommit.commit_id) : null}
+            commentsCommitId={!showUnsaved && activeCommit ? String(activeCommit.commit_id) : null}
             commentsKey={`${activeCommit?.commit_id ?? "none"}-${feedback.feedbackSession ? "fs" : "docked"}`}
             username={username || "You"}
             currentTime={player.currentTime}

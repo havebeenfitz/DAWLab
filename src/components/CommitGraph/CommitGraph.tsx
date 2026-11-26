@@ -51,6 +51,12 @@ export interface CommitGraphProps {
   unsavedCount?: number;
   /** What the unsaved changes are, in words (Logic projects): shown under the title. */
   unsavedSummary?: string[];
+  /** The unsaved changes are what the right side shows (instead of a version). */
+  unsavedSelected?: boolean;
+  /** Clicking the unsaved changes card shows them on the right. */
+  onSelectUnsaved?: () => void;
+  /** The version the unsaved changes are compared with. */
+  unsavedBaseMessage?: string | null;
   /** Opens the Discard dialog. */
   onDiscard?: () => void;
   selectedCommitId?: string | null;
@@ -163,6 +169,9 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   isCreatingCommit = false,
   unsavedCount = 0,
   unsavedSummary,
+  unsavedSelected = false,
+  onSelectUnsaved,
+  unsavedBaseMessage,
   onDiscard,
   selectedCommitId: selectedCommitIdProp,
   onCommitSelect,
@@ -461,7 +470,7 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
     );
   }
 
-  const selected = sortedCommits.find((c) => String(c.commit_id) === String(effectiveSelectedCommitId)) ?? null;
+  const selected = unsavedSelected ? null : sortedCommits.find((c) => String(c.commit_id) === String(effectiveSelectedCommitId)) ?? null;
   const selectedStatus = selected ? getCommitStatus(selected, currentCommitId, lastCheckoutTimestamp, hasUnsavedChanges) : null;
   const isRestoringSelected = !!selected && String(restoringCommitId) === String(selected.commit_id);
 
@@ -471,7 +480,7 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
         commits={sortedCommits}
         forks={forks}
         currentCommitId={currentCommitId}
-        selectedCommitId={effectiveSelectedCommitId}
+        selectedCommitId={unsavedSelected ? null : effectiveSelectedCommitId}
         me={me}
         onSelect={handleRowClick}
         onContextMenu={handleCommitContextMenu}
@@ -493,7 +502,15 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
                 }}
               >
                 <span className="rail-gutter" aria-hidden />
-                <div className="unsaved-card">
+                <div
+                  className={`unsaved-card${unsavedSelected && hasUnsavedChanges ? " selected" : ""}`}
+                  onClick={(e) => {
+                    // A click on the card (not its field or buttons) shows the changes on the right.
+                    if (!hasUnsavedChanges || !onSelectUnsaved) return;
+                    if ((e.target as HTMLElement).closest("input, button")) return;
+                    onSelectUnsaved();
+                  }}
+                >
                   <div className="unsaved-head" role="status">
                     <span className="unsaved-title">{hasUnsavedChanges ? "Unsaved changes" : "No changes since the last save"}</span>
                     {hasUnsavedChanges && (
@@ -546,6 +563,15 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
           </div>
         }
       />
+
+      {unsavedSelected && hasUnsavedChanges && (
+        <div className="selected-version unsaved" aria-label="Selected version">
+          <div className="selected-version-text">
+            <strong>Unsaved changes</strong>
+            <span>In your project folder, compared with {unsavedBaseMessage ? `“${railMessage(unsavedBaseMessage)}”` : "the last saved version"}</span>
+          </div>
+        </div>
+      )}
 
       {selected && (
         <div className="selected-version" aria-label="Selected version">

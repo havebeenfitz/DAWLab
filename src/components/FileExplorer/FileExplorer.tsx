@@ -4,6 +4,7 @@ import dawlabLogo from '@/assets/logo.png';
 import './FileExplorer.css';
 import type { VersionChanges } from '@/hooks/useVersionChanges';
 import { VersionChangesList, CHANGE_MARK, CHANGE_WORD } from './VersionChangesList';
+import { UNSAVED_ID } from '@/hooks/useVersionChanges';
 import { ProjectChanges } from './ProjectChanges';
 import { SongChanges } from './SongChanges';
 import { PlayFileButton } from './PlayFileButton';
@@ -34,7 +35,10 @@ interface TreeNode {
 
 export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitId, projectPath, onSelectPath, changes, changesLoading }) => {
   const [view, setView] = useState<'changes' | 'all'>('changes');
-  const audio = useVersionAudio(projectName, commitId);
+  // The unsaved changes have no stored files of their own: "All files" shows the version they build on, and nothing plays.
+  const unsaved = commitId === UNSAVED_ID;
+  const mapCommitId = unsaved ? changes?.parentId ?? undefined : commitId;
+  const audio = useVersionAudio(projectName, unsaved ? undefined : commitId);
   const changeByPath = useMemo(() => {
     const m = new Map<string, keyof typeof CHANGE_MARK>();
     for (const c of changes?.files.changes ?? []) if (c.kind !== 'removed') m.set(c.path, c.kind);
@@ -49,14 +53,14 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
 
   useEffect(() => {
     const fetchFileMap = async () => {
-      if (!projectName || !commitId) {
+      if (!projectName || !mapCommitId) {
         setFileMap([]);
         return;
       }
 
       setLoading(true);
       try {
-        const map = await window.ipcRenderer.invoke('get-commit-filemap', projectName, commitId);
+        const map = await window.ipcRenderer.invoke('get-commit-filemap', projectName, mapCommitId);
         setFileMap(map || []);
 
         // Auto-expand root folders
@@ -78,7 +82,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ projectName, commitI
     };
 
     fetchFileMap();
-  }, [projectName, commitId]);
+  }, [projectName, mapCommitId]);
 
   useEffect(() => {
     if (!projectPath || projectPath === 'NA') {
