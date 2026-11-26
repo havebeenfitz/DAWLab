@@ -1,14 +1,20 @@
 name: Release
 
-# Push a tag like v1.5.2 (matching "version" in package.json) and this builds
-# the macOS DMGs and publishes the GitHub release with them. Run it by hand
-# (Actions > Release > Run workflow) to build the DMGs without releasing.
+# Releases go out by themselves: push a tag like v1.5.2, or push to main a
+# commit that changes "version" in package.json to one with no release yet.
+# Either way this tests, builds the macOS DMGs and publishes release
+# v<version> with them. Running it by hand (Actions > Release > Run workflow)
+# does the same; for a version that already has a release it only builds.
 
 on:
   workflow_dispatch:
   push:
     tags:
       - "v*"
+    branches:
+      - main
+    paths:
+      - package.json
 
 permissions:
   contents: write
@@ -17,6 +23,9 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      release: ${{ steps.version.outputs.release }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,13 +36,26 @@ jobs:
 
       - run: npm ci --legacy-peer-deps
 
-      - name: The tag matches package.json
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Which release this is
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          want="v$(node -p "require('./package.json').version")"
-          if [ "$want" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME doesn't match package.json ($want)."
-            exit 1
+          tag="v$(node -p "require('./package.json').version")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ "$tag" != "$GITHUB_REF_NAME" ]; then
+              echo "Tag $GITHUB_REF_NAME doesn't match package.json ($tag)."
+              exit 1
+            fi
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            # A push to main or a manual run: release only a version that has no release yet.
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "release=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "release=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - run: npx tsc --noEmit -p tsconfig.json
@@ -95,8 +117,8 @@ jobs:
 
   release:
     name: Publish the release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, build]
+    if: needs.test.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -106,7 +128,9 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          name: DAWLab ${{ github.ref_name }}
+          tag_name: ${{ needs.test.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: DAWLab ${{ needs.test.outputs.tag }}
           files: artifacts/**/*-Installer.dmg
           draft: false
           make_latest: true
