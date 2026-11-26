@@ -80,6 +80,14 @@ export async function startParallelPreview(projectName: string, branch: string, 
   return preview
 }
 
+/** Keeps an open preview with its project after a rename. */
+export function renameParallelPreview(oldName: string, newName: string) {
+  const all = readAll()
+  if (!all[oldName] || oldName === newName) return
+  const { [oldName]: p, ...rest } = all
+  writeAll({ ...rest, [newName]: { ...p, projectName: newName } })
+}
+
 /** Closes the preview: its folder goes to the Trash. Your project folder is never touched. */
 export async function endParallelPreview(projectName: string, trash: TrashFn): Promise<void> {
   const all = readAll()

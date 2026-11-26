@@ -103,6 +103,16 @@ export function createSpaceStore(storage: Storage) {
     })
   }
 
+  /** Renames a project in the space's list; returns false when it wasn't in it. */
+  async function renameProject(spaceId: string, projectId: string, name: string): Promise<boolean> {
+    return withLock(keys.spaceProjects(spaceId), async () => {
+      const list = await projects(spaceId)
+      if (!list.some((p) => p.id === projectId)) return false
+      await storage.putJson(keys.spaceProjects(spaceId), list.map((p) => (p.id === projectId ? { ...p, name } : p)))
+      return true
+    })
+  }
+
   /** The space's projects with `updatedAt` from each project's meta. */
   async function listProjects(spaceId: string): Promise<SpaceProject[]> {
     const list = await projects(spaceId)
@@ -114,7 +124,7 @@ export function createSpaceStore(storage: Storage) {
 
   return {
     meta, members, projects, createSpace, renameSpace, deleteSpace, addMember, setRole, removeMember,
-    addProject, removeProject, listProjects,
+    addProject, removeProject, renameProject, listProjects,
   }
 }
 

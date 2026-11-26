@@ -18,6 +18,8 @@ import { getProjectStorageDirs } from '../dawvcs/core/storage-location'
 import { commitExists } from '../dawvcs/core/commits'
 import { writeJsonSync } from '../dawvcs/core/fs-utils'
 import { isPreviewFolder } from '../dawvcs/operations/scan'
+import { renameProject, findMovedProjects, relinkProject, checkProjectName } from '../dawvcs/operations/rename'
+import { renameParallelPreview } from '../dawvcs/operations/parallel-preview'
 import {
   allCommits, parseFullInvite, buildFullInvite, parseJoinLink, toSharedLog,
   type CreatedInvite, type InviteInfo, type InvitePreview, type JoinResponse, type SpaceMember, type SpaceProject,
@@ -25,7 +27,7 @@ import {
 } from '../../shared/hub-protocol'
 import {
   HubClient, checkOutLatest, createLocalProject, getHubSettings, getProjectRemote, removeProjectRemote, hubError,
-  normalizeHubUrl, syncProjectWith, type SyncProgress,
+  normalizeHubUrl, syncProjectWith, renameProjectRemote, type SyncProgress,
 } from './hub-client'
 
 export interface LocalSpace {
@@ -59,6 +61,8 @@ export interface SpaceSyncResult {
   uploadedProjects: string[]
   /** Projects the owner deleted from the server: kept on this Mac, outside the folder. */
   removedProjects: string[]
+  /** Projects renamed since the last sync, here or by the owner. */
+  renamedProjects: Array<{ from: string; to: string }>
   failed: Array<{ project: string; error: string }>
   space: LocalSpace
 }
@@ -173,7 +177,8 @@ export async function syncSpace(folderId: string, onProgress: SyncProgress = () 
     const remote = await call<SpaceResponse>(space, '/space')
     space = { ...space, name: remote.space.name, role: remote.me.role, members: remote.members }
 
-    const result: SpaceSyncResult = { folderId, pushedVersions: 0, pulledVersions: 0, addedProjects: [], uploadedProjects: [], removedProjects: [], failed: [], space }
+    const result: SpaceSyncResult = { folderId, pushedVersions: 0, pulledVersions: 0, addedProjects: [], uploadedProjects: [], removedProjects: [], renamedProjects: [], failed: [], space }
+    space = await followRenames(space, remote.projects, result)
     space = await linkKeptCopies(space, remote.projects)
     space = dropDeletedProjects(space, remote.projects, result)
     space = await uploadNewLocalProjects(space, onProgress, result)
@@ -232,6 +237,81 @@ async function linkKeptCopies(space: LocalSpace, remoteProjects: SpaceProject[])
   const next = { ...space, projects }
   writeSpace(next)
   return next
+}
+
+/**
+ * Keeps names and folders in step before anything is synced:
+ * 1. A project folder renamed or moved in Finder is found again by its
+ *    versions folder. When the owner renamed it, the project takes the
+ *    folder's name, on the server too. Others keep the server's name.
+ * 2. A project the owner renamed (on another Mac) is renamed here, with its
+ *    folder and DAW file when they carry the old name.
+ * `remoteProjects` is updated in place with renames made here.
+ */
+async function followRenames(space: LocalSpace, remoteProjects: SpaceProject[], result: SpaceSyncResult): Promise<LocalSpace> {
+  let projects = { ...space.projects }
+  const byLocalName = new Map(Object.entries(projects).map(([id, name]) => [name, id]))
+  for (const moved of findMovedProjects([...byLocalName.keys()])) {
+    relinkProject(moved.name, moved.to)
+    const folderName = path.basename(moved.to)
+    if (space.role !== 'owner' || folderName === moved.name) continue
+    const id = byLocalName.get(moved.name)!
+    try {
+      checkProjectName(folderName)
+      await call(space, `/space/projects/${encodeURIComponent(id)}`, 'PATCH', { name: folderName })
+      const remote = remoteProjects.find((p) => p.id === id)
+      if (remote) remote.name = folderName
+    } catch (err) {
+      result.failed.push({ project: moved.name, error: `Renamed to “${folderName}” in Finder, but the server kept the old name: ${messageOf(err)}` })
+    }
+  }
+  for (const remote of remoteProjects) {
+    const local = projects[remote.id]
+    if (!local || local === remote.name || isPreviewFolder(remote.name) || !loadLocalProjectLog(local)) continue
+    try {
+      renameLocalCopy(local, remote.name)
+      projects = { ...projects, [remote.id]: remote.name }
+      writeSpace({ ...space, projects })
+      result.renamedProjects.push({ from: local, to: remote.name })
+    } catch (err) {
+      result.failed.push({ project: local, error: `Couldn't rename it to “${remote.name}”: ${messageOf(err)}` })
+    }
+  }
+  const next = { ...space, projects }
+  writeSpace(next)
+  return next
+}
+
+/** Renames a project on this Mac, with its folder when it carries the old name. */
+function renameLocalCopy(oldName: string, newName: string) {
+  const renamed = renameProject(oldName, newName, { renameFolder: true })
+  renameProjectRemote(oldName, renamed.name)
+  renameParallelPreview(oldName, renamed.name)
+  return renamed
+}
+
+/**
+ * Renames a project, with its folder and DAW file when they carry its name.
+ * In a shared folder only the owner may, and everyone gets the new name.
+ */
+export async function renameAnyProject(projectName: string, newName: string) {
+  const name = checkProjectName(newName)
+  const found = findSharedProject(projectName)
+  if (found) {
+    const { space, projectId } = found
+    if (space.role !== 'owner') throw new Error('Only the owner of the shared folder can rename its projects.')
+    const renamed = renameLocalCopy(projectName, name)
+    try {
+      await call(space, `/space/projects/${encodeURIComponent(projectId)}`, 'PATCH', { name: renamed.name })
+    } catch (err) {
+      renameLocalCopy(renamed.name, projectName) // the server said no: put it back as it was
+      throw err
+    }
+    const latest = getLocalSpace(space.folderId) ?? space
+    writeSpace({ ...latest, projects: { ...latest.projects, [projectId]: renamed.name } })
+    return renamed
+  }
+  return renameLocalCopy(projectName, name)
 }
 
 /**
@@ -350,6 +430,7 @@ async function dropRemotePreview(space: LocalSpace, project: SpaceProject, proje
 
 /** True when a project folder holds no files of its own (DAWLab's storage folder doesn't count). */
 export function isEmptyWorkingCopy(projectPath: string): boolean {
+  // A folder that isn't there counts as emptied: the sync looks for a renamed or moved one first (followRenames).
   try {
     return fs.readdirSync(projectPath).every((n) => n === '.dawlabproject' || n === '.DS_Store')
   } catch {

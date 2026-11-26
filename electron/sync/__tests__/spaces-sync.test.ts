@@ -58,7 +58,7 @@ import { rollbackProject } from '../../dawvcs/operations/rollback'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, getSpaceForProject, listLocalSpaces,
   changeMemberRole, removeMember, previewInvite, leaveSpace, parseInvite, revokeInvite, stopSharing, listInvites, getServerStorage,
-  syncSharedProject, countIncomingVersions, findSharedProject, getLocalSpace, deleteProjectFromServer,
+  syncSharedProject, countIncomingVersions, findSharedProject, getLocalSpace, deleteProjectFromServer, renameAnyProject,
 } from '../spaces-client'
 import { saveProjectRemote } from '../hub-client'
 import { createHub } from '../../../server/src/app.ts'
@@ -425,6 +425,59 @@ describe('Shared folders', () => {
     getUserConfigManager('alice').moveProject(projectId('Old'), null)
     expect((await syncSpace(aliceFolder)).failed).toEqual([])
     expect(getLocalSpace(aliceFolder)?.lastError).toBeUndefined()
+  })
+
+  it('renames: only the owner, with folder and DAW file, and everyone follows; Finder renames are found, never downloaded again', async () => {
+    setUsername('alice')
+    const erinCode = (await createInvite(aliceFolder, 'edit')).code
+    setUsername('erin')
+    const erin = await joinSpace(erinCode, path.join(work, 'erin'))
+    const erinIntro = getProjectPath('Intro')!
+    expect(fs.existsSync(path.join(erinIntro, 'Intro.als'))).toBe(true)
+
+    // The owner renames in DAWLab: name, folder and the DAW file named after it.
+    setUsername('alice')
+    const kept = versions('Intro').length
+    const r = await renameAnyProject('Intro', 'Overture')
+    expect(r).toMatchObject({ name: 'Overture', path: path.join(work, 'alice', 'Overture'), folderRenamed: true })
+    expect(fs.existsSync(path.join(work, 'alice', 'Overture', 'Overture.als'))).toBe(true)
+    expect(fs.existsSync(path.join(work, 'alice', 'Intro'))).toBe(false)
+    expect(versions('Overture')).toHaveLength(kept)
+    expect(loadRegistry()['Intro']).toBeUndefined()
+    expect((await getSpaceDetails(aliceFolder)).projects.map((p) => p.name)).toContain('Overture')
+    expect((await syncSpace(aliceFolder)).failed).toEqual([])
+
+    // Others can't rename; their copy follows the owner's, folder and all.
+    setUsername('erin')
+    await expect(renameAnyProject('Intro', 'Mine')).rejects.toThrow(/Only the owner/)
+    const followed = await syncSpace(erin.folderId)
+    expect(followed.renamedProjects).toEqual([{ from: 'Intro', to: 'Overture' }])
+    expect(followed.addedProjects).toEqual([])
+    expect(getProjectPath('Overture')).toBe(path.join(path.dirname(erinIntro), 'Overture'))
+    expect(fs.existsSync(path.join(getProjectPath('Overture')!, 'Overture.als'))).toBe(true)
+    expect(versions('Overture')).toHaveLength(kept)
+
+    // A member renames their folder in Finder: found again by its files, keeps the server's name.
+    const snow = getProjectPath('Snow')!
+    fs.renameSync(snow, `${snow} (mine)`)
+    const relinked = await syncSpace(erin.folderId)
+    expect(relinked.addedProjects).toEqual([])
+    expect(relinked.failed).toEqual([])
+    expect(getProjectPath('Snow')).toBe(`${snow} (mine)`)
+    expect(fs.existsSync(snow)).toBe(false)
+
+    // The owner renames the folder in Finder: the project takes the folder's name, for everyone.
+    setUsername('alice')
+    fs.renameSync(path.join(work, 'alice', 'Overture'), path.join(work, 'alice', 'Prelude'))
+    const mine = await syncSpace(aliceFolder)
+    expect(mine.addedProjects).toEqual([])
+    expect(mine.failed).toEqual([])
+    expect(getProjectPath('Prelude')).toBe(path.join(work, 'alice', 'Prelude'))
+    expect(fs.existsSync(path.join(work, 'alice', 'Overture'))).toBe(false)
+    expect(versions('Prelude')).toHaveLength(kept)
+    setUsername('erin')
+    expect((await syncSpace(erin.folderId)).renamedProjects).toEqual([{ from: 'Overture', to: 'Prelude' }])
+    await leaveSpace(erin.folderId)
   })
 
   it('lets only the owner delete a project from the server; everyone keeps a copy outside the folder', async () => {

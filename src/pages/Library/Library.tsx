@@ -53,6 +53,8 @@ import { SelectionBar } from './components/SelectionBar';
 import { useRemoveFromLibrary, REMOVE_WARNING, planFolderRemoval, planProjectRemoval, isInSharedFolder } from './hooks/useRemoveFromLibrary';
 import { WarningModal } from '@/components/WarningModal/WarningModal';
 import { useDeleteFromServer } from './hooks/useDeleteFromServer';
+import { useRenameProject } from './hooks/useRenameProject';
+import { InputModal } from '@/components/InputModal';
 
 const VIEW_MODE_KEY = 'dawlab-library-view-mode';
 
@@ -117,6 +119,7 @@ export const Library: React.FC = () => {
   const removal = useRemoveFromLibrary({ setFolders: data.setFolders, audioItems, reload: loadMyProjects });
   const archiving = useArchiveProjects({ folders, setFolders: data.setFolders, reload: loadMyProjects });
   const deleteFromServer = useDeleteFromServer(loadMyProjects);
+  const renaming = useRenameProject(loadMyProjects);
 
   const overlaysOpen =
     folderActions.showNewFolderModal || newProject.showNewProjectModal || folderActions.showRenameModal ||
@@ -208,6 +211,7 @@ export const Library: React.FC = () => {
         close,
         open: () => { if (project) openProject(project.id, project.name); },
         share: () => { if (project) sharing.shareProject(project.name); },
+        rename: project && renaming.canRename(project) ? () => renaming.open(project) : undefined,
         manageTags: () => tags.setTagPopover({ x: contextMenu.x, y: contextMenu.y, projectId: contextMenu.projectId! }),
         ...(() => {
           const plan = planProjectRemoval(projects, contextMenu.projectId!, selection.selection.keys);
@@ -521,6 +525,18 @@ export const Library: React.FC = () => {
       )}
 
       <LibraryModals folderActions={folderActions} audioActions={audioActions} />
+      <InputModal
+        isOpen={!!renaming.target}
+        title="Rename Project"
+        label="Name"
+        value={renaming.value}
+        onChange={renaming.setValue}
+        onSubmit={() => { void renaming.submit(); }}
+        onClose={renaming.close}
+        submitText="Rename"
+        isLoading={renaming.busy}
+        loadingText="Renaming…"
+      />
       <WarningModal
         isOpen={!!removal.plan}
         title="Remove from DAWLab"

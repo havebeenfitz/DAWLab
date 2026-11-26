@@ -56,6 +56,8 @@ interface ProjectMenuActions {
   close: () => void;
   open: () => void;
   share: () => void;
+  /** Absent when this Mac may not rename it (a shared folder you don't own). */
+  rename?: () => void;
   manageTags: () => void;
   /** Label count: how many selected projects the removal applies to. Absent when not allowed. */
   removeCount?: number;
@@ -76,6 +78,11 @@ export function buildProjectMenuItems(a: ProjectMenuActions): ContextMenuItem[] 
       icon: <Share2 size={14} />,
       onClick: () => { a.close(); a.share(); },
     },
+    ...(a.rename ? [{
+      label: 'Rename…',
+      icon: <Pencil size={14} />,
+      onClick: () => { a.close(); a.rename!(); },
+    }] : []),
     {
       label: 'Manage Tags',
       icon: <Tag size={14} />,

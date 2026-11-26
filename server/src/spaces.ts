@@ -186,6 +186,16 @@ export function createSpaceRoutes(opts: SpaceOptions) {
       await storage.deletePrefix(keys.project(projectId))
       return send(res, 204)
     }
+    if (rest.length === 1 && req.method === 'PATCH') {
+      if (!(await store.projects(c.space.id)).some((p) => p.id === projectId)) throw HIDDEN
+      requireOwner(c)
+      const name = displayName((await readJson(req))?.name, 'Project name', 120)
+      if (/[\\/:*?"<>|\p{Cc}]/u.test(name) || name.startsWith('.')) throw new HttpError(400, 'That name can’t be used for a folder')
+      await projectRoutes.rename(projectId, name)
+      await store.renameProject(c.space.id, projectId, name)
+      const project = (await store.listProjects(c.space.id)).find((p) => p.id === projectId)
+      return send(res, 200, { project })
+    }
     return projectRoutes.handle(rest.slice(1), projectAuthorizer(c, projectId), req, res)
   }
 

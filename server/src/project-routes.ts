@@ -56,7 +56,7 @@ export function createProjectRoutes(storage: Storage, maxUpload: number) {
         }
       }
       // Two people saving on top of the same version: the later one goes into its own alternative.
-      const next = mergeLogs(current, placeIncoming(current, { ...incoming, id: current.id }))
+      const next = mergeLogs(current, placeIncoming(current, { ...incoming, id: current.id, name: current.name }))
       await storage.putJson(keys.log(access.projectId), next)
       const meta = await storage.getJson<ProjectMeta>(keys.meta(access.projectId))
       if (meta) await storage.putJson(keys.meta(access.projectId), { ...meta, updatedAt: nowIso() })
@@ -217,7 +217,17 @@ export function createProjectRoutes(storage: Storage, maxUpload: number) {
     throw HIDDEN
   }
 
-  return { handle }
+  /** The owner renamed the project: its log and meta carry the new name. */
+  async function rename(projectId: string, name: string) {
+    await withLock(keys.log(projectId), async () => {
+      const log = await storage.getJson<SharedLog>(keys.log(projectId))
+      if (log) await storage.putJson(keys.log(projectId), { ...log, name })
+    })
+    const meta = await storage.getJson<ProjectMeta>(keys.meta(projectId))
+    if (meta) await storage.putJson(keys.meta(projectId), { ...meta, name, updatedAt: nowIso() })
+  }
+
+  return { handle, rename }
 }
 
 export function parseLog(value: unknown): SharedLog {

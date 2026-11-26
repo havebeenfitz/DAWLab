@@ -365,6 +365,19 @@ describe('projects in spaces', () => {
     expect((await call('GET', '/api/project', { token: legacy.json.editToken })).status).toBe(200)
   })
 
+  it('only the owner renames a project; a pushed log never changes the name', async () => {
+    const { owner, editor, p, projectId, log } = await setup()
+    expect((await call('PATCH', p, { token: editor.token, body: { name: 'Mine' } })).status).toBe(403)
+    expect((await call('PATCH', p, { token: owner.token, body: { name: 'a/b' } })).status).toBe(400)
+    const r = await call('PATCH', p, { token: owner.token, body: { name: 'Holding Pattern' } })
+    expect(r.status).toBe(200)
+    expect(r.json.project).toMatchObject({ id: projectId, name: 'Holding Pattern' })
+    expect((await call('GET', '/api/space', { token: editor.token })).json.projects.map((x: any) => x.name)).toEqual(['Holding Pattern'])
+    expect((await call('GET', p, { token: editor.token })).json.log.name).toBe('Holding Pattern')
+    expect((await call('PUT', `${p}/log`, { token: editor.token, body: { ...log, name: 'Song' } })).json.log.name).toBe('Holding Pattern')
+    expectHidden(await call('PATCH', '/api/space/projects/00000000-0000-4000-8000-000000000000', { token: owner.token, body: { name: 'X' } }))
+  })
+
   it('the owner removes a project from the space', async () => {
     const { owner, p, projectId } = await setup()
     expect((await call('DELETE', `/api/space/projects/${projectId}`, { token: owner.token })).status).toBe(204)

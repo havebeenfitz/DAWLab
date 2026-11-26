@@ -67,7 +67,7 @@ import { registerHubIpc } from "./sync/ipc";
 import { registerNotificationIpc } from "./notify/ipc";
 import { removeProjectsFromLibrary, type RemoveTarget } from "./library/remove-projects";
 import { cleanUpPreviewProjects } from "./library/preview-cleanup";
-import { removeProjectFromSpace, forgetSharedProject, sharedProjectNames } from "./sync/spaces-client";
+import { removeProjectFromSpace, forgetSharedProject, sharedProjectNames, renameAnyProject, findSharedProject } from "./sync/spaces-client";
 import { getVersionChanges, getUnsavedVersionChanges, UNSAVED_ID } from "./dawvcs/operations/version-changes";
 import { getWorkingChanges, discardWorkingChanges } from "./dawvcs/operations/discard";
 import { runningDawApp, dawProjectState } from "./dawvcs/core/daw-running";
@@ -841,6 +841,23 @@ ipcMain.handle("daw-project-state", async (_ev, projectName: string) => {
   if (!path || path === "NA") return { app: null, holdsFiles: false };
   return dawProjectState(path, loadRegistry()[projectName]?.daw);
 });
+// Rename a project, with its folder and DAW file when they carry its name.
+// In a shared folder only the owner can, and everyone gets the new name.
+ipcMain.handle("rename-project", async (_ev, projectName: string, newName: string) => {
+  const projectPath = getProjectPath(projectName);
+  if (projectPath && projectPath !== "NA" && fs.existsSync(projectPath)) {
+    const state = await dawProjectState(projectPath, loadRegistry()[projectName]?.daw);
+    if (state.holdsFiles) throw new Error(`Close the project in ${state.app ?? "your DAW"} first: its folder can't be renamed while it's open.`);
+  }
+  stopDraftWatch(projectName);
+  return renameAnyProject(projectName, newName);
+});
+// Whether this Mac may rename the project: anyone for their own, only the owner in a shared folder.
+ipcMain.handle("can-rename-project", (_ev, projectName: string) => {
+  const shared = findSharedProject(projectName);
+  return !shared || shared.space.role === "owner";
+});
+
 // Before saving: what the new version would no longer have that its parent had.
 ipcMain.handle("check-save-losses", async (_ev, projectName: string, branch?: string) => {
   try { return lossesBeforeSave(projectName, branch); } catch { return { parentId: null, parentMessage: null, lost: [] }; }
@@ -1425,6 +1442,7 @@ ipcMain.handle(
       const [projectName] = ownedProject as [string, any];
       console.log(`[main.ts] Updating path for project: ${projectName}`);
 
+      const oldPath = getProjectPath(projectName);
       await updateProjectInRegistry(projectName, { path: newPath });
 
       // Update log and reset lastCheckout
@@ -1437,6 +1455,19 @@ ipcMain.handle(
         console.warn(`[main.ts] Failed to update project log for project ${projectName}:`, logError);
       }
 
+      // A folder renamed in Finder: the project takes the folder's new name when it had the old one.
+      const newFolderName = path.basename(newPath);
+      if (oldPath && path.basename(oldPath) === projectName && newFolderName !== projectName) {
+        const shared = findSharedProject(projectName);
+        if (!shared || shared.space.role === "owner") {
+          try {
+            const renamed = await renameAnyProject(projectName, newFolderName);
+            return { success: true, projectType: "owned", renamedTo: renamed.name };
+          } catch (err) {
+            console.warn(`[main.ts] Kept the name ${projectName}:`, err);
+          }
+        }
+      }
       return { success: true, projectType: "owned" };
     } catch (error) {
       console.error("[main.ts] Error updating project path:", error);

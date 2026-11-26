@@ -98,6 +98,15 @@ function saveProjectRemote(projectName: string, remote: ProjectRemote) {
 
 export { saveProjectRemote }
 
+/** Keeps a single-project share with its project after a rename. */
+export function renameProjectRemote(oldName: string, newName: string) {
+  const all = readJson<Record<string, ProjectRemote>>(remotesFile(), {})
+  if (!all[oldName] || oldName === newName) return
+  all[newName] = all[oldName]
+  delete all[oldName]
+  writeJsonSync(remotesFile(), all)
+}
+
 export function removeProjectRemote(projectName: string) {
   const all = readJson<Record<string, ProjectRemote>>(remotesFile(), {})
   delete all[projectName]

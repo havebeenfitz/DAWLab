@@ -102,6 +102,7 @@ export function registerHubIpc(ipcMain: IpcMain, getWindow: () => BrowserWindow 
       addedProjects: r.addedProjects,
       uploadedProjects: r.uploadedProjects,
       removedProjects: r.removedProjects,
+      renamedProjects: r.renamedProjects,
       failed: r.failed,
       error: r.failed[0] ? `${r.failed[0].project}: ${r.failed[0].error}` : undefined,
       folder: publicSpace(r.space),

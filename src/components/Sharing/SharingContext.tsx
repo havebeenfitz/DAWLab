@@ -60,7 +60,9 @@ export function SharingProvider({ children }: { children: ReactNode }) {
     const added = s.result?.addedProjects ?? [];
     const pulled = s.result?.pulledVersions ?? 0;
     const removed = s.result?.removedProjects ?? [];
-    if (added.length || pulled || removed.length) announceLibraryChange();
+    const renamed = s.result?.renamedProjects ?? [];
+    if (added.length || pulled || removed.length || renamed.length) announceLibraryChange();
+    for (const r of renamed) notify.info(`“${r.from}” is now “${r.to}”`, 'Renamed by the folder’s owner, with its folder on this Mac.');
     for (const name of removed) {
       notify.info(`“${name}” was deleted from the server`, 'The folder’s owner deleted it for everyone. Your copy stays here, outside the shared folder.');
     }

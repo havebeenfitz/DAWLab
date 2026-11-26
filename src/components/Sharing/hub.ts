@@ -59,6 +59,7 @@ export interface SyncNowResult {
   addedProjects?: string[]
   uploadedProjects?: string[]
   removedProjects?: string[]
+  renamedProjects?: Array<{ from: string; to: string }>
   failed?: Array<{ project: string; error: string }>
   error?: string
 }
@@ -72,6 +73,7 @@ export function describeSync(r: SyncNowResult): string {
     r.uploadedProjects?.length ? `${plural(r.uploadedProjects.length, 'project')} shared` : '',
     r.pushedVersions ? `${plural(r.pushedVersions, 'version')} sent` : '',
     r.removedProjects?.length ? `${plural(r.removedProjects.length, 'project')} deleted from the server` : '',
+    r.renamedProjects?.length ? `${plural(r.renamedProjects.length, 'project')} renamed` : '',
   ].filter(Boolean)
   return parts.length ? parts.join(', ') : 'Up to date'
 }
@@ -85,7 +87,7 @@ export interface SyncStatus {
   transfer?: TransferProgress
   lastSync?: string
   error?: string
-  result?: { pushedVersions: number; pulledVersions: number; addedProjects: string[]; uploadedProjects?: string[]; removedProjects?: string[]; failed: Array<{ project: string; error: string }> }
+  result?: { pushedVersions: number; pulledVersions: number; addedProjects: string[]; uploadedProjects?: string[]; removedProjects?: string[]; renamedProjects?: Array<{ from: string; to: string }>; failed: Array<{ project: string; error: string }> }
 }
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => window.ipcRenderer.invoke(channel, ...args)
