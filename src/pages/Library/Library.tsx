@@ -52,6 +52,7 @@ import { useArchiveProjects } from './hooks/useArchiveProjects';
 import { SelectionBar } from './components/SelectionBar';
 import { useRemoveFromLibrary, REMOVE_WARNING, planFolderRemoval, planProjectRemoval, isInSharedFolder } from './hooks/useRemoveFromLibrary';
 import { WarningModal } from '@/components/WarningModal/WarningModal';
+import { useDeleteFromServer } from './hooks/useDeleteFromServer';
 
 const VIEW_MODE_KEY = 'dawlab-library-view-mode';
 
@@ -115,6 +116,7 @@ export const Library: React.FC = () => {
   });
   const removal = useRemoveFromLibrary({ setFolders: data.setFolders, audioItems, reload: loadMyProjects });
   const archiving = useArchiveProjects({ folders, setFolders: data.setFolders, reload: loadMyProjects });
+  const deleteFromServer = useDeleteFromServer(loadMyProjects);
 
   const overlaysOpen =
     folderActions.showNewFolderModal || newProject.showNewProjectModal || folderActions.showRenameModal ||
@@ -216,6 +218,7 @@ export const Library: React.FC = () => {
             : { ...plan, projects: local, title: local.length === 1 ? `"${local[0].name}"` : `${local.length} projects` };
           return { removeCount: local.length, removeFromLibrary: () => { void removal.request(finalPlan); } };
         })(),
+        deleteFromServer: (() => { const run = deleteFromServer(project); return run && (() => { void run(); }); })(),
       });
     }
     if (contextMenu.type === 'audio') {

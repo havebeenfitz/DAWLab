@@ -58,6 +58,7 @@ export interface SyncNowResult {
   pushedVersions?: number
   addedProjects?: string[]
   uploadedProjects?: string[]
+  removedProjects?: string[]
   failed?: Array<{ project: string; error: string }>
   error?: string
 }
@@ -70,6 +71,7 @@ export function describeSync(r: SyncNowResult): string {
     r.pulledVersions ? `${plural(r.pulledVersions, 'new version')} pulled` : '',
     r.uploadedProjects?.length ? `${plural(r.uploadedProjects.length, 'project')} shared` : '',
     r.pushedVersions ? `${plural(r.pushedVersions, 'version')} sent` : '',
+    r.removedProjects?.length ? `${plural(r.removedProjects.length, 'project')} deleted from the server` : '',
   ].filter(Boolean)
   return parts.length ? parts.join(', ') : 'Up to date'
 }
@@ -83,7 +85,7 @@ export interface SyncStatus {
   transfer?: TransferProgress
   lastSync?: string
   error?: string
-  result?: { pushedVersions: number; pulledVersions: number; addedProjects: string[]; uploadedProjects?: string[]; failed: Array<{ project: string; error: string }> }
+  result?: { pushedVersions: number; pulledVersions: number; addedProjects: string[]; uploadedProjects?: string[]; removedProjects?: string[]; failed: Array<{ project: string; error: string }> }
 }
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => window.ipcRenderer.invoke(channel, ...args)
@@ -125,6 +127,8 @@ export const hub = {
   removeMember: (folderId: string, memberId: string) => invoke<boolean>('hub-remove-member', folderId, memberId),
   leave: (folderId: string) => invoke<boolean>('hub-leave-space', folderId),
   stopSharing: (folderId: string) => invoke<boolean>('hub-stop-sharing', folderId),
+  /** Folder owner only: deletes a project from the server for everyone; your copy stays. */
+  deleteFromServer: (projectName: string) => invoke<{ folderId: string }>('hub-delete-project-from-server', projectName),
   takePendingJoin: () => invoke<string | null>('hub-take-pending-join'),
 }
 

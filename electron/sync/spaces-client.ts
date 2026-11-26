@@ -57,6 +57,8 @@ export interface SpaceSyncResult {
   addedProjects: string[]
   /** Projects of yours that were shared for the first time. */
   uploadedProjects: string[]
+  /** Projects the owner deleted from the server: kept on this Mac, outside the folder. */
+  removedProjects: string[]
   failed: Array<{ project: string; error: string }>
   space: LocalSpace
 }
@@ -171,8 +173,9 @@ export async function syncSpace(folderId: string, onProgress: SyncProgress = () 
     const remote = await call<SpaceResponse>(space, '/space')
     space = { ...space, name: remote.space.name, role: remote.me.role, members: remote.members }
 
-    const result: SpaceSyncResult = { folderId, pushedVersions: 0, pulledVersions: 0, addedProjects: [], uploadedProjects: [], failed: [], space }
+    const result: SpaceSyncResult = { folderId, pushedVersions: 0, pulledVersions: 0, addedProjects: [], uploadedProjects: [], removedProjects: [], failed: [], space }
     space = await linkKeptCopies(space, remote.projects)
+    space = dropDeletedProjects(space, remote.projects, result)
     space = await uploadNewLocalProjects(space, onProgress, result)
     space = await downloadNewRemoteProjects(space, remote.projects, onProgress, result)
 
@@ -229,6 +232,33 @@ async function linkKeptCopies(space: LocalSpace, remoteProjects: SpaceProject[])
   const next = { ...space, projects }
   writeSpace(next)
   return next
+}
+
+/**
+ * Projects the owner deleted from the server: the copy on this Mac stays, but
+ * leaves the shared folder, so it isn't synced or uploaded again.
+ */
+function dropDeletedProjects(space: LocalSpace, remoteProjects: SpaceProject[], result: SpaceSyncResult): LocalSpace {
+  const onHub = new Set(remoteProjects.map((p) => p.id))
+  const gone = Object.entries(space.projects).filter(([id]) => !onHub.has(id))
+  if (gone.length === 0) return space
+  const projects = { ...space.projects }
+  for (const [id, name] of gone) {
+    delete projects[id]
+    moveOutOfFolder(name, space.folderId)
+    if (!isPreviewFolder(name) && loadLocalProjectLog(name)) result.removedProjects.push(name)
+  }
+  const next = { ...space, projects }
+  writeSpace(next)
+  return next
+}
+
+/** Moves a project from the shared folder to the top of the Library. */
+function moveOutOfFolder(projectName: string, folderId: string) {
+  const entry = loadRegistry()[projectName]
+  if (!entry) return
+  const manager = folderManager()
+  if (manager.getProjectFolder(entry.project_id) === folderId) manager.moveProject(entry.project_id, null)
 }
 
 /** A single-project share made on this Mac (Share created both links), not one opened from a link. */
@@ -738,4 +768,21 @@ export async function removeProjectFromSpace(projectName: string): Promise<{ rem
   const { [projectId]: _gone, ...projects } = space.projects
   writeSpace({ ...space, projects })
   return { removedOnHub }
+}
+
+/**
+ * Folder owner only: deletes a project from the server with every version and
+ * file, for everyone in the folder. The copy on this Mac stays, with its
+ * history, moved out of the shared folder so the next sync doesn't upload it again.
+ */
+export async function deleteProjectFromServer(projectName: string): Promise<{ folderId: string }> {
+  const found = findSharedProject(projectName)
+  if (!found) throw new Error(`${projectName} isn't in a shared folder.`)
+  const { space, projectId } = found
+  if (space.role !== 'owner') throw new Error('Only the owner of the folder can delete its projects from the server.')
+  await call<void>(space, `/space/projects/${encodeURIComponent(projectId)}`, 'DELETE')
+  const { [projectId]: _gone, ...projects } = space.projects
+  writeSpace({ ...space, projects })
+  moveOutOfFolder(projectName, space.folderId)
+  return { folderId: space.folderId }
 }

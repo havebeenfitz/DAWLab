@@ -12,7 +12,7 @@ import {
 import {
   listLocalSpaces, getLocalSpace, getSpaceForProject, shareFolder, joinSpace, getSpaceDetails,
   listInvites, getServerStorage, createInvite, revokeInvite, changeMemberRole, removeMember, leaveSpace, stopSharing,
-  previewInvite, countIncomingVersions,
+  deleteProjectFromServer, previewInvite, countIncomingVersions,
 } from './spaces-client'
 import { requestProjectSync, requestSharedProjectSync, requestSpaceSync, startAutoSync, syncAllSpaces, type SyncStatus } from './auto-sync'
 
@@ -101,6 +101,7 @@ export function registerHubIpc(ipcMain: IpcMain, getWindow: () => BrowserWindow 
       pushedVersions: r.pushedVersions,
       addedProjects: r.addedProjects,
       uploadedProjects: r.uploadedProjects,
+      removedProjects: r.removedProjects,
       failed: r.failed,
       error: r.failed[0] ? `${r.failed[0].project}: ${r.failed[0].error}` : undefined,
       folder: publicSpace(r.space),
@@ -134,6 +135,7 @@ export function registerHubIpc(ipcMain: IpcMain, getWindow: () => BrowserWindow 
   ipcMain.handle('hub-remove-member', (_ev, folderId: string, memberId: string) => removeMember(folderId, memberId).then(() => true))
   ipcMain.handle('hub-leave-space', (_ev, folderId: string) => leaveSpace(folderId).then(() => true))
   ipcMain.handle('hub-stop-sharing', (_ev, folderId: string) => stopSharing(folderId).then(() => true))
+  ipcMain.handle('hub-delete-project-from-server', (_ev, projectName: string) => deleteProjectFromServer(projectName))
 
   startAutoSync(sendStatus)
 }

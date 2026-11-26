@@ -60,6 +60,8 @@ interface ProjectMenuActions {
   /** Label count: how many selected projects the removal applies to. Absent when not allowed. */
   removeCount?: number;
   removeFromLibrary?: () => void;
+  /** Folder owner only: deletes the shared project from the server for everyone. */
+  deleteFromServer?: () => void;
 }
 
 export function buildProjectMenuItems(a: ProjectMenuActions): ContextMenuItem[] {
@@ -84,6 +86,12 @@ export function buildProjectMenuItems(a: ProjectMenuActions): ContextMenuItem[] 
       icon: <ArchiveX size={14} />,
       danger: true,
       onClick: () => { a.close(); a.removeFromLibrary!(); },
+    }] : []),
+    ...(a.deleteFromServer ? [{
+      label: 'Delete from Server…',
+      icon: <Trash2 size={14} />,
+      danger: true,
+      onClick: () => { a.close(); a.deleteFromServer!(); },
     }] : []),
   ];
 }

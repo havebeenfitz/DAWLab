@@ -5,6 +5,8 @@ import { sha256 } from './http-util.ts'
 export const keys = {
   token: (t: string) => tokenKey(sha256(t)),
   tokenByHash: (hash: string) => tokenKey(hash),
+  /** Everything stored for one project: its log, versions, comments and files. */
+  project: (p: string) => `projects/${p}/`,
   meta: (p: string) => `projects/${p}/meta.json`,
   log: (p: string) => `projects/${p}/log.json`,
   filemap: (p: string, c: string) => `projects/${p}/commits/${c}/filemap.json`,

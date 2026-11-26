@@ -58,7 +58,7 @@ import { rollbackProject } from '../../dawvcs/operations/rollback'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, getSpaceForProject, listLocalSpaces,
   changeMemberRole, removeMember, previewInvite, leaveSpace, parseInvite, revokeInvite, stopSharing, listInvites, getServerStorage,
-  syncSharedProject, countIncomingVersions, findSharedProject, getLocalSpace,
+  syncSharedProject, countIncomingVersions, findSharedProject, getLocalSpace, deleteProjectFromServer,
 } from '../spaces-client'
 import { saveProjectRemote } from '../hub-client'
 import { createHub } from '../../../server/src/app.ts'
@@ -425,6 +425,32 @@ describe('Shared folders', () => {
     getUserConfigManager('alice').moveProject(projectId('Old'), null)
     expect((await syncSpace(aliceFolder)).failed).toEqual([])
     expect(getLocalSpace(aliceFolder)?.lastError).toBeUndefined()
+  })
+
+  it('lets only the owner delete a project from the server; everyone keeps a copy outside the folder', async () => {
+    setUsername('carol')
+    await expect(deleteProjectFromServer('Lodge')).rejects.toThrow(/Only the owner/)
+
+    setUsername('alice')
+    const kept = versions('Lodge').length
+    expect(await deleteProjectFromServer('Lodge')).toEqual({ folderId: aliceFolder })
+    expect(findSharedProject('Lodge')).toBeNull()
+    expect(getUserConfigManager('alice').getProjectFolder(projectId('Lodge'))).toBeNull()
+    expect((await getSpaceDetails(aliceFolder)).projects.map((p) => p.name)).not.toContain('Lodge')
+    expect(versions('Lodge')).toHaveLength(kept)
+    // Alice's copy is out of the folder, so the next sync doesn't upload it again.
+    const again = await syncSpace(aliceFolder)
+    expect(again.uploadedProjects).toEqual([])
+    expect(again.removedProjects).toEqual([])
+
+    setUsername('carol')
+    const result = await syncSpace(carolFolder)
+    expect(result.removedProjects).toEqual(['Lodge'])
+    expect(result.failed).toEqual([])
+    expect(findSharedProject('Lodge')).toBeNull()
+    expect(getUserConfigManager('carol').getProjectFolder(projectId('Lodge'))).toBeNull()
+    expect(versions('Lodge')).toHaveLength(kept)
+    expect((await syncSpace(carolFolder)).removedProjects).toEqual([])
   })
 
   it('stops sharing for everyone when the owner says so; copies stay', async () => {

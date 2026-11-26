@@ -59,7 +59,11 @@ export function SharingProvider({ children }: { children: ReactNode }) {
     refresh();
     const added = s.result?.addedProjects ?? [];
     const pulled = s.result?.pulledVersions ?? 0;
-    if (added.length || pulled) announceLibraryChange();
+    const removed = s.result?.removedProjects ?? [];
+    if (added.length || pulled || removed.length) announceLibraryChange();
+    for (const name of removed) {
+      notify.info(`“${name}” was deleted from the server`, 'The folder’s owner deleted it for everyone. Your copy stays here, outside the shared folder.');
+    }
     if (s.state === 'synced' && (added.length || pulled) && !manual.current.has(s.folderId)) {
       const parts = [
         added.length ? `${added.length} new project${added.length > 1 ? 's' : ''}` : '',

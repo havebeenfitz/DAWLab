@@ -370,6 +370,8 @@ describe('projects in spaces', () => {
     expect((await call('DELETE', `/api/space/projects/${projectId}`, { token: owner.token })).status).toBe(204)
     expect((await call('GET', '/api/space', { token: owner.token })).json.projects).toEqual([])
     expectHidden(await call('GET', p, { token: owner.token }))
+    // Its versions and files are gone from the server's disk too.
+    expect(fs.existsSync(path.join(dataDir, 'projects', projectId))).toBe(false)
   })
 })
 

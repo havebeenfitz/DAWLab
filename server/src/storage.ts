@@ -33,6 +33,8 @@ export interface Storage {
   stream(key: string, range?: ByteRange): Promise<Readable | null>
   /** Removes a key; a missing key is not an error. */
   delete(key: string): Promise<void>
+  /** Removes every key under `prefix` (ending in "/"); nothing there is not an error. */
+  deletePrefix(prefix: string): Promise<void>
   /** Size and free space of the disk behind the storage; absent when it has no fixed size (S3). */
   diskSpace?(): Promise<DiskSpace>
 }
@@ -107,6 +109,11 @@ export class FsStorage implements Storage {
 
   async delete(key: string) {
     await fs.promises.rm(this.file(key), { force: true })
+  }
+
+  async deletePrefix(prefix: string) {
+    if (!prefix.endsWith('/')) throw new Error(`Bad prefix: ${prefix}`)
+    await fs.promises.rm(this.file(prefix.slice(0, -1)), { recursive: true, force: true })
   }
 }
 
@@ -206,6 +213,18 @@ export class S3Storage implements Storage {
   async delete(key: string) {
     const { client, sdk } = await this.s3()
     await client.send(new sdk.DeleteObjectCommand({ Bucket: this.bucket, Key: this.key(key) }))
+  }
+
+  async deletePrefix(prefix: string) {
+    if (!prefix.endsWith('/')) throw new Error(`Bad prefix: ${prefix}`)
+    const { client, sdk } = await this.s3()
+    let token: string | undefined
+    do {
+      const page = await client.send(new sdk.ListObjectsV2Command({ Bucket: this.bucket, Prefix: this.key(prefix), ContinuationToken: token }))
+      const keys = (page.Contents ?? []).map((o: { Key: string }) => ({ Key: o.Key }))
+      if (keys.length) await client.send(new sdk.DeleteObjectsCommand({ Bucket: this.bucket, Delete: { Objects: keys, Quiet: true } }))
+      token = page.IsTruncated ? page.NextContinuationToken : undefined
+    } while (token)
   }
 }
 

@@ -182,6 +182,8 @@ export function createSpaceRoutes(opts: SpaceOptions) {
       if (!(await store.projects(c.space.id)).some((p) => p.id === projectId)) throw HIDDEN
       requireOwner(c)
       await store.removeProject(c.space.id, projectId)
+      // Deleted for good: its versions and files go too, so the space comes back.
+      await storage.deletePrefix(keys.project(projectId))
       return send(res, 204)
     }
     return projectRoutes.handle(rest.slice(1), projectAuthorizer(c, projectId), req, res)
