@@ -76,7 +76,7 @@ describe('JoinFolderDialog', () => {
     expect(await screen.findByText('Album')).toBeInTheDocument();
     expect(invokeCalls('hub-preview-invite')).toEqual([[CODE]]);
     expect(screen.getByText('Shared by Ann · 3 projects · 1 person')).toBeInTheDocument();
-    expect(screen.getByText('You join as listener: plays previews and comments.')).toBeInTheDocument();
+    expect(screen.getByText('You join as listener: plays previews.')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(/^$/);
   });
 

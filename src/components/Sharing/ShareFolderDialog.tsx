@@ -258,7 +258,7 @@ function NotSharedBody({ server, onClose }: { server: { hubUrl: string; hasKey: 
   }
   return (
     <ul className="share-points">
-      <li>You choose who can change projects (collaborators) and who can only listen and comment (listeners).</li>
+      <li>You choose who can change projects (collaborators) and who can only listen (listeners).</li>
       <li>New projects you add to this folder are shared too. Versions sync on their own.</li>
       <li>You can remove people or stop sharing at any time. Everyone keeps their copies.</li>
       {server?.hubUrl && <li className="ui-hint">Server: {server.hubUrl}</li>}

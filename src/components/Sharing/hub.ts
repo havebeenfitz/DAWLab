@@ -181,8 +181,8 @@ export const errorText = (err: unknown) =>
 
 export const roleLabel: Record<SpaceRole, string> = { owner: 'Owner', edit: 'Collaborator', listen: 'Listener' }
 export const roleHint: Record<InviteRole, string> = {
-  edit: 'Opens projects, saves versions, comments',
-  listen: 'Plays previews and comments',
+  edit: 'Opens projects, saves versions',
+  listen: 'Plays previews',
 }
 
 /** "2 min ago", "yesterday", or a date. */

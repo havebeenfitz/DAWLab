@@ -414,11 +414,9 @@
 @media (min-width: 1100px) { .history-panels > div { flex: 1 1 0; display: flex; flex-direction: column; } }
 .panel-label { flex: none; margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted, #8b8b8b); }
 @media (max-width: 1099px) { .panel-label { display: none; } }
-/* One box style for the three panels: thin border, moderate radius, 16 px inside. */
+/* One box style for both panels: thin border, moderate radius, 16 px inside. */
 .history-panels .file-tree-container,
-.history-panels .plugin-container,
-.history-panels .version-comments__panel { border: 1px solid #2c2c30 !important; border-radius: 10px !important; padding: 16px !important; }
-.history-panels .version-comments__label { display: none; }
+.history-panels .plugin-container { border: 1px solid #2c2c30 !important; border-radius: 10px !important; padding: 16px !important; }
 .history-panels .file-tree-section { min-width: 0; }
 /* Small, plain empty states. */
 .history-panels .plugin-empty, .history-panels .file-tree-empty, .history-panels .file-tree-loading { font-style: normal; font-size: 12px; padding: 8px 0; text-align: left; color: var(--text-muted, #8b8b8b); }
@@ -460,11 +458,5 @@
     background: radial-gradient(circle, var(--unsaved-fg) 0.9px, transparent 1.3px) center top / 2px 4px repeat-y;
   }
 }
-/* Right side between 1200 and 1500: Files on the left, Plugins over Comments on the right. */
-@media (min-width: 1200px) and (max-width: 1499px) {
-  .history-panels { display: grid !important; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto; gap: 16px; }
-  .history-panels > div:nth-child(1) { grid-row: 1 / span 2; }
-}
-
 /* Project settings scroll on their own: on wide windows the page itself doesn't. */
 .history-settings { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 32px; }

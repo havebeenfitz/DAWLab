@@ -17,7 +17,7 @@ export function useDeleteFromServer(reload: () => void | Promise<void>) {
     return async () => {
       const ok = await askConfirm({
         title: `Delete “${project.name}” from the server?`,
-        message: `Every version, file and comment of it is deleted from the server, and it disappears from “${folder.name}” for everyone. This can’t be undone. Your copy on this Mac stays, with its history, outside the shared folder.`,
+        message: `Every version and file of it is deleted from the server, and it disappears from “${folder.name}” for everyone. This can’t be undone. Your copy on this Mac stays, with its history, outside the shared folder.`,
         confirmLabel: 'Delete from Server',
         danger: true,
       }, false);

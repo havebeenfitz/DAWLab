@@ -69,7 +69,7 @@ describe('SharedFolderBar', () => {
   it('tells listeners what they can do', () => {
     sharing.value.folders = { f1: sharedFolder({ role: 'listen', members: [owner, cleo] }) };
     render(<SharedFolderBar folderId="f1" />);
-    expect(bar()).toHaveTextContent('Listener · you can play previews and comment ·');
+    expect(bar()).toHaveTextContent('Listener · you can play previews ·');
     expect(bar().querySelector('svg')).toHaveClass('lucide-headphones');
   });
 

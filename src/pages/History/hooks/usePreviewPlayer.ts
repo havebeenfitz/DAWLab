@@ -96,22 +96,6 @@ export function usePreviewPlayer(activeCommit: Commit | null, passedProject: str
     }
   };
 
-  /** Plays the History player from `seconds` (e.g. a double-clicked comment). */
-  const playFrom = async (seconds: number) => {
-    const el = audioRef.current;
-    if (audioUrl && el) {
-      el.currentTime = seconds;
-      setCurrentTime(seconds);
-      setIsPlaying(true);
-      return;
-    }
-    // Not loaded yet: seek once metadata arrives (onAudioLoadedMetadata).
-    pendingSeekRef.current = seconds;
-    setCurrentTime(seconds);
-    if (await loadPreviewUrl()) setIsPlaying(true);
-    else pendingSeekRef.current = null;
-  };
-
   /** Resolves once the <audio> element has picked up `url` from a render. */
   const waitForAudioSrc = (url: string) =>
     new Promise<HTMLAudioElement | null>((resolve) => {
@@ -212,7 +196,6 @@ export function usePreviewPlayer(activeCommit: Commit | null, passedProject: str
     waitForAudioSrc,
     handleTogglePlay,
     handleRewind,
-    playFrom,
     handleProgressMouseDown,
     onAudioTimeUpdate,
     onAudioLoadedMetadata,

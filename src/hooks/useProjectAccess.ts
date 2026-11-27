@@ -7,7 +7,7 @@ export interface ProjectAccess {
   folder: SharedFolder | null;
   /** owner/edit/listen in a shared folder; edit/listen for a project shared on its own; null if not shared. */
   role: SpaceRole | null;
-  /** Listeners only play previews and comment: no saving, restoring or alternatives. */
+  /** Listeners only play previews: no saving, restoring or alternatives. */
   isListener: boolean;
 }
 

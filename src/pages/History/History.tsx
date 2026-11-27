@@ -1,8 +1,8 @@
 /**
  * History.tsx
  *
- * A project's page: its versions (commit graph per alternative), the files,
- * plugins and comments of the active version, and the preview player.
+ * A project's page: its versions (commit graph per alternative), the files
+ * and plugins of the active version, and the preview player.
  *
  * State and actions live in ./hooks, presentational pieces in ./components.
  * The heavy logic for graph reconstruction is in utils/commitGraphUtils.ts
@@ -126,7 +126,7 @@ export const History: React.FC = () => {
   useEffect(() => {
     if (passedProject) window.ipcRenderer.invoke("notifications-mark-read", passedProject).catch((err: unknown) => console.warn("[History] Could not mark notices read:", err));
   }, [passedProject]);
-  /** Mobile tab state for Files/Plugins/Comments toggle */
+  /** Mobile tab state for the Files/Plugins toggle */
   const [activeMobileTab, setActiveMobileTab] = useState<BottomPanelTab>("files");
   /** Alternatives menu open/close state */
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -499,11 +499,6 @@ export const History: React.FC = () => {
             projectPath={projectPath}
             onSelectPath={pathPrompt.openPathModal}
             plugins={(projectLog as any).metadata?.plugins || []}
-            commentsCommitId={!showUnsaved && activeCommit ? String(activeCommit.commit_id) : null}
-            commentsKey={`${activeCommit?.commit_id ?? "none"}-${feedback.feedbackSession ? "fs" : "docked"}`}
-            username={username || "You"}
-            currentTime={player.currentTime}
-            onPlayFrom={player.playFrom}
           />
         )}
 

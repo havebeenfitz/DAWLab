@@ -130,7 +130,7 @@ describe('ShareFolderDialog: owner', () => {
     fireEvent.click(listener);
     expect(listener).toHaveAttribute('aria-pressed', 'true');
     expect(collab).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByText(/Plays previews and comments/)).toBeInTheDocument();
+    expect(screen.getByText(/Plays previews/)).toBeInTheDocument();
   });
 
   it('creates an invite with the chosen role and shows its code', async () => {

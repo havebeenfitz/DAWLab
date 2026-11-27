@@ -25,7 +25,7 @@ export function SharedFolderBar({ folderId }: { folderId: string }) {
       </span>
       <span className="sfb-meta">
         {roleLabel[shared.role]}
-        {listening ? ' · you can play previews and comment' : ''}
+        {listening ? ' · you can play previews' : ''}
         {' · '}
         {syncing && st?.transfer ? <TransferBar transfer={st.transfer} /> : syncing ? (st?.message || 'Syncing…') : error ? (
           <span className="ui-status-error"><AlertCircle size={12} aria-hidden /> {error}</span>
