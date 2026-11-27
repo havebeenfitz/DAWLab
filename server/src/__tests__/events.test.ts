@@ -134,6 +134,9 @@ describe('space events', () => {
     expect((await call('PUT', `${p}/log`, editor.token, log)).status).toBe(200)
     const meta = (await call('GET', '/api/space', owner.token)).json.projects.find((x: any) => x.id === projectId)
     expect((await call('PUT', `${p}/log`, owner.token, (await call('GET', p, owner.token)).json.log)).status).toBe(200)
+    // Details that differ per Mac (metadata, bpm) are kept but are not news either.
+    expect((await call('PUT', `${p}/log`, editor.token, { ...log, bpm: 101, metadata: { scannedAt: Date.now() } })).status).toBe(200)
+    expect((await call('PUT', `${p}/log`, owner.token, { ...log, bpm: 99, metadata: { scannedAt: Date.now() + 1 } })).status).toBe(200)
     await new Promise((r) => setTimeout(r, 50))
     expect(ownerStream.changes()).toHaveLength(2)
     expect(editorStream.changes()).toHaveLength(0)

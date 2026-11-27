@@ -20,6 +20,16 @@ import { placeIncoming } from '../../shared/forks.ts'
 import { HIDDEN, HttpError, nowIso, readJson, send, withLock } from './http-util.ts'
 import { keys, type ProjectMeta } from './keys.ts'
 
+/** What other members need to hear about: which versions exist, with which previews, in which alternatives. */
+function versionsKey(log: { branches?: any[] }): string {
+  const parts: string[] = []
+  for (const b of log.branches ?? []) {
+    for (const c of b.commits ?? []) parts.push(`${b.name}|${c.commit_id}|${c.preview_file ?? ''}`)
+    for (const d of b.dismissed ?? []) parts.push(`${b.name}|dismissed|${JSON.stringify(d)}`)
+  }
+  return parts.sort().join('\n')
+}
+
 /** Responses of PUT log that changed nothing: no change event goes out for them. */
 export const unchangedLogWrites = new WeakSet<http.ServerResponse>()
 
@@ -55,11 +65,13 @@ export function createProjectRoutes(storage: Storage, maxUpload: number) {
       }
       // Two people saving on top of the same version: the later one goes into its own alternative.
       const next = mergeLogs(current, placeIncoming(current, { ...incoming, id: current.id, name: current.name }))
-      // Every sync sends its log, most of the time with nothing new: then nothing is written
-      // and nobody is told, or two members' apps would keep waking each other up.
-      if (JSON.stringify(next) === JSON.stringify(current)) {
+      // Every sync sends its log, most of the time with no new versions. Only new versions,
+      // previews, alternatives or dismissals count as a change: details like metadata, bpm or
+      // commit order differ per Mac, and announcing them made apps wake each other up forever.
+      if (versionsKey(next) === versionsKey(current)) {
         unchangedLogWrites.add(res)
-        return current
+        if (JSON.stringify(next) !== JSON.stringify(current)) await storage.putJson(keys.log(access.projectId), next)
+        return next
       }
       await storage.putJson(keys.log(access.projectId), next)
       const meta = await storage.getJson<ProjectMeta>(keys.meta(access.projectId))
