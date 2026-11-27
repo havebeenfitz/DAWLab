@@ -163,7 +163,8 @@ describe('no switch loses work', () => {
     }
   })
 
-  it('refuses the switch, changing nothing, when the snapshot can\'t be stored', async () => {
+  // A read-only folder stops everyone but root, so this can only be checked as a normal user (Mac, CI).
+  it.skipIf(process.getuid?.() === 0)('refuses the switch, changing nothing, when the snapshot can\'t be stored', async () => {
     makeUnsavedWork()
     const before = tree(dir)
     const cas = path.join(dir, '.dawlabproject', 'cas')
