@@ -151,8 +151,8 @@ export function registerNotificationIpc(ipcMain: IpcMain, getWindow: () => Brows
 
   const events = createHubEvents({
     targets: () => listLocalSpaces().filter((s) => !s.accessClosed).map(({ folderId, hubUrl, token }) => ({ folderId, hubUrl, token })),
-    // Opened: on a reconnect something may have been missed, so look once.
-    onOpen: (folderId, first) => { if (!first) void checkFolder(folderId, false) },
+    // Opened: anything saved while DAWLab was quit or offline is announced now.
+    onOpen: (folderId) => { void checkFolder(folderId, false) },
     onChange: (folderId, event) => {
       if (event.kind === 'versions') void checkFolder(folderId, true)
       else void requestSpaceSync(folderId)
