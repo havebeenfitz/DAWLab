@@ -1,9 +1,9 @@
 /**
- * Looks at every shared folder on the hub about once a minute while DAWLab
- * runs, window open or not: the folder's project list (with each project's
- * "last written" stamp) and, only for projects that changed, their version
- * history. No files are downloaded. New versions by other people become
- * notices; the caller shows them.
+ * Looks at shared folders on the hub when the hub says something changed
+ * there (or when its event stream reconnects): the folder's project list
+ * (with each project's "last written" stamp) and, only for projects that
+ * changed, their version history. No files are downloaded. New versions by
+ * other people become notices; the caller shows them.
  */
 import fs from 'fs'
 import path from 'path'
@@ -87,25 +87,4 @@ export function feedStore(userDir: () => string) {
       writeJsonSync(file(), state)
     },
   }
-}
-
-export const WATCH_INTERVAL_MS = 60_000
-
-/** Runs `check` every minute (first one shortly after start); never two at once. */
-export function startWatching(check: () => Promise<unknown>, intervalMs = WATCH_INTERVAL_MS) {
-  let busy = false
-  const tick = async () => {
-    if (busy) return
-    busy = true
-    try {
-      await check()
-    } catch (err) {
-      console.warn('[notify] Check failed:', (err as Error)?.message ?? err)
-    } finally {
-      busy = false
-    }
-  }
-  const first = setTimeout(() => { void tick() }, 8_000)
-  const timer = setInterval(() => { void tick() }, intervalMs)
-  return () => { clearTimeout(first); clearInterval(timer) }
 }

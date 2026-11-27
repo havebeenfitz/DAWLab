@@ -75,7 +75,7 @@ export function NotificationSettings() {
           </button>
         </div>
         <p className="field-hint">
-          DAWLab checks your shared folders about once a minute while it runs, also with its window closed. Nothing arrives while DAWLab is quit. Muted folders still show new versions under the bell in the Library.
+          The server tells DAWLab right away when someone saves a new version, also with its window closed. Nothing arrives while DAWLab is quit. Muted folders still show new versions under the bell in the Library.
         </p>
       </div>
     </div>

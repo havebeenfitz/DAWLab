@@ -50,6 +50,7 @@ All bodies are JSON. Errors that a caller without access could use to probe the 
 |---|---|---|---|---|
 | POST | `/api/spaces` | `X-Hub-Key` | `{ name, memberName }` | `201 { space, me, token }`. The key is checked first (bad key: hidden 404); then a blank `name` or `memberName` is `400 { error }` with nothing created, so the app can use it as a "test connection". |
 | GET | `/api/space` | member | – | `{ space, me, members, projects }` |
+| GET | `/api/space/events` | member | – | `200 text/event-stream`, see [Change events](#change-events). |
 | PATCH | `/api/space` | owner | `{ name }` | `{ space }` |
 | DELETE | `/api/space` | owner | – | `204`. Deletes every member token and marks the space deleted. |
 | PATCH | `/api/space/members/:memberId` | owner | `{ role: "edit" \| "listen" }` | `{ member }`. The owner's role can't be changed. |
@@ -73,6 +74,17 @@ Response shapes:
 - `projects` = `[{ id, name, daw, addedAt, addedBy, updatedAt }]`, where `updatedAt` is when that project's log was last written.
 
 A project id that isn't in the caller's space is the hidden 404, exactly like a bad token.
+
+## Change events
+
+Apps don't poll. Each app keeps one `GET /api/space/events` stream open per shared folder, with its member token in `X-Hub-Token` (a bad token is the hidden 404, like everywhere else). The hub writes:
+
+- `event: hello` once, when the stream opens.
+- `event: change` with `data: { kind, projectId?, by }` when another member changed the folder. `kind` is `versions` (a `PUT log`), `projects` (a project added, renamed or deleted) or `space` (folder renamed, someone joined, a role changed, someone left or was removed). The member who made the change (`by`) doesn't get it.
+- `event: closed`, then the end of the stream, when that member was removed or left, or the folder was deleted.
+- A comment line `:` every 50 seconds as a heartbeat, so proxies keep the connection open and the app can tell a dead stream from a quiet one.
+
+Events carry no content: the app fetches what changed with the usual routes. It reconnects with growing, jittered waits (2 s up to 5 min), treats 2 minutes without a byte as a dead stream, and after a reconnect looks once for anything it missed. At most 3 streams per member token stay open; a new one closes the oldest.
 
 Comment rule in spaces: the server records which member wrote each comment and each reply (`authorMemberId`, set by the server and never taken from the body). A member may change or delete only their own comments and replies; the owner may change any. Anyone in the space, listeners included, may add comments and add replies to any comment. Changes the caller isn't allowed to make are dropped silently (the response is the merged list, so the client sees what stuck). Authorship never changes. The merge never removes entries, so a delete is a change: the client sends the comment or reply with a tombstone field (for example `deleted: true`), and the same rule applies.
 

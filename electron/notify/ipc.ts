@@ -2,20 +2,22 @@
  * New versions from collaborators: a macOS notification when DAWLab is in the
  * background (window open, minimised or closed; the app keeps running in the
  * Dock), a toast when it is in front, and a list with an unread count for the
- * bell in the Library. Nothing arrives while DAWLab is quit: real push would
- * need Apple's push service and a signed app.
+ * bell in the Library. The hub pushes changes over one event stream per
+ * shared folder (sync/hub-events.ts); nothing is polled. Nothing arrives
+ * while DAWLab is quit: that would need Apple's push service and a signed app.
  */
 import type { BrowserWindow, IpcMain } from 'electron'
-import { Notification, app, dialog } from 'electron'
+import { Notification, app, dialog, powerMonitor } from 'electron'
 import { execFile } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { getUserDir, getUsername } from '../dawvcs/core/constants'
 import { loadRegistry } from '../dawvcs/core/registry'
-import { listLocalSpaces, listSpaceProjects, readSpaceProjectLog, localNameOf } from '../sync/spaces-client'
+import { listLocalSpaces, listSpaceProjects, readSpaceProjectLog, localNameOf, onSpacesChanged } from '../sync/spaces-client'
+import { createHubEvents } from '../sync/hub-events'
 import { requestSpaceSync } from '../sync/auto-sync'
 import { alertsFor, withSummaries, markRead, setMuted, setSound, soundPlan, unreadCount, SOUND_EXTENSIONS, type Alert, type FeedState, type SoundPlan, type VersionNotice } from './version-feed'
-import { checkForNewVersions, feedStore, startWatching } from './version-watcher'
+import { checkForNewVersions, feedStore } from './version-watcher'
 import { logicSummaryOfVersion } from '../dawvcs/operations/version-changes'
 
 /** How long a notification waits for the new versions to come down, so it can say what changed. */
@@ -93,17 +95,20 @@ export function registerNotificationIpc(ipcMain: IpcMain, getWindow: () => Brows
     }
   }
 
-  const check = async () => {
-    if (!getUsername()) return
+  /** Looks for new versions in the given shared folders (all of them when none are given). */
+  const check = async (only?: string[]): Promise<string[]> => {
+    if (!getUsername()) return []
     const r = await checkForNewVersions({
-      spaces: () => listLocalSpaces().filter((s) => !s.accessClosed).map((s) => ({ folderId: s.folderId, name: s.name })),
+      spaces: () => listLocalSpaces()
+        .filter((s) => !s.accessClosed && (!only || only.includes(s.folderId)))
+        .map((s) => ({ folderId: s.folderId, name: s.name })),
       listProjects: async (folderId) => (await listSpaceProjects(folderId)).map((p) => ({ id: p.id, name: localNameOf(folderId, p.id) ?? p.name, updatedAt: p.updatedAt })),
       readLog: readSpaceProjectLog,
       me: getUsername,
       load: store.load,
       save: store.save,
     })
-    if (!r.added.length) return
+    if (!r.added.length) return []
     publish()
     // Bring the new versions down, so they are there when the project opens and
     // the notification can say what changed. It waits a little, never long.
@@ -127,7 +132,34 @@ export function registerNotificationIpc(ipcMain: IpcMain, getWindow: () => Brows
     const alerts = alertsFor(store.load(), added)
     if (alerts.length) announce(alerts)
     if (!inTime) void synced.then(describe)
+    return r.changedFolders
   }
+
+  // One check at a time, so two events never write the feed at once.
+  let checking: Promise<unknown> = Promise.resolve()
+  const checkFolder = (folderId: string, syncAnyway: boolean) => {
+    checking = checking.then(async () => {
+      const changed = await check([folderId]).catch((err) => {
+        console.warn('[notify] Check failed:', (err as Error)?.message ?? err)
+        return [] as string[]
+      })
+      // The hub said there is something new: pull it even if no notice came of it.
+      if (syncAnyway && !changed.includes(folderId)) await requestSpaceSync(folderId)
+    })
+    return checking
+  }
+
+  const events = createHubEvents({
+    targets: () => listLocalSpaces().filter((s) => !s.accessClosed).map(({ folderId, hubUrl, token }) => ({ folderId, hubUrl, token })),
+    // Opened: on a reconnect something may have been missed, so look once.
+    onOpen: (folderId, first) => { if (!first) void checkFolder(folderId, false) },
+    onChange: (folderId, event) => {
+      if (event.kind === 'versions') void checkFolder(folderId, true)
+      else void requestSpaceSync(folderId)
+    },
+    // The folder's sync finds out what happened and marks access closed; the stream list follows.
+    onGone: (folderId) => { void requestSpaceSync(folderId) },
+  })
 
   ipcMain.handle('notifications-get', () => publish())
   ipcMain.handle('notifications-mark-read', (_ev, projectName?: string) => {
@@ -178,5 +210,16 @@ export function registerNotificationIpc(ipcMain: IpcMain, getWindow: () => Brows
   })
   ipcMain.handle('notifications-check-now', () => check().then(() => publish()))
 
-  return startWatching(check)
+  const unsubscribe = onSpacesChanged(() => events.reconcile())
+  // After sleep the streams are dead: reconnect at once instead of waiting for the stall timer.
+  const reconnect = () => events.reconnectAll()
+  void app.whenReady().then(() => {
+    powerMonitor.on('resume', reconnect)
+    events.reconcile()
+  })
+  return () => {
+    unsubscribe()
+    powerMonitor.off('resume', reconnect)
+    events.stop()
+  }
 }

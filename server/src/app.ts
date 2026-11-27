@@ -20,6 +20,7 @@ import {
 import { isMemberToken, keys, type ProjectTokenRecord, type TokenRecord } from './keys.ts'
 import { createProjectRoutes, parseLog, type ProjectAccess } from './project-routes.ts'
 import { createSpaceRoutes } from './spaces.ts'
+import { createEventBus } from './events.ts'
 
 export interface HubOptions {
   storage: Storage
@@ -29,6 +30,8 @@ export interface HubOptions {
   publicUrl?: string
   /** Max size of one uploaded file, in bytes. */
   maxUploadBytes?: number
+  /** How often open event streams get a heartbeat (tests use a short one). */
+  heartbeatMs?: number
 }
 
 export function createHub(opts: HubOptions) {
@@ -37,7 +40,8 @@ export function createHub(opts: HubOptions) {
   /** At most 10 wrong hub keys per address per 15 minutes; after that even the right key gets the hidden 404. */
   const keyFailures = createFailureLimiter()
   const projectRoutes = createProjectRoutes(storage, maxUpload)
-  const spaceRoutes = createSpaceRoutes({ storage, createKey: opts.createKey, keyLimiter: keyFailures, projectRoutes })
+  const events = createEventBus(opts.heartbeatMs)
+  const spaceRoutes = createSpaceRoutes({ storage, createKey: opts.createKey, keyLimiter: keyFailures, projectRoutes, events })
 
   /** Legacy project tokens only; member tokens are the hidden 404 here. */
   async function authorizeLegacy(req: http.IncomingMessage, need: HubRole): Promise<ProjectAccess> {
@@ -97,7 +101,7 @@ export function createHub(opts: HubOptions) {
     return projectRoutes.handle(parts.slice(2), (need) => authorizeLegacy(req, need), req, res)
   }
 
-  return async function handler(req: http.IncomingMessage, res: http.ServerResponse) {
+  async function handler(req: http.IncomingMessage, res: http.ServerResponse) {
     try {
       await route(req, res)
     } catch (err: any) {
@@ -111,4 +115,7 @@ export function createHub(opts: HubOptions) {
       } else send(res, status, { error: status === 500 ? 'Internal error' : err.message })
     }
   }
+
+  /** The request handler, plus `shutdown` to end open event streams before the server closes. */
+  return Object.assign(handler, { shutdown: events.shutdown })
 }

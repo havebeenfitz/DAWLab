@@ -14,16 +14,20 @@ if (createKey.length < 32) {
   console.warn('[hub] HUB_CREATE_KEY is short; use a long random one, e.g. `openssl rand -hex 32`.')
 }
 
-const server = http.createServer(createHub({
+const hub = createHub({
   storage,
   createKey,
   publicUrl: process.env.PUBLIC_URL || undefined,
   maxUploadBytes: process.env.MAX_UPLOAD_MB ? Number(process.env.MAX_UPLOAD_MB) * 1024 * 1024 : undefined,
-}))
+})
+const server = http.createServer(hub)
 server.requestTimeout = 0 // large uploads over slow links; headersTimeout still drops stalled requests
 server.headersTimeout = 30_000
 server.listen(port, () => console.log(`[hub] DAWLab Hub on :${port} (storage: ${storage.kind})`))
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(sig, () => server.close(() => process.exit(0)))
+  process.on(sig, () => {
+    hub.shutdown()
+    server.close(() => process.exit(0))
+  })
 }

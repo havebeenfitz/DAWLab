@@ -32,7 +32,7 @@ describe('auto-sync', () => {
     spaces.listLocalSpaces.mockReset().mockReturnValue([])
     spaces.getSpaceForProject.mockReset().mockReturnValue(null)
     spaces.syncSpace.mockReset()
-    startAutoSync((s) => statuses.push(s), 60_000)
+    startAutoSync((s) => statuses.push(s))
   })
 
   afterEach(() => {
@@ -95,16 +95,13 @@ describe('auto-sync', () => {
     expect(spaces.syncSpace).toHaveBeenCalledWith('f9', expect.any(Function))
   })
 
-  it('syncs every folder shortly after start and then on the interval', async () => {
+  it('syncs every folder once shortly after start, and never again on its own', async () => {
     spaces.syncSpace.mockImplementation(async (folderId: string) => okResult(folderId))
     spaces.listLocalSpaces.mockReturnValue([{ folderId: 'f1' }])
     await vi.advanceTimersByTimeAsync(5_000)
     expect(spaces.syncSpace).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(spaces.syncSpace).toHaveBeenCalledTimes(2)
-    stopAutoSync()
-    await vi.advanceTimersByTimeAsync(120_000)
-    expect(spaces.syncSpace).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60_000)
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(1)
   })
 
   it('runs a one-project pull after a folder sync that is already running, never alongside it', async () => {

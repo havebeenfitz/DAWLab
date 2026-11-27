@@ -1,7 +1,9 @@
 import type { TransferProgress } from '../../shared/transfer-progress'
 /**
- * Keeps shared folders in sync without anyone pressing a button: every few
- * minutes, after a version is saved, and when a shared project is opened.
+ * Keeps shared folders in sync without anyone pressing a button: once when
+ * DAWLab starts, after a version is saved, when a shared project is opened,
+ * and when the hub says another member changed the folder (hub-events.ts).
+ * There is no timer: nothing is fetched while nobody changes anything.
  * One sync per folder runs at a time; a request while one runs queues one more.
  * Status goes to the renderer on `hub-status`.
  */
@@ -22,22 +24,23 @@ export interface SyncStatus {
 
 type Emit = (status: SyncStatus) => void
 
-const INTERVAL_MS = 5 * 60 * 1000
-
 const running = new Map<string, Promise<SpaceSyncResult | null>>()
 const again = new Set<string>()
 let emit: Emit = () => {}
 let timer: NodeJS.Timeout | null = null
 
-export function startAutoSync(onStatus: Emit, intervalMs = INTERVAL_MS) {
+/** One sync of every folder shortly after start, for versions saved while offline; after that only on demand. */
+export function startAutoSync(onStatus: Emit) {
   emit = onStatus
-  if (timer) clearInterval(timer)
-  timer = setInterval(() => { syncAllSpaces() }, intervalMs)
-  setTimeout(() => { syncAllSpaces() }, 5_000)
+  if (timer) clearTimeout(timer)
+  timer = setTimeout(() => {
+    timer = null
+    syncAllSpaces()
+  }, 5_000)
 }
 
 export function stopAutoSync() {
-  if (timer) clearInterval(timer)
+  if (timer) clearTimeout(timer)
   timer = null
 }
 

@@ -7,7 +7,7 @@
  */
 import http from 'node:http'
 import crypto from 'node:crypto'
-import { isCommitId, type HubRole, type InvitePreview, type JoinResponse, type SpaceResponse } from '../../shared/hub-protocol.ts'
+import { isCommitId, type HubEvent, type HubRole, type InvitePreview, type JoinResponse, type SpaceResponse } from '../../shared/hub-protocol.ts'
 import type { Storage } from './storage.ts'
 import {
   HIDDEN, HttpError, checkHubKey, clientIp, createFailureLimiter, displayName, isId, nowIso, readJson, requestToken,
@@ -17,12 +17,14 @@ import { isMemberToken, keys, type MemberRecord, type SpaceMetaRecord, type Toke
 import { createInviteStore } from './invites.ts'
 import { createSpaceStore, toMe, toMember, toSpaceInfo, toSpaceProject } from './space-store.ts'
 import { parseLog, type Authorize, type createProjectRoutes } from './project-routes.ts'
+import type { EventBus } from './events.ts'
 
 interface SpaceOptions {
   storage: Storage
   createKey?: string
   keyLimiter: FailureLimiter
   projectRoutes: ReturnType<typeof createProjectRoutes>
+  events: EventBus
 }
 
 interface Caller {
@@ -34,7 +36,7 @@ type Req = http.IncomingMessage
 type Res = http.ServerResponse
 
 export function createSpaceRoutes(opts: SpaceOptions) {
-  const { storage, projectRoutes } = opts
+  const { storage, projectRoutes, events } = opts
   const store = createSpaceStore(storage)
   const invites = createInviteStore(storage)
   /** Failed joins and peeks: 10 per address per 15 minutes, then everything is the hidden 404. */
@@ -106,6 +108,7 @@ export function createSpaceRoutes(opts: SpaceOptions) {
     const { member, token } = await store.addMember(space.id, memberName, invite.role)
     const out: JoinResponse = { space: toSpaceInfo(space), me: toMe(member), token }
     send(res, 200, out)
+    events.publish(space.id, { kind: 'space', by: member.id })
   }
 
   async function peek(req: Req, res: Res) {
@@ -199,8 +202,30 @@ export function createSpaceRoutes(opts: SpaceOptions) {
     return projectRoutes.handle(rest.slice(1), projectAuthorizer(c, projectId), req, res)
   }
 
+  /** What a successful write under /api/space changed, for the other members' event streams. */
+  function changeOf(rest: string[], method: string | undefined): HubEvent | null {
+    if (rest.length === 0) return method === 'PATCH' ? { kind: 'space' } : null
+    if (rest[0] === 'members' && (method === 'PATCH' || method === 'DELETE')) return { kind: 'space' }
+    if (rest[0] !== 'projects') return null
+    if (rest.length === 1) return method === 'POST' ? { kind: 'projects' } : null
+    if (rest.length === 2 && (method === 'PATCH' || method === 'DELETE')) return { kind: 'projects', projectId: rest[1] }
+    if (rest.length === 3 && rest[2] === 'log' && method === 'PUT') return { kind: 'versions', projectId: rest[1] }
+    return null
+  }
+
   async function routeSpace(rest: string[], req: Req, res: Res) {
     const c = await authenticate(req)
+    const method = req.method
+    if (rest.length === 1 && rest[0] === 'events' && method === 'GET') return events.open(c.space.id, c.member.id, req, res)
+    await routeSpaceWrite(c, rest, req, res)
+    if (res.statusCode >= 400) return
+    const change = changeOf(rest, method)
+    if (change) events.publish(c.space.id, { ...change, by: c.member.id })
+    if (rest.length === 0 && method === 'DELETE') events.close(c.space.id)
+    if (rest[0] === 'members' && method === 'DELETE') events.close(c.space.id, rest[1])
+  }
+
+  async function routeSpaceWrite(c: Caller, rest: string[], req: Req, res: Res) {
     const method = req.method
     if (rest.length === 0) {
       if (method === 'GET') return getSpace(c, res)

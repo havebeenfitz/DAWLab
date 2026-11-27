@@ -95,16 +95,36 @@ function readSpaces(): Record<string, LocalSpace> {
   }
 }
 
+const spaceListeners = new Set<() => void>()
+
+/** Called after any shared folder is added, changed or forgotten on this Mac. */
+export function onSpacesChanged(listener: () => void): () => void {
+  spaceListeners.add(listener)
+  return () => { spaceListeners.delete(listener) }
+}
+
+function spacesChanged() {
+  for (const listener of spaceListeners) {
+    try {
+      listener()
+    } catch (err) {
+      console.warn('[spaces] Listener failed:', (err as Error)?.message ?? err)
+    }
+  }
+}
+
 function writeSpace(space: LocalSpace) {
   const all = { ...readSpaces(), [space.folderId]: space }
   fs.mkdirSync(getUserDir(), { recursive: true })
   writeJsonSync(spacesFile(), all)
+  spacesChanged()
 }
 
 function forgetSpace(folderId: string) {
   const { [folderId]: _gone, ...rest } = readSpaces()
   writeJsonSync(spacesFile(), rest)
   writeInviteCodes(folderId, {})
+  spacesChanged()
 }
 
 const folderManager = () => getUserConfigManager(getUsername())
@@ -711,6 +731,7 @@ function ensureLibraryFolder(space: LocalSpace): LocalSpace {
   const moved = { ...space, folderId: folder.id }
   const { [space.folderId]: _old, ...rest } = readSpaces()
   writeJsonSync(spacesFile(), { ...rest, [folder.id]: moved })
+  spacesChanged()
   return moved
 }
 

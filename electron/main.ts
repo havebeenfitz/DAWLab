@@ -397,7 +397,7 @@ app.whenReady().then(() => {
 
 // file dialogs
 registerHubIpc(ipcMain, () => win);
-// New versions from collaborators: checked about once a minute while DAWLab runs, even with its window closed.
+// New versions from collaborators: pushed by the hub while DAWLab runs, even with its window closed.
 registerNotificationIpc(ipcMain, () => win, showMainWindow);
 
 ipcMain.handle("hub-take-pending-join", () => {

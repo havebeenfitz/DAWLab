@@ -277,6 +277,20 @@ export interface SpaceResponse {
   projects: SpaceProject[]
 }
 
+/**
+ * GET /api/space/events (text/event-stream). `hello` when the stream opens,
+ * `change` with this body when another member changed the folder, `closed`
+ * just before the hub ends the stream for good (you were removed, or the
+ * folder was deleted). Comment lines are heartbeats.
+ */
+export interface HubEvent {
+  /** versions: new versions of a project; projects: added, renamed or deleted; space: folder name or members. */
+  kind: 'versions' | 'projects' | 'space'
+  projectId?: string
+  /** Member who made the change; their own streams don't get it. */
+  by?: string
+}
+
 /** POST /api/spaces (201) */
 export interface CreateSpaceResponse {
   space: SpaceInfo
