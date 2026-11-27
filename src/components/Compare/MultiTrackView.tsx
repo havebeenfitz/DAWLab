@@ -1,18 +1,13 @@
 import { forwardRef, useImperativeHandle, useRef, useCallback, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import AudioPlayer, { type AudioPlayerHandle, type WaveformContextInfo } from "./WavGraph";
-import type { Comment } from "./CommentCard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface TrackEntry {
     id: string;
     audioUrl: string;
     label: string;
-    comments: Comment[];
-    initialPeaks?: number[];  // pre-computed peaks from server, skips WebAudio decode
-    initialDuration?: number;
     peaksUrl?: string;        // fetchable URL for decoding peaks when audioUrl can't be fetched
-    hidden?: boolean;         // loaded in background, not yet shown in the waveform UI
 }
 
 export interface MultiTrackHandle {
@@ -33,19 +28,12 @@ interface MultiTrackViewProps {
     pxPerSec: number;
     scrollLeft: number;
     currentTime: number;
-    activeCommentIds: Set<string>;
-    highlightedCommentId?: string | null;
     selectedRange?: { start: number; end: number } | null;
-    hoveredEdge?: { commentId: string; side: "start" | "end"; time: number } | null;
     loopRange?: { start: number; end: number } | null;
     onLoopRangeChange?: (range: { start: number; end: number } | null) => void;
     onSeek?: (time: number) => void;
     onRangeSelect?: (start: number, end: number) => void;
     onClearRange?: () => void;
-    onCommentCmdClick?: (comment: Comment) => void;
-    onCommentRangeChange?: (commentId: string, start: number, end: number) => void;
-    onCommentRangeChangeCommit?: (commentId: string, start: number, end: number) => void;
-    onCommentFocus?: (commentId: string) => void;
     onWaveformContextMenu?: (info: WaveformContextInfo) => void;
 
     // Callbacks
@@ -61,8 +49,6 @@ interface MultiTrackViewProps {
 // ── Spring transition matching the waveform wrapper ───────────────────────────
 const SPRING = { type: "spring" as const, stiffness: 400, damping: 30 };
 const INSTANT = { duration: 0 };
-const EMPTY_SET = new Set<string>();
-const EMPTY_COMMENTS: Comment[] = [];
 
 // Proportion of total height the active track takes (adjustable)
 const ACTIVE_TRACK_WEIGHT = 0.5;
@@ -77,19 +63,12 @@ const MultiTrackView = forwardRef<MultiTrackHandle, MultiTrackViewProps>(
             pxPerSec,
             scrollLeft,
             currentTime,
-            activeCommentIds,
-            highlightedCommentId,
             selectedRange,
-            hoveredEdge,
             loopRange,
             onLoopRangeChange,
             onSeek,
             onRangeSelect,
             onClearRange,
-            onCommentCmdClick,
-            onCommentRangeChange,
-            onCommentRangeChangeCommit,
-            onCommentFocus,
             onWaveformContextMenu,
             onActiveTrackChange,
             onDeleteTrack,
@@ -212,11 +191,9 @@ const MultiTrackView = forwardRef<MultiTrackHandle, MultiTrackViewProps>(
             prevActiveRef.current = activeTrackId;
         }, [activeTrackId]);
 
-        const visibleTracks = tracks.filter(t => !t.hidden);
-        const visibleCount  = visibleTracks.length;
         const trackCount    = tracks.length;
-        const activeScale   = visibleCount > 1 ? ACTIVE_TRACK_WEIGHT : 1;
-        const inactiveScale = visibleCount > 1 ? (1 - ACTIVE_TRACK_WEIGHT) / (visibleCount - 1) : 0;
+        const activeScale   = trackCount > 1 ? ACTIVE_TRACK_WEIGHT : 1;
+        const inactiveScale = trackCount > 1 ? (1 - ACTIVE_TRACK_WEIGHT) / (trackCount - 1) : 0;
 
         // Store ref for a track
         const setPlayerRef = useCallback((trackId: string, handle: AudioPlayerHandle | null) => {
@@ -238,24 +215,19 @@ const MultiTrackView = forwardRef<MultiTrackHandle, MultiTrackViewProps>(
                                 key={track.id}
                                 className="multi-track-row"
                                 initial={{ flex: 0, opacity: 0 }}
-                                animate={track.hidden
-                                    ? { flex: 0, opacity: 0 }
-                                    : { flex: isActive ? activeScale : inactiveScale, opacity: 1 }}
+                                animate={{ flex: isActive ? activeScale : inactiveScale, opacity: 1 }}
                                 exit={{ flex: 0, opacity: 0 }}
                                 transition={isResizing ? INSTANT : SPRING}
                                 style={{
                                     willChange: "flex, opacity",
-                                    cursor: isActive || track.hidden ? undefined : "pointer",
-                                    pointerEvents: track.hidden ? "none" : undefined,
+                                    cursor: isActive ? undefined : "pointer",
                                     overflow: "hidden",
                                 }}
-                                onClick={isActive || track.hidden ? undefined : () => onActiveTrackChange?.(track.id)}
+                                onClick={isActive ? undefined : () => onActiveTrackChange?.(track.id)}
                             >
                                 <AudioPlayer
                                     ref={(handle) => setPlayerRef(track.id, handle)}
                                     audioUrl={track.audioUrl}
-                                    initialPeaks={track.initialPeaks}
-                                    initialDuration={track.initialDuration}
                                     peaksUrl={track.peaksUrl}
                                     heightScale={1}
                                     globalDuration={globalDuration}
@@ -266,20 +238,12 @@ const MultiTrackView = forwardRef<MultiTrackHandle, MultiTrackViewProps>(
                                     pxPerSec={pxPerSec}
                                     scrollLeft={scrollLeft}
                                     currentTime={currentTime}
-                                    comments={isActive ? track.comments : EMPTY_COMMENTS}
-                                    activeCommentIds={isActive ? activeCommentIds : EMPTY_SET}
-                                    highlightedCommentId={isActive ? highlightedCommentId : null}
                                     selectedRange={isActive ? selectedRange : null}
-                                    hoveredEdge={isActive ? hoveredEdge : null}
                                     loopRange={isActive ? loopRange : null}
                                     onLoopRangeChange={isActive ? onLoopRangeChange : undefined}
                                     onSeek={isActive ? onSeek : (time) => { pendingSeekRef.current = time; }}
                                     onRangeSelect={isActive ? onRangeSelect : undefined}
                                     onClearRange={isActive ? onClearRange : undefined}
-                                    onCommentCmdClick={isActive ? onCommentCmdClick : undefined}
-                                    onCommentRangeChange={isActive ? onCommentRangeChange : undefined}
-                                    onCommentRangeChangeCommit={isActive ? onCommentRangeChangeCommit : undefined}
-                                    onCommentFocus={isActive ? onCommentFocus : undefined}
                                     onWaveformContextMenu={isActive ? onWaveformContextMenu : undefined}
                                     onTimeUpdate={isActive ? onTimeUpdate : undefined}
                                     onPlayStateChange={isActive ? onPlayStateChange : undefined}
@@ -293,8 +257,7 @@ const MultiTrackView = forwardRef<MultiTrackHandle, MultiTrackViewProps>(
                                         }
                                     }}
                                 />
-                                {/* Separator between visible tracks only */}
-                                {!track.hidden && i < trackCount - 1 && tracks.slice(i + 1).some(t => !t.hidden) && (
+                                {i < trackCount - 1 && (
                                     <div className="multi-track-separator" />
                                 )}
                             </motion.div>

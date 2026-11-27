@@ -4,7 +4,6 @@ import { motion } from "motion/react";
 export interface ContextMenuItem {
   label: string;
   icon?: React.ReactNode;
-  variant?: "default" | "danger" | "success";
   onClick: () => void;
 }
 
@@ -13,12 +12,11 @@ interface ContextMenuProps {
   y: number;
   items: ContextMenuItem[];
   onClose: () => void;
-  footer?: React.ReactNode;
 }
 
 const SPRING = { type: "spring" as const, stiffness: 500, damping: 32, mass: 0.8 };
 
-export default function ContextMenu({ x, y, items, onClose, footer }: ContextMenuProps) {
+export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,19 +54,13 @@ export default function ContextMenu({ x, y, items, onClose, footer }: ContextMen
       {items.map((item, i) => (
         <div
           key={i}
-          className={`context-menu__item${item.variant === "danger" ? " context-menu__item--danger" : item.variant === "success" ? " context-menu__item--success" : ""}`}
+          className="context-menu__item"
           onClick={(e) => { e.stopPropagation(); item.onClick(); onClose(); }}
         >
           {item.icon}
           {item.label}
         </div>
       ))}
-      {footer && (
-        <>
-          {items.length > 0 && <div className="context-menu__divider" />}
-          {footer}
-        </>
-      )}
     </motion.div>
   );
 }

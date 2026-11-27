@@ -7,7 +7,6 @@ export interface AudioEngine {
    * so callers pass the fetchable dawpreview:// URL for the same file here.
    */
   load(url: string, peaksUrl?: string): Promise<{ peaks: Float32Array; duration: number }>;
-  loadWithPeaks(url: string, peaks: number[], duration: number): Promise<{ peaks: Float32Array; duration: number }>;
   play(): void;
   pause(): void;
   seekTo(time: number): void;
@@ -100,7 +99,7 @@ export function createAudioEngine(): AudioEngine {
         }
       } catch {
         // CORS or network error — set src and let the browser handle playback;
-        // waveform will be empty until peaks are provided via loadWithPeaks
+        // the waveform stays empty.
         peaks = new Float32Array(0);
       }
 
@@ -114,39 +113,6 @@ export function createAudioEngine(): AudioEngine {
       });
 
       if (!duration) duration = audio.duration || 0;
-
-      return { peaks, duration };
-    },
-
-    async loadWithPeaks(url: string, precomputedPeaks: number[], precomputedDuration: number) {
-      peaks = Float32Array.from(precomputedPeaks);
-      duration = precomputedDuration;
-
-      setAudioSrc(url);
-      // Resolve regardless of audio load success — peaks are already set so the
-      // waveform will render. Playback errors surface when the user hits play.
-      await new Promise<void>((resolve) => {
-        const cleanup = () => {
-          audio.removeEventListener("canplaythrough", onCanPlay);
-          audio.removeEventListener("error", onError);
-        };
-        const onCanPlay = () => { cleanup(); resolve(); };
-        const onError = () => {
-          console.error('[audio] load failed', {
-            src: audio.src,
-            error: audio.error,
-            code: audio.error?.code,
-            // 1=ABORTED 2=NETWORK 3=DECODE 4=SRC_NOT_SUPPORTED
-            message: audio.error?.message,
-            networkState: audio.networkState,
-            readyState: audio.readyState,
-          });
-          cleanup();
-          resolve();
-        };
-        audio.addEventListener("canplaythrough", onCanPlay);
-        audio.addEventListener("error", onError);
-      });
 
       return { peaks, duration };
     },

@@ -293,14 +293,34 @@
   color: white;
 }
 
-/* Opens the full-screen feedback view; sits at the player's right edge. */
-.fullscreen-btn {
-  color: rgba(255, 255, 255, 0.6);
+/* Opens Compare versions; a labelled button at the player's right edge. */
+.compare-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.fullscreen-btn:hover {
-  color: white;
+.compare-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.compare-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .player-info {

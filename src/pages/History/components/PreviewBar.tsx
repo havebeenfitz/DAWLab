@@ -1,5 +1,5 @@
 import type React from 'react';
-import { Play, Pause, Rewind, Maximize2 } from 'lucide-react';
+import { Play, Pause, Rewind, GitCompareArrows } from 'lucide-react';
 import type { Commit } from '@/types/project.types';
 import type { usePreviewPlayer } from '../hooks/usePreviewPlayer';
 import type { usePreviewUpload } from '../hooks/usePreviewUpload';
@@ -12,18 +12,21 @@ interface Props {
   versionNumber: number | null;
   player: PreviewPlayer;
   upload: PreviewUpload;
-  onOpenFeedback: (e: React.MouseEvent) => void;
+  /** Another version of this alternative has a preview too. */
+  canCompare: boolean;
+  onCompare: () => void;
 }
 
 interface PlayerContentProps {
   commit: Commit;
   versionNumber: number | null;
   player: PreviewPlayer;
-  onOpenFeedback: (e: React.MouseEvent) => void;
+  canCompare: boolean;
+  onCompare: () => void;
 }
 
 /** Rewind / play controls and the version label, shown once a preview is attached. */
-function PreviewPlayerContent({ commit, versionNumber, player, onOpenFeedback }: PlayerContentProps) {
+function PreviewPlayerContent({ commit, versionNumber, player, canCompare, onCompare }: PlayerContentProps) {
   return (
     <div className="preview-player-container">
       <div className="preview-player-content">
@@ -55,12 +58,16 @@ function PreviewPlayerContent({ commit, versionNumber, player, onOpenFeedback }:
           </span>
         </div>
         <button
-          className="play-icon-container fullscreen-btn"
-          onClick={onOpenFeedback}
-          title="Full screen feedback"
-          aria-label="Open full screen feedback"
+          type="button"
+          className="compare-btn"
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); onCompare(); }}
+          disabled={!canCompare}
+          title={canCompare
+            ? "Listen to this version and others side by side"
+            : "Attach a preview to another version to compare them"}
         >
-          <Maximize2 size={18} strokeWidth={1.5} />
+          <GitCompareArrows size={16} strokeWidth={2} aria-hidden />
+          <span>Compare versions</span>
         </button>
       </div>
     </div>
@@ -100,7 +107,7 @@ function PreviewAudio({ player }: { player: PreviewPlayer }) {
 }
 
 /** Preview dropzone at the bottom of a project: drop audio to attach it, click to play. */
-export function PreviewBar({ activeCommit, versionNumber, player, upload, onOpenFeedback }: Props) {
+export function PreviewBar({ activeCommit, versionNumber, player, upload, canCompare, onCompare }: Props) {
   const { isDraggingFile, isUploadingPreview } = upload;
   const hasPreview = !!activeCommit?.preview_file;
   return (
@@ -125,7 +132,8 @@ export function PreviewBar({ activeCommit, versionNumber, player, upload, onOpen
               commit={activeCommit}
               versionNumber={versionNumber}
               player={player}
-              onOpenFeedback={onOpenFeedback}
+              canCompare={canCompare}
+              onCompare={onCompare}
             />
           ) : (
             <span>

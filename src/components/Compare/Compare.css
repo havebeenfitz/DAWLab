@@ -1,0 +1,869 @@
+/*
+ * Compare versions view. Styles came from the website's player page
+ * (Website/src/index.css). Every copied rule is scoped under .compare-page so
+ * it can't restyle the rest of the app (both define e.g. .context-menu). The
+ * colour tokens are scoped here too; surfaces use the app's palette (page
+ * #161616, cards #1C1C1C) rather than the website's near-black.
+ */
+
+/* ── Design tokens, scoped ── */
+.compare-page {
+  --bg-base: #161616;
+  --bg-surface: #1c1c1c;
+  --bg-card: #1c1c1c;
+  --bg-card-hover: #222222;
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-medium: rgba(255, 255, 255, 0.1);
+  --text-primary: #ffffff;
+  --text-secondary: #aaaaaa;
+  --text-muted: #666666;
+  --accent-blue: #007BFF;
+  --accent-green: #22c55e;
+  --accent-red: #ef4444;
+  --font-display: 'Jost', sans-serif;
+  --font-body: 'Jost', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  /* The website inherits Tailwind's default stack here, not the app's Inter. */
+  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+/* ── Overlay chrome (app only) ── */
+.compare-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000; /* above History's fixed progress bar (9999) */
+}
+
+/* Keeps the window draggable and the macOS traffic lights clear of the top bar. */
+.compare-titlebar {
+  height: 32px;
+  flex-shrink: 0;
+  background: var(--bg-base);
+  -webkit-app-region: drag;
+}
+
+/*
+ * The app's base layer gives every <button> a filled pill (padding, #1c1c1c,
+ * 15px radius, blue hover border). The website relies on Tailwind's preflight
+ * instead, so restore that inside this view. Still layered, so the
+ * copied (unlayered) rules and Tailwind utilities win over it.
+ */
+@layer base {
+  .compare-page button {
+    padding: 0;
+    border: 0 solid;
+    border-radius: 0;
+    background-color: transparent;
+    font: inherit;
+    color: inherit;
+    cursor: default;
+    transition: none;
+  }
+
+  .compare-page button:hover {
+    border-color: currentColor;
+  }
+
+  .compare-page,
+  .compare-page *,
+  .compare-page ::before,
+  .compare-page ::after {
+    border-color: currentColor;
+  }
+}
+
+/* ── Load error (app only) ── */
+.compare-page .compare-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 0 24px;
+  height: calc(100vh - 32px);
+}
+
+.compare-page .compare-error__body {
+  max-width: 28rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.compare-page .compare-error__title {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.compare-page .compare-error__message,
+.compare-page .compare-error__hint {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.compare-page .compare-error__hint {
+  opacity: 0.6;
+}
+
+/* ════════════ Ported from Website/src/index.css ════════════ */
+
+/* ── Feedback page ── */
+.compare-page {
+  background: var(--bg-base);
+}
+
+/* ── Top bar ── */
+.compare-page .top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  flex-shrink: 0;
+  background: var(--bg-base);
+  gap: 8px;
+}
+
+.compare-page .top-bar__left {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.compare-page .top-bar__info {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  align-items: baseline;
+  margin-left: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.compare-page .top-bar__center {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 0 0 auto;
+}
+
+.compare-page .top-bar__transport {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.compare-page .top-bar__separator {
+  width: 1px;
+  height: 20px;
+  background: var(--border-subtle);
+  margin: 0 10px;
+  opacity: 0.8;
+}
+
+.compare-page .top-bar__right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.compare-page .top-bar__tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── Playback Timer ── */
+.compare-page .playback-timer {
+  min-width: 154px;
+  height: 44px;
+  border-radius: 12px;
+  background: #1c1c1c;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  font-family: "Inter", sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  gap: 2px;
+  padding: 0 16px 6px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.compare-page .playback-timer__digits {
+  font-size: 30px;
+  font-weight: 300;
+  letter-spacing: -0.5px;
+}
+
+.compare-page .playback-timer__separator {
+  opacity: 0.25;
+  font-size: 24px;
+  margin: 0 2px;
+  position: relative;
+  top: -1px;
+}
+
+.compare-page .playback-timer__tenths {
+  font-size: 18px;
+  opacity: 0.35;
+  font-weight: 300;
+}
+
+.compare-page .top-bar-title {
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.compare-page .top-bar-subtitle {
+  font-family: "Inter", sans-serif;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* Transport buttons - icon only, no background box */
+.compare-page .transport-btn {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #fff;
+  border: none;
+  opacity: 0.65;
+}
+
+.compare-page .transport-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.compare-page .transport-btn:active {
+  transform: scale(0.92);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.compare-page .transport-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.compare-page .transport-btn--main {
+  width: 44px;
+  height: 44px;
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.compare-page .transport-btn--main:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.compare-page .transport-btn--main svg {
+  width: 24px;
+  height: 24px;
+}
+
+.compare-page .transport-btn--large {
+  width: 40px;
+  height: 40px;
+}
+
+.compare-page .transport-btn--large svg {
+  width: 20px;
+  height: 20px;
+}
+
+.compare-page .transport-btn--loop-active {
+  opacity: 1;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.compare-page .transport-btn--loop-active:hover {
+  background: rgba(251, 191, 36, 0.2);
+}
+
+.compare-page .toolbar-btn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.compare-page .toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+}
+
+/* ── Download ── */
+.compare-page .download-btn {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: opacity 0.2s;
+  background: none;
+  border: none;
+  color: white;
+}
+
+.compare-page .download-btn:hover {
+  color: var(--accent-blue);
+}
+
+/* ── TopBar group wrappers ── */
+.compare-page .top-bar__zoom-group,
+.compare-page .top-bar__loop-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Mobile layout ── */
+.compare-page .mobile-layout {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  min-height: 0;
+}
+
+.compare-page .mobile-waveform-strip {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  height: 110px;
+  margin: 8px 12px 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #1c1c1c;
+}
+
+/* ── Responsive: TopBar groups ── */
+@media (max-width: 767px) {
+  .compare-page .top-bar {
+    padding: 10px 16px;
+  }
+
+  .compare-page .top-bar__left {
+    display: none;
+  }
+
+  .compare-page .top-bar__right {
+    display: none;
+  }
+
+  .compare-page .top-bar__center {
+    flex: 1;
+    gap: 8px;
+  }
+
+  .compare-page .top-bar__zoom-group {
+    display: none;
+  }
+
+  .compare-page .playback-timer {
+    min-width: 120px;
+    height: 38px;
+  }
+
+  .compare-page .playback-timer__digits {
+    font-size: 24px;
+  }
+
+  .compare-page .playback-timer__separator {
+    font-size: 20px;
+  }
+
+  .compare-page .playback-timer__tenths {
+    font-size: 15px;
+  }
+}
+
+/* ── Responsive: tablet (768–1023px) ── */
+/* Hide the title and zoom to keep the toolbar on one row */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .compare-page .top-bar__left {
+    flex: 0 0 auto;
+  }
+
+  .compare-page .top-bar__info {
+    display: none;
+  }
+
+  .compare-page .top-bar__zoom-group {
+    display: none;
+  }
+}
+
+/* ── Layout ── */
+.compare-page .compare-layout {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-base);
+}
+
+.compare-page .compare-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  padding-top: 16px; /* Top spacing for the content */
+}
+
+/* ── Minimap ── */
+.compare-page .waveform-minimap-container {
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
+.compare-page .waveform-minimap {
+  position: relative;
+  width: 100%;
+  background: #1c1c1c;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+.compare-page .waveform-minimap__canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.compare-page .waveform-minimap__brush {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: grab;
+  z-index: 10;
+}
+
+.compare-page .waveform-minimap__brush:active {
+  cursor: grabbing;
+}
+
+.compare-page .waveform-minimap__brush.is-dragging {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--accent-blue);
+}
+
+.compare-page .waveform-minimap__handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  z-index: 20;
+}
+
+.compare-page .waveform-minimap__handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 1px;
+}
+
+.compare-page .waveform-minimap__brush.is-dragging .waveform-minimap__handle::after {
+  background: var(--accent-blue);
+}
+
+.compare-page .handle-left {
+  left: 0;
+  margin-left: -4px;
+}
+
+.compare-page .handle-right {
+  right: 0;
+  margin-right: -4px;
+}
+
+/* ── Multi-Track View ── */
+.compare-page .multi-track-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.compare-page .multi-track-row {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.compare-page .multi-track-separator {
+  height: 1px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Track selector overlay - on top of each waveform canvas */
+.compare-page .waveform-overlay-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(30, 30, 30, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+  font-family: "Inter", sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.compare-page .waveform-overlay-tag:hover {
+  background: rgba(40, 40, 40, 0.85);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.compare-page .waveform-overlay-tag--active {
+  border-color: rgba(0, 148, 255, 0.4);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.compare-page .waveform-overlay-tag--active:hover {
+  border-color: rgba(0, 148, 255, 0.55);
+}
+
+.compare-page .waveform-overlay-tag__radio {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.compare-page .waveform-overlay-tag__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.compare-page .waveform-overlay-tag__dot--filled {
+  background: var(--accent-blue, #0094ff);
+  border-color: var(--accent-blue, #0094ff);
+}
+
+.compare-page .waveform-overlay-tag__label {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.compare-page .waveform-overlay-tag__delete {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 2px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.35);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.compare-page .waveform-overlay-tag__delete:hover {
+  color: rgba(255, 100, 100, 0.9);
+  background: rgba(255, 100, 100, 0.12);
+}
+
+/* ── Waveform ── */
+.compare-page .waveform-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  overflow: hidden;
+  margin: 0 16px;
+  background: #1c1c1c;
+}
+
+/* The tracks take the height left under the top bar. */
+.compare-page .waveform-wrapper--compare {
+  flex: 1 1 auto;
+  min-height: 160px;
+  margin-bottom: 8px;
+}
+
+.compare-page .compare-hint {
+  margin: 0 16px 14px;
+  font-size: 12px;
+  color: var(--text-muted, #8b8b8b);
+}
+
+.compare-page .waveform-canvas-container {
+  width: 100%;
+  background: #1c1c1c;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.compare-page .waveform-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Full-height playhead line (covers waveform canvas + timeline ruler) */
+.compare-page .playhead-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent-blue);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ── Timeline Ruler - dot pattern ── */
+.compare-page .timeline-ruler {
+  position: relative;
+  height: 32px;
+  background: #222222;
+  overflow: hidden;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.compare-page .timeline-ruler__label {
+  position: absolute;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  white-space: nowrap;
+  font-family: "Inter", sans-serif;
+  font-weight: 500;
+  transform: translateX(-50%);
+}
+
+.compare-page .timeline-ruler__dot {
+  position: absolute;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.15);
+  transform: translateX(-50%);
+  user-select: none;
+  line-height: 1;
+}
+
+.compare-page .timeline-hover-indicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ── Context Menu ── */
+.compare-page .context-menu {
+  position: absolute;
+  background: #1c1c1c;
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+}
+
+.compare-page .context-menu__item {
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-family: Inter, sans-serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s ease;
+}
+
+.compare-page .context-menu__item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.compare-page .context-menu--fixed {
+  position: fixed;
+  z-index: 2000;
+}
+
+/* ── Track Selector Modal ── */
+.compare-page .track-selector-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.compare-page .track-selector-modal {
+  background: #1c1c1c;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 300px;
+  max-width: 460px;
+  width: 100%;
+}
+
+.compare-page .track-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 14px;
+}
+
+.compare-page .track-selector-close {
+  all: unset;
+  cursor: pointer;
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.4);
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.compare-page .track-selector-close:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.compare-page .track-selector-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.compare-page .track-selector-row {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.compare-page .track-selector-row:hover:not(:disabled) {
+  background: rgba(0, 148, 255, 0.12);
+  border-color: rgba(0, 148, 255, 0.3);
+}
+
+.compare-page .track-selector-row:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.compare-page .track-selector-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compare-page .track-selector-empty {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+  padding: 16px 0;
+}
+
+@keyframes track-selector-spin {
+  to { transform: rotate(360deg); }
+}
+

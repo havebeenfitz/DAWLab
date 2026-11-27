@@ -74,6 +74,10 @@ export interface CommitGraphProps {
   onPreviewFork?: (branch: string) => void;
   onDismissFork?: (branch: string) => void;
   forkMenu?: (fork: RailFork) => Array<{ label: string; onClick: () => void; disabled?: boolean }>;
+  /** Whether a version has a preview that Compare versions can open on. */
+  canCompare?: (commitId: string) => boolean;
+  /** Opens Compare versions on a version. */
+  onCompare?: (commitId: string) => void;
 }
 
 // ============================================================================
@@ -182,6 +186,8 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   onPreviewFork,
   onDismissFork,
   forkMenu,
+  canCompare,
+  onCompare,
 }) => {
   const [selectedCommitId, setSelectedCommitId] = useState<string | null>(null);
   const [newCommitMessage, setNewCommitMessage] = useState("");
@@ -316,6 +322,14 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   const handleDeleteCommit = () => {
     if (contextMenu && onDeleteCommit) {
       onDeleteCommit(contextMenu.commitId);
+      setContextMenu(null);
+    }
+  };
+
+  // Handler when "Compare versions" is clicked
+  const handleCompare = () => {
+    if (contextMenu && onCompare) {
+      onCompare(contextMenu.commitId);
       setContextMenu(null);
     }
   };
@@ -599,6 +613,7 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
             readOnly ? undefined : handleBranchFromCommit,
             onDeleteCommit && !readOnly ? handleDeleteCommit : undefined,
             onEditTags && !readOnly ? handleEditTags : undefined,
+            onCompare && canCompare?.(contextMenu.commitId) ? handleCompare : undefined,
           )}
         />
       )}

@@ -1,6 +1,4 @@
 import { useEffect, useRef, useCallback } from "react";
-import type { Comment } from "./CommentCard";
-import { DEFAULT_REGION_DURATION, type RenderData } from "./utils/waveformColors";
 
 // ── Level of Detail (LOD) ─────────────────────────────────────────────────────
 //
@@ -40,7 +38,6 @@ function getLodLevel(pps: number, basePPS: number): LodLevel {
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type WaveformContextInfo =
   | { x: number; y: number; type: "selection"; range: { start: number; end: number } }
-  | { x: number; y: number; type: "comment"; comment: Comment }
   | { x: number; y: number; type: "empty"; time: number };
 
 interface WaveformCanvasProps {
@@ -49,11 +46,7 @@ interface WaveformCanvasProps {
   pxPerSec: number;
   scrollLeft: number;
   currentTime: number;
-  comments: Comment[];
-  activeCommentIds: Set<string>;
-  highlightedCommentId?: string | null;
   selectedRange?: { start: number; end: number } | null;
-  hoveredEdge?: { commentId: string; side: "start" | "end"; time: number } | null;
   loopRange?: { start: number; end: number } | null;
   height?: number;
   globalDuration?: number;
@@ -65,10 +58,6 @@ interface WaveformCanvasProps {
   onSeek?: (time: number) => void;
   onRangeSelect?: (start: number, end: number) => void;
   onClearRange?: () => void;
-  onCommentRangeChange?: (commentId: string, start: number, end: number) => void;
-  onCommentRangeChangeCommit?: (commentId: string, start: number, end: number) => void;
-  onCommentCmdClick?: (comment: Comment) => void;
-  onCommentFocus?: (commentId: string) => void;
   onWaveformContextMenu?: (info: WaveformContextInfo) => void;
   onLoopRangeChange?: (range: { start: number; end: number } | null) => void;
 }
@@ -133,11 +122,7 @@ export default function WaveformCanvas({
   pxPerSec,
   scrollLeft,
   currentTime,
-  comments,
-  activeCommentIds,
-  highlightedCommentId,
   selectedRange,
-  hoveredEdge,
   loopRange,
   height = 300,
   globalDuration: _globalDuration,
@@ -148,10 +133,6 @@ export default function WaveformCanvas({
   onSeek,
   onRangeSelect,
   onClearRange,
-  onCommentRangeChange,
-  onCommentRangeChangeCommit,
-  onCommentCmdClick,
-  onCommentFocus,
   onWaveformContextMenu,
   onLoopRangeChange,
 }: WaveformCanvasProps) {
@@ -167,8 +148,6 @@ export default function WaveformCanvas({
   const pxPerSecRef       = useRef(pxPerSec);           pxPerSecRef.current       = pxPerSec;
   const scrollLeftRef     = useRef(scrollLeft);         scrollLeftRef.current     = scrollLeft;
   const currentTimeRef    = useRef(currentTime);        currentTimeRef.current    = currentTime;
-  const renderDataRef  = useRef<RenderData>({ comments: [], activeCommentIds: new Set() });
-  renderDataRef.current = { comments, activeCommentIds, highlightedCommentId };
 
   // Selection / drag refs (read inside compositeFrame without a dep)
   const selectionRef    = useRef<{ start: number; end: number } | null>(null);
@@ -179,10 +158,6 @@ export default function WaveformCanvas({
   // Stable callback refs (so closures in event listeners always see latest)
   const onSeekRef              = useRef(onSeek);              onSeekRef.current              = onSeek;
   const onRangeSelectRef       = useRef(onRangeSelect);       onRangeSelectRef.current       = onRangeSelect;
-  const onCommentCmdClickRef   = useRef(onCommentCmdClick);   onCommentCmdClickRef.current   = onCommentCmdClick;
-  const onCommentRangeChangeRef = useRef(onCommentRangeChange); onCommentRangeChangeRef.current = onCommentRangeChange;
-  const onCommentRangeChangeCommitRef = useRef(onCommentRangeChangeCommit); onCommentRangeChangeCommitRef.current = onCommentRangeChangeCommit;
-  const onCommentFocusRef       = useRef(onCommentFocus);       onCommentFocusRef.current       = onCommentFocus;
   const onWaveformContextMenuRef = useRef(onWaveformContextMenu); onWaveformContextMenuRef.current = onWaveformContextMenu;
   const onLoopRangeChangeRef     = useRef(onLoopRangeChange);    onLoopRangeChangeRef.current     = onLoopRangeChange;
   const loopRangeRef            = useRef(loopRange);           loopRangeRef.current            = loopRange;
@@ -201,15 +176,6 @@ export default function WaveformCanvas({
 
   // Loop edge drag state
   const loopEdgeDragRef = useRef<{ side: "start" | "end"; fixedTime: number } | null>(null);
-
-  // Edge drag state
-  const edgeDragRef         = useRef<{ commentId: string; side: "start" | "end"; fixedTime: number } | null>(null);
-  const edgeDragOriginalRef = useRef<number | null>(null); // original time of the dragged edge (for ghost)
-  const hoveredEdgeRef      = useRef<{ commentId: string; side: "start" | "end"; time: number } | null>(null);
-  hoveredEdgeRef.current    = hoveredEdge ?? null;
-
-  // px from edge to trigger resize cursor / drag (reserved for future use)
-  // const EDGE_HIT = 6;
 
   // ── Single offscreen buffer ───────────────────────────────────────────────
   // Baked at LOD_MIN_PPS (lower boundary of current tier) centered on the
@@ -293,25 +259,10 @@ export default function WaveformCanvas({
 
     ctx.clearRect(0, 0, targetW, targetH);
 
-    // Layer 0.5: Subtle background highlight for the focused comment
-    const hlId = renderDataRef.current.highlightedCommentId;
-    if (hlId) {
-      const hlComment = renderDataRef.current.comments.find(c => c.id === hlId);
-      if (hlComment) {
-        const regionEnd = hlComment.endTimestamp != null ? hlComment.endTimestamp : hlComment.timestamp + DEFAULT_REGION_DURATION;
-        const rx0 = Math.max(0, (hlComment.timestamp * pps - sl) * DPR);
-        const rx1 = Math.min(targetW, (regionEnd * pps - sl) * DPR);
-        if (rx1 > rx0) {
-          ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
-          ctx.fillRect(rx0, 0, rx1 - rx0, targetH);
-        }
-      }
-    }
-
     // Layer 1: Bake (base waveform shape in unplayed grey)
     ctx.drawImage(base, 0, 0, baked.canvasW, baked.canvasH, destX, 0, destWidth, targetH);
 
-    // Layer 2: Overlays (Played region + Comments)
+    // Layer 2: Played region
     //   We transform to bake-space and clip to the path to ensure perfect alignment
     //   and consistent color blending across the entire waveform.
     ctx.save();
@@ -325,22 +276,6 @@ export default function WaveformCanvas({
       ctx.fillRect(0, 0, playheadBakeX, baked.canvasH);
     }
 
-    // B. Comment regions — solid blue (#0094ff)
-    //   Drawn last so they are never lightened by the played-region overlay.
-    for (const c of renderDataRef.current.comments) {
-      const regionEnd = c.endTimestamp != null ? c.endTimestamp : c.timestamp + DEFAULT_REGION_DURATION;
-      const bx0 = (c.timestamp * baked.pps - baked.sl) * DPR;
-      const bx1 = (regionEnd   * baked.pps - baked.sl) * DPR;
-      if (bx1 > bx0) {
-        ctx.fillStyle = "#0094ff";
-        ctx.fillRect(bx0, 0, bx1 - bx0, baked.canvasH);
-        
-        // Very subtle 1px "bars" on edges
-        ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
-        ctx.fillRect(bx0, 0, 1, baked.canvasH);
-        ctx.fillRect(bx1 - 1, 0, 1, baked.canvasH);
-      }
-    }
     ctx.restore();
 
     // Layer 3: drag/selection region overlay (always on top)
@@ -373,44 +308,6 @@ export default function WaveformCanvas({
       }
     }
 
-    // Layer 4: comment edge handles (hover bar / drag bar + ghost)
-    const dragState = edgeDragRef.current;
-    const origTime  = edgeDragOriginalRef.current;
-    const hovered   = hoveredEdgeRef.current;
-
-    if (dragState) {
-      // Ghost line at the original position of the dragged edge
-      if (origTime !== null) {
-        const gx = Math.round((origTime * pps - sl) * DPR);
-        if (gx >= -2 && gx <= targetW + 2) {
-          ctx.fillStyle = "rgba(0, 148, 255, 0.3)";
-          ctx.fillRect(gx - 0.5 * DPR, 0, 1 * DPR, targetH);
-        }
-      }
-      // Active drag circle: position from updated comment state
-      const dragged = renderDataRef.current.comments.find(c => c.id === dragState.commentId);
-      if (dragged) {
-        const curTime = dragState.side === "start"
-          ? dragged.timestamp
-          : (dragged.endTimestamp != null ? dragged.endTimestamp : dragged.timestamp + DEFAULT_REGION_DURATION);
-        const dx = Math.round((curTime * pps - sl) * DPR);
-        if (dx >= -4 * DPR && dx <= targetW + 4 * DPR) {
-          ctx.beginPath();
-          ctx.arc(dx, targetH / 2, 4 * DPR, 0, Math.PI * 2);
-          ctx.fillStyle = "#0094ff";
-          ctx.fill();
-        }
-      }
-    } else if (hovered) {
-      // Hover handle circle (no drag active) — much more subtle, no bar
-      const hx = Math.round((hovered.time * pps - sl) * DPR);
-      if (hx >= -4 * DPR && hx <= targetW + 4 * DPR) {
-        ctx.beginPath();
-        ctx.arc(hx, targetH / 2, 4 * DPR, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0, 148, 255, 0.6)";
-        ctx.fill();
-      }
-    }
   }, []);
 
   // ── qualityDraw ───────────────────────────────────────────────────────────
@@ -571,46 +468,6 @@ export default function WaveformCanvas({
       }
     }
 
-    // Edge handles (same as compositeFrame, so they persist during zoom)
-    const fDrag    = edgeDragRef.current;
-    const fOrig    = edgeDragOriginalRef.current;
-    const fHovered = hoveredEdgeRef.current;
-    if (fDrag) {
-      if (fOrig !== null) {
-        const gx = Math.round((fOrig * pps - sl) * DPR);
-        if (gx >= -2 && gx <= targetW + 2) {
-          ctx.fillStyle = "rgba(0, 148, 255, 0.35)";
-          ctx.fillRect(gx - DPR, 0, 2 * DPR, targetH);
-        }
-      }
-      const dragged = renderDataRef.current.comments.find(c => c.id === fDrag.commentId);
-      if (dragged) {
-        const curTime = fDrag.side === "start"
-          ? dragged.timestamp
-          : (dragged.endTimestamp != null ? dragged.endTimestamp : dragged.timestamp + DEFAULT_REGION_DURATION);
-        const dx = Math.round((curTime * pps - sl) * DPR);
-        if (dx >= -4 * DPR && dx <= targetW + 4 * DPR) {
-          const barW = Math.round(3 * DPR);
-          ctx.fillStyle = "#0094ff";
-          ctx.fillRect(dx - Math.floor(barW / 2), 0, barW, targetH);
-          ctx.beginPath();
-          ctx.arc(dx, targetH / 2, 5 * DPR, 0, Math.PI * 2);
-          ctx.fillStyle = "#0094ff";
-          ctx.fill();
-        }
-      }
-    } else if (fHovered) {
-      const hx = Math.round((fHovered.time * pps - sl) * DPR);
-      if (hx >= -4 * DPR && hx <= targetW + 4 * DPR) {
-        const barW = Math.round(3 * DPR);
-        ctx.fillStyle = "rgba(0, 148, 255, 0.85)";
-        ctx.fillRect(hx - Math.floor(barW / 2), 0, barW, targetH);
-        ctx.beginPath();
-        ctx.arc(hx, targetH / 2, 5 * DPR, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0, 148, 255, 0.85)";
-        ctx.fill();
-      }
-    }
   }, [qualityDraw]);
 
   // ── scheduleDraw ──────────────────────────────────────────────────────────
@@ -664,17 +521,10 @@ export default function WaveformCanvas({
   }, [currentTime, scheduleDraw]);
 
 
-  // Comments: baked into offscreen → invalidate + rebuild
-  useEffect(() => {
-    bakedStateRef.current = null;
-    pathRef.current       = null;
-    scheduleDraw("quality");
-  }, [comments, activeCommentIds, scheduleDraw]);
-
-  // highlightedCommentId / selectedRange / hoveredEdge / loopRange: overlay-only changes → composite redraw
+  // selectedRange / loopRange: overlay-only changes → composite redraw
   useEffect(() => {
     scheduleDraw("composite");
-  }, [highlightedCommentId, selectedRange, hoveredEdge, loopRange, scheduleDraw]);
+  }, [selectedRange, loopRange, scheduleDraw]);
 
   // Peaks / duration: full invalidation
   useEffect(() => {
@@ -720,7 +570,7 @@ export default function WaveformCanvas({
 
   // Cursor handling only (also detects loop edge hover)
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (dragStartRef.current || edgeDragRef.current || loopEdgeDragRef.current) return;
+    if (dragStartRef.current || loopEdgeDragRef.current) return;
     const container = containerRef.current;
     if (!container) return;
 
@@ -737,17 +587,13 @@ export default function WaveformCanvas({
       }
     }
 
-    if (hoveredEdgeRef.current) {
-      container.style.cursor = "ew-resize";
-    } else {
-      container.style.cursor = "";
-    }
+    container.style.cursor = "";
   }, []);
 
   // Context menu (right-click)
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (edgeDragRef.current || loopEdgeDragRef.current || dragStartRef.current) return;
+    if (loopEdgeDragRef.current || dragStartRef.current) return;
     const container = containerRef.current;
     if (!container || durationRef.current <= 0 || pxPerSecRef.current <= 0) return;
 
@@ -762,21 +608,11 @@ export default function WaveformCanvas({
       return;
     }
 
-    // Priority 2: comment hit-test
-    const hit = renderDataRef.current.comments.find((c) => {
-      const end = c.endTimestamp != null ? c.endTimestamp : c.timestamp + DEFAULT_REGION_DURATION;
-      return time >= c.timestamp && time <= end;
-    });
-    if (hit) {
-      onWaveformContextMenuRef.current?.({ x: e.clientX, y: e.clientY, type: "comment", comment: hit });
-      return;
-    }
-
-    // Priority 3: empty waveform
+    // Priority 2: empty waveform
     onWaveformContextMenuRef.current?.({ x: e.clientX, y: e.clientY, type: "empty", time });
   }, []);
 
-  // Drag-to-select / click-to-seek / Cmd+click / edge-resize
+  // Drag-to-select / click-to-seek / loop-edge drag
   // Playhead is placed on mouse-UP so a drag commits cleanly.
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return; // ignore right-click
@@ -863,65 +699,7 @@ export default function WaveformCanvas({
       return;
     }
 
-    // ── 1. Cmd+click: focus comment ──
-    if (e.metaKey || e.ctrlKey) {
-      const t = getTime(e.clientX);
-      const hit = renderDataRef.current.comments.find((c) => {
-        const end = c.endTimestamp != null ? c.endTimestamp : c.timestamp + DEFAULT_REGION_DURATION;
-        return t >= c.timestamp && t <= end;
-      });
-      if (hit) { onCommentCmdClickRef.current?.(hit); return; }
-    }
-
-    // ── 2. Edge drag: resize comment region ──
-    const currentHovered = hoveredEdgeRef.current;
-    if (currentHovered) {
-      const c = renderDataRef.current.comments.find(c => c.id === currentHovered.commentId);
-      if (c) {
-        const regionEnd = c.endTimestamp != null ? c.endTimestamp : c.timestamp + DEFAULT_REGION_DURATION;
-        const side = currentHovered.side;
-        const fixedTime = side === "start" ? regionEnd : c.timestamp;
-
-        edgeDragRef.current         = { commentId: c.id, side, fixedTime };
-        edgeDragOriginalRef.current = side === "start" ? c.timestamp : regionEnd;
-        container.style.cursor      = "ew-resize";
-        onCommentFocusRef.current?.(c.id);
-
-        const onEdgeMove = (me: MouseEvent) => {
-          const d = edgeDragRef.current;
-          if (!d) return;
-          const t = getTime(me.clientX);
-          if (d.side === "start") {
-            onCommentRangeChangeRef.current?.(d.commentId, Math.min(t, d.fixedTime - 0.5), d.fixedTime);
-          } else {
-            onCommentRangeChangeRef.current?.(d.commentId, d.fixedTime, Math.max(t, d.fixedTime + 0.5));
-          }
-          scheduleDraw("composite");
-        };
-
-        const onEdgeUp = (me: MouseEvent) => {
-          const d = edgeDragRef.current;
-          if (d) {
-            const t = getTime(me.clientX);
-            const start = d.side === "start" ? Math.min(t, d.fixedTime - 0.5) : d.fixedTime;
-            const end   = d.side === "start" ? d.fixedTime : Math.max(t, d.fixedTime + 0.5);
-            onCommentRangeChangeCommitRef.current?.(d.commentId, start, end);
-          }
-          window.removeEventListener("mousemove", onEdgeMove);
-          window.removeEventListener("mouseup", onEdgeUp);
-          if (containerRef.current) containerRef.current.style.cursor = "";
-          edgeDragRef.current         = null;
-          edgeDragOriginalRef.current = null;
-          scheduleDraw("composite");
-        };
-
-        window.addEventListener("mousemove", onEdgeMove);
-        window.addEventListener("mouseup", onEdgeUp);
-        return;
-      }
-    }
-
-    // ── 3. Normal drag-to-select / click-to-seek ──
+    // ── 1. Normal drag-to-select / click-to-seek ──
     dragStartRef.current = { x: e.clientX, time: getTime(e.clientX) };
 
     const onMove = (me: MouseEvent) => {
@@ -1056,7 +834,7 @@ export default function WaveformCanvas({
       className="waveform-canvas-container"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => { if (!edgeDragRef.current && containerRef.current) containerRef.current.style.cursor = ""; }}
+      onMouseLeave={() => { if (containerRef.current) containerRef.current.style.cursor = ""; }}
       onContextMenu={handleContextMenu}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}

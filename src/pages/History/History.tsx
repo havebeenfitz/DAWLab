@@ -26,7 +26,7 @@ import { ForkNotice } from "./components/ForkNotice";
 import { PreviewingBar, type ActivePreview } from "./components/PreviewingBar";
 import { dawInfo } from "@/lib/daw";
 import { openParallelVersions, dismissalOf, type ParallelVersion } from "../../../shared/forks";
-import FeedbackView from "@/components/Feedback/FeedbackView";
+import CompareView from "@/components/Compare/CompareView";
 import { BranchMenu } from "@/components/BranchMenu/BranchMenu";
 import { TagManagerPopover } from "@/components/TagManagerPopover/TagManagerPopover";
 import { useUsername } from "@/hooks/useUsername";
@@ -41,7 +41,7 @@ import { useProjectPath } from "./hooks/useProjectPath";
 import { useDraftWatch } from "./hooks/useDraftWatch";
 import { useVersionTags } from "./hooks/useVersionTags";
 import { usePreviewPlayer } from "./hooks/usePreviewPlayer";
-import { useFeedbackSession } from "./hooks/useFeedbackSession";
+import { useCompareSession } from "./hooks/useCompareSession";
 import { usePreviewUpload } from "./hooks/usePreviewUpload";
 import { useStorageWarning } from "./hooks/useStorageWarning";
 import { useCommitActions } from "./hooks/useCommitActions";
@@ -156,7 +156,7 @@ export const History: React.FC = () => {
   );
 
   const player = usePreviewPlayer(activeCommit, passedProject);
-  const feedback = useFeedbackSession(player, activeCommit, tags.branchCommits);
+  const compare = useCompareSession(player, activeCommit, tags.branchCommits);
   const upload = usePreviewUpload(activeCommit, passedProject, log.refreshProjectLog);
   const storage = useStorageWarning();
   const commits = useCommitActions({
@@ -243,7 +243,7 @@ export const History: React.FC = () => {
   // Cmd+K (or Ctrl+K) opens the alternatives menu
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (feedback.feedbackOpenRef.current) return;
+      if (compare.openRef.current) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setIsDropdownOpen((prev) => !prev);
@@ -251,7 +251,7 @@ export const History: React.FC = () => {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [feedback.feedbackOpenRef]);
+  }, [compare.openRef]);
 
   // Back navigation: from project settings, step back to the project view;
   // otherwise return to the library (which restores the folder you came from).
@@ -476,6 +476,8 @@ export const History: React.FC = () => {
                 forks={railForks}
                 forkMenu={forkMenu}
                 onPreviewFork={access.isListener ? undefined : (b) => { void startPreview(b); }}
+                canCompare={compare.canCompare}
+                onCompare={(id) => { setFocusedCommitId(id); compare.open(id); }}
                 onDismissFork={(b) => setDismissTarget(openParallelVersions(projectLog, selectedBranch || "main", username || undefined).find((p) => p.branch === b) ?? null)}
               />
             ) : (
@@ -508,7 +510,8 @@ export const History: React.FC = () => {
             versionNumber={versionNumber}
             player={player}
             upload={upload}
-            onOpenFeedback={feedback.handleOpenFeedback}
+            canCompare={compare.versions.length > 1}
+            onCompare={() => compare.open()}
           />
         )}
         {!showSettings && (
@@ -527,19 +530,18 @@ export const History: React.FC = () => {
         )}
       </div>
 
-      {/* Full-screen feedback over everything, including the app chrome */}
-      {feedback.feedbackSession && feedback.feedbackVersion &&
+      {/* Compare versions: full screen over everything, including the app chrome */}
+      {compare.session && compare.version &&
         createPortal(
-          <FeedbackView
-            key={feedback.feedbackVersion.commitId}
+          <CompareView
+            key={compare.version.commitId}
             projectName={passedProject}
-            version={feedback.feedbackVersion}
-            versions={feedback.feedbackVersions}
-            username={username || "You"}
-            getStartTime={feedback.getFeedbackStartTime}
-            autoPlay={feedback.feedbackSession.autoPlay}
-            onTakeover={feedback.handleFeedbackTakeover}
-            onClose={feedback.handleCloseFeedback}
+            version={compare.version}
+            versions={compare.versions}
+            getStartTime={compare.getStartTime}
+            autoPlay={compare.session.autoPlay}
+            onTakeover={compare.handleTakeover}
+            onClose={compare.handleClose}
           />,
           document.body,
         )}

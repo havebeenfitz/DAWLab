@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
-import type { Comment } from "./CommentCard";
 import WaveformCanvas, { type WaveformContextInfo } from "./WaveformCanvas";
 import { createAudioEngine, type AudioEngine } from "./utils/audioEngine";
 
@@ -16,11 +15,7 @@ export interface AudioPlayerHandle {
 
 interface AudioPlayerProps {
   audioUrl: string;
-  comments?: Comment[];
-  activeCommentIds?: Set<string>;
-  highlightedCommentId?: string | null;
   selectedRange?: { start: number; end: number } | null;
-  hoveredEdge?: { commentId: string; side: "start" | "end"; time: number } | null;
   pxPerSec: number;
   scrollLeft: number;
   currentTime: number;
@@ -32,10 +27,6 @@ interface AudioPlayerProps {
   onSeek?: (time: number) => void;
   onRangeSelect?: (start: number, end: number) => void;
   onClearRange?: () => void;
-  onCommentCmdClick?: (comment: Comment) => void;
-  onCommentRangeChange?: (commentId: string, start: number, end: number) => void;
-  onCommentRangeChangeCommit?: (commentId: string, start: number, end: number) => void;
-  onCommentFocus?: (commentId: string) => void;
   onWaveformContextMenu?: (info: WaveformContextInfo) => void;
   loopRange?: { start: number; end: number } | null;
   onLoopRangeChange?: (range: { start: number; end: number } | null) => void;
@@ -46,8 +37,6 @@ interface AudioPlayerProps {
   isActiveTrack?: boolean;
   onSelectTrack?: () => void;
   onDeleteTrack?: () => void;
-  initialPeaks?: number[];
-  initialDuration?: number;
   /** Fetchable URL for the same audio, used to decode peaks (see AudioEngine.load). */
   peaksUrl?: string;
 }
@@ -56,11 +45,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
   (
     {
       audioUrl,
-      comments = [],
-      activeCommentIds = new Set(),
-      highlightedCommentId,
       selectedRange,
-      hoveredEdge,
       pxPerSec,
       scrollLeft,
       currentTime,
@@ -72,10 +57,6 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
       onSeek,
       onRangeSelect,
       onClearRange,
-      onCommentCmdClick,
-      onCommentRangeChange,
-      onCommentRangeChangeCommit,
-      onCommentFocus,
       onWaveformContextMenu,
       loopRange,
       onLoopRangeChange,
@@ -86,8 +67,6 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
       isActiveTrack,
       onSelectTrack,
       onDeleteTrack,
-      initialPeaks,
-      initialDuration,
       peaksUrl,
     },
     ref
@@ -143,11 +122,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
         onPlayStateChangeRef.current?.(false);
       });
 
-      const loadPromise = (initialPeaks && initialPeaks.length > 0 && initialDuration)
-        ? engine.loadWithPeaks(audioUrl, initialPeaks, initialDuration)
-        : engine.load(audioUrl, peaksUrl);
-
-      loadPromise.then(({ peaks: p, duration: d }) => {
+      engine.load(audioUrl, peaksUrl).then(({ peaks: p, duration: d }) => {
         setPeaks(p);
         onDurationChangeRef.current?.(d);
         onPeaksReadyRef.current?.(p);
@@ -160,18 +135,10 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
         unsubEnded();
         engine.destroy();
       };
-    }, [audioUrl, initialPeaks, initialDuration, peaksUrl]);
+    }, [audioUrl, peaksUrl]);
 
     const handleSeek = (time: number) => {
       onSeek?.(time);
-    };
-
-    const handleCommentCmdClick = (comment: Comment) => {
-      engineRef.current?.seekTo(comment.timestamp);
-      engineRef.current?.play();
-      setIsPlaying(true);
-      onPlayStateChangeRef.current?.(true);
-      onCommentCmdClick?.(comment);
     };
 
     return (
@@ -181,11 +148,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
         pxPerSec={pxPerSec}
         scrollLeft={scrollLeft}
         currentTime={currentTime}
-        comments={comments}
-        activeCommentIds={activeCommentIds}
-        highlightedCommentId={highlightedCommentId}
         selectedRange={selectedRange}
-        hoveredEdge={hoveredEdge}
         height={height * heightScale}
         globalDuration={globalDuration}
         trackLabel={trackLabel}
@@ -195,10 +158,6 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
         onSeek={handleSeek}
         onRangeSelect={onRangeSelect}
         onClearRange={onClearRange}
-        onCommentCmdClick={handleCommentCmdClick}
-        onCommentRangeChange={onCommentRangeChange}
-        onCommentRangeChangeCommit={onCommentRangeChangeCommit}
-        onCommentFocus={onCommentFocus}
         onWaveformContextMenu={onWaveformContextMenu}
         loopRange={loopRange}
         onLoopRangeChange={onLoopRangeChange}

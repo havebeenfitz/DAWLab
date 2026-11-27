@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { Pencil, Trash2Icon, GitBranch, Eye, Tag } from "lucide-react";
+import { Pencil, Trash2Icon, GitBranch, Eye, Tag, GitCompareArrows } from "lucide-react";
 import "./ContextMenu.css";
 
 export interface ContextMenuItem {
@@ -57,14 +57,21 @@ export const createCommitMenuItems = (
   onBranchFromCommit?: () => void,
   onDeleteCommit?: () => void,
   onEditTags?: () => void,
+  onCompare?: () => void,
 ): ContextMenuItem[] => {
-  const items: ContextMenuItem[] = [
-    {
-      label: "Preview this version",
-      icon: <Eye size={14} />,
-      onClick: onPreviewCommit,
-    },
-  ];
+  const items: ContextMenuItem[] = [];
+  if (onCompare) {
+    items.push({
+      label: "Compare versions",
+      icon: <GitCompareArrows size={14} />,
+      onClick: onCompare,
+    });
+  }
+  items.push({
+    label: "Preview this version",
+    icon: <Eye size={14} />,
+    onClick: onPreviewCommit,
+  });
 
   if (onBranchFromCommit) {
     items.push({
