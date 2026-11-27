@@ -5,6 +5,7 @@
  * same CAS + commits dirs a local commit would use, so history, rollback and
  * previews work exactly as for local versions.
  */
+import { hubFetch, stallWatchdog } from './hub-fetch'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -136,7 +137,7 @@ export class HubClient {
   }
 
   private async request(p: string, init: RequestInit & { duplex?: 'half' } = {}): Promise<Response> {
-    const res = await fetch(`${this.hubUrl}/api${p}`, {
+    const res = await hubFetch(`${this.hubUrl}/api${p}`, {
       ...init,
       headers: { 'X-Hub-Token': this.token, ...(init.headers as Record<string, string>) },
     })
@@ -171,18 +172,26 @@ export class HubClient {
   async uploadObject(hash: string, file: string, onBytes: (n: number) => void = () => {}) {
     const size = fs.statSync(file).size
     const counted = fs.createReadStream(file)
-    counted.on('data', (chunk) => onBytes(chunk.length))
-    await this.request(`${this.base}/objects/${hash}`, {
-      method: 'PUT',
-      body: Readable.toWeb(counted) as any,
-      duplex: 'half',
-      headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(size) },
-    })
+    const watch = stallWatchdog()
+    counted.on('data', (chunk) => { watch.touch(); onBytes(chunk.length) })
+    try {
+      await this.request(`${this.base}/objects/${hash}`, {
+        method: 'PUT',
+        body: Readable.toWeb(counted) as any,
+        duplex: 'half',
+        headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(size) },
+        signal: watch.signal,
+      })
+    } finally {
+      watch.done()
+      counted.destroy()
+    }
   }
 
   /** Downloads to a temp file, checks the hash, then moves it into CAS. */
   async downloadObject(hash: string, target: string, onBytes: (n: number) => void = () => {}, onSize: (size: number) => void = () => {}) {
-    const res = await this.request(`${this.base}/objects/${hash}`)
+    const watch = stallWatchdog()
+    const res = await this.request(`${this.base}/objects/${hash}`, { signal: watch.signal })
     const length = Number(res.headers.get('content-length'))
     if (Number.isFinite(length) && length >= 0) onSize(length)
     fs.mkdirSync(path.dirname(target), { recursive: true })
@@ -193,6 +202,7 @@ export class HubClient {
         Readable.fromWeb(res.body as any),
         async function* (source) {
           for await (const chunk of source) {
+            watch.touch()
             hasher.update(chunk)
             onBytes(chunk.length)
             yield chunk
@@ -203,6 +213,7 @@ export class HubClient {
       if (hasher.digest('hex') !== hash) throw new Error(`Downloaded file does not match ${hash}`)
       fs.renameSync(tmp, target)
     } finally {
+      watch.done()
       fs.rmSync(tmp, { force: true })
     }
   }
@@ -221,7 +232,7 @@ export async function shareProject(projectName: string, onProgress: SyncProgress
   if (!log) throw new Error(`Project '${projectName}' not found`)
 
   onProgress('Creating the project on the hub...')
-  const res = await fetch(`${hubUrl}/api/projects`, {
+  const res = await hubFetch(`${hubUrl}/api/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(hubKey ? { 'X-Hub-Key': hubKey } : {}) },
     body: JSON.stringify({ log: toSharedLog(log) }),

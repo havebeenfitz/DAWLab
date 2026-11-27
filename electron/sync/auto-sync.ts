@@ -29,6 +29,29 @@ const again = new Set<string>()
 let emit: Emit = () => {}
 let timer: NodeJS.Timeout | null = null
 
+/** A sync that failed (offline, the hub restarting, a stalled transfer) tries again later: 30 s, 1 min, 2 min, ... up to 30 min. */
+const RETRY_FIRST_MS = 30_000
+const RETRY_MAX_MS = 30 * 60_000
+const retries = new Map<string, { attempt: number; timer: NodeJS.Timeout | null }>()
+
+function retryLater(folderId: string) {
+  const r = retries.get(folderId) ?? { attempt: 0, timer: null }
+  if (r.timer) clearTimeout(r.timer)
+  const wait = Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * 2 ** r.attempt)
+  r.attempt++
+  r.timer = setTimeout(() => {
+    r.timer = null
+    void requestSpaceSync(folderId)
+  }, wait)
+  retries.set(folderId, r)
+}
+
+function retryDone(folderId: string) {
+  const r = retries.get(folderId)
+  if (r?.timer) clearTimeout(r.timer)
+  retries.delete(folderId)
+}
+
 /** One sync of every folder shortly after start, for versions saved while offline; after that only on demand. */
 export function startAutoSync(onStatus: Emit) {
   emit = onStatus
@@ -42,6 +65,7 @@ export function startAutoSync(onStatus: Emit) {
 export function stopAutoSync() {
   if (timer) clearTimeout(timer)
   timer = null
+  for (const folderId of [...retries.keys()]) retryDone(folderId)
 }
 
 export function syncAllSpaces() {
@@ -89,6 +113,8 @@ async function runSync(folderId: string): Promise<SpaceSyncResult | null> {
   emit({ folderId, state: 'syncing' })
   try {
     const result = await syncSpace(folderId, (message, transfer) => emit({ folderId, state: 'syncing', message, ...(transfer ? { transfer } : {}) }))
+    if (result.failed.length) retryLater(folderId)
+    else retryDone(folderId)
     emit({
       folderId,
       state: result.failed.length ? 'error' : 'synced',
@@ -106,6 +132,9 @@ async function runSync(folderId: string): Promise<SpaceSyncResult | null> {
     })
     return result
   } catch (err) {
+    // The hub's "no such member" closes access for good: nothing to retry.
+    if ((err as { status?: number })?.status === 404) retryDone(folderId)
+    else retryLater(folderId)
     emit({ folderId, state: 'error', error: String((err as Error)?.message ?? err) })
     return null
   }

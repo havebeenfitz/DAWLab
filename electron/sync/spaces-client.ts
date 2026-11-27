@@ -6,6 +6,7 @@
  * The binding (server address, space id, this member's token) lives only in
  * the local user dir, never in a project log.
  */
+import { hubFetch } from './hub-fetch'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -132,7 +133,7 @@ const folderManager = () => getUserConfigManager(getUsername())
 // ------------------------------------------------------------- HTTP
 
 async function call<T>(space: Pick<LocalSpace, 'hubUrl' | 'token'>, p: string, method = 'GET', body?: unknown): Promise<T> {
-  const res = await fetch(`${space.hubUrl}/api${p}`, {
+  const res = await hubFetch(`${space.hubUrl}/api${p}`, {
     method,
     headers: {
       'X-Hub-Token': space.token,
@@ -163,7 +164,7 @@ export async function shareFolder(folderId: string, onProgress: SyncProgress = (
   if (!hubUrl) throw new Error('Connect a DAWLab server first: Settings → DAWLab server.')
 
   onProgress('Creating the shared folder...')
-  const res = await fetch(`${hubUrl}/api/spaces`, {
+  const res = await hubFetch(`${hubUrl}/api/spaces`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(hubKey ? { 'X-Hub-Key': hubKey } : {}) },
     body: JSON.stringify({ name: folder.name, memberName: memberName() }),
@@ -632,7 +633,7 @@ export interface InvitePreviewResult extends InvitePreview {
 
 export async function previewInvite(input: string): Promise<InvitePreviewResult> {
   const { hubUrl, code } = parseInvite(input)
-  const res = await fetch(`${hubUrl}/api/invite/peek`, {
+  const res = await hubFetch(`${hubUrl}/api/invite/peek`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
@@ -652,7 +653,7 @@ export async function previewInvite(input: string): Promise<InvitePreviewResult>
  */
 async function stillMember(space: LocalSpace): Promise<boolean> {
   try {
-    const res = await fetch(`${space.hubUrl}/api/space`, { headers: { 'X-Hub-Token': space.token } })
+    const res = await hubFetch(`${space.hubUrl}/api/space`, { headers: { 'X-Hub-Token': space.token } })
     return res.status !== 404
   } catch {
     return true
@@ -673,7 +674,7 @@ export async function joinSpace(input: string, parentDir: string, onProgress: Sy
     const space = getLocalSpace(preview.alreadyIn.folderId)
     if (space) return syncSpace(ensureLibraryFolder(space).folderId, onProgress)
   }
-  const res = await fetch(`${hubUrl}/api/join`, {
+  const res = await hubFetch(`${hubUrl}/api/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code, memberName: memberName() }),

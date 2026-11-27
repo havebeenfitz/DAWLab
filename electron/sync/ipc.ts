@@ -1,3 +1,4 @@
+import { hubFetch } from './hub-fetch'
 import type { TransferProgress } from '../../shared/transfer-progress'
 import os from 'os'
 import path from 'path'
@@ -170,7 +171,7 @@ async function testConnection(settings: { hubUrl?: string; hubKey?: string }): P
   }
   try {
     // An empty space name is refused with a readable 400 only after the password check passes.
-    const res = await fetch(`${base}/api/spaces`, {
+    const res = await hubFetch(`${base}/api/spaces`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(hubKey ? { 'X-Hub-Key': hubKey } : {}) },
       body: JSON.stringify({ name: '', memberName: '' }),

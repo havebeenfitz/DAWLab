@@ -124,4 +124,26 @@ describe('auto-sync', () => {
     spaces.syncSharedProject.mockRejectedValue(new Error('offline'))
     await expect(requestSharedProjectSync('Loose')).rejects.toThrow('offline')
   })
+
+  it('tries a failed sync again with growing waits, and stops once it works', async () => {
+    spaces.syncSpace.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'))
+      .mockImplementation(async (folderId: string) => okResult(folderId))
+    await requestSpaceSync('f1')
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60_000)
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not retry when the hub closed access', async () => {
+    spaces.syncSpace.mockRejectedValue(Object.assign(new Error('gone'), { status: 404 }))
+    await requestSpaceSync('f1')
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(1)
+  })
 })
