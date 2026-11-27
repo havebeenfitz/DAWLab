@@ -10,11 +10,11 @@ empty `404` (`Content-Length: 0`, `Connection: close`).
 
 ## Roles
 
-| Role     | Projects: files, versions | Previews | Comments                     | Manage people and invites |
-|----------|---------------------------|----------|------------------------------|---------------------------|
-| `owner`  | read + write              | yes      | add; edit/delete any         | yes                       |
-| `edit`   | read + write              | yes      | add; edit/delete own         | no                        |
-| `listen` | no                        | yes      | add; edit/delete own         | no                        |
+| Role     | Projects: files, versions | Previews | Manage people and invites |
+|----------|---------------------------|----------|---------------------------|
+| `owner`  | read + write              | yes      | yes                       |
+| `edit`   | read + write              | yes      | no                        |
+| `listen` | no                        | yes      | no                        |
 
 A space has exactly one owner, the member who created it.
 
@@ -62,7 +62,7 @@ All bodies are JSON. Errors that a caller without access could use to probe the 
 | POST | `/api/invite/peek` | invite code in body | `{ code }` | `200 { space: { id, name }, role, invitedBy, projectCount, memberCount, expiresAt }` (`InvitePreview`). Doesn't use the code up. Anything else is the hidden 404; failed peeks count toward the same per-IP limit as `/api/join`. |
 | POST | `/api/space/projects` | owner/edit | `{ log }` (same as the old create) | `201 { project: { id, name, daw, addedAt, addedBy } }` |
 | DELETE | `/api/space/projects/:projectId` | owner | – | `204`. Removes the project from the space. |
-| * | `/api/space/projects/:projectId/...` | member | – | Same sub-routes and semantics as `/api/project/...`: `GET ''`, `PUT log`, `POST objects/missing`, `PUT\|GET\|HEAD objects/:hash`, `PUT\|GET commits/:cid/filemap`, `GET\|POST commits/:cid/comments`. Write and filemap routes need owner/edit. `GET ''` returns `{ role, log }`, with `role` mapped `owner` → `edit`. |
+| * | `/api/space/projects/:projectId/...` | member | – | Same sub-routes and semantics as `/api/project/...`: `GET ''`, `PUT log`, `POST objects/missing`, `PUT\|GET\|HEAD objects/:hash`, `PUT\|GET commits/:cid/filemap`. `GET\|POST commits/:cid/comments` is a stub that answers `[]` and stores nothing, for apps older than 1.8. Write and filemap routes need owner/edit. `GET ''` returns `{ role, log }`, with `role` mapped `owner` → `edit`. |
 
 Validation: `name` (space) is trimmed, 1–100 characters; `memberName` is trimmed, 1–60 characters. Invite `expiresInDays` and `maxUses` must be whole numbers in range or are `400`. `GET /api/space/invites` lists every invite the owner hasn't revoked, expired and used-up ones included (compare `expiresAt` and `uses`/`maxUses`).
 
@@ -86,6 +86,7 @@ Apps don't poll. Each app keeps one `GET /api/space/events` stream open per shar
 
 Events carry no content: the app fetches what changed with the usual routes. It reconnects with growing, jittered waits (2 s up to 5 min), treats 2 minutes without a byte as a dead stream, and after a reconnect looks once for anything it missed. At most 3 streams per member token stay open; a new one closes the oldest.
 
-Comment rule in spaces: the server records which member wrote each comment and each reply (`authorMemberId`, set by the server and never taken from the body). A member may change or delete only their own comments and replies; the owner may change any. Anyone in the space, listeners included, may add comments and add replies to any comment. Changes the caller isn't allowed to make are dropped silently (the response is the merged list, so the client sees what stuck). Authorship never changes. The merge never removes entries, so a delete is a change: the client sends the comment or reply with a tombstone field (for example `deleted: true`), and the same rule applies.
+A `PUT log` is announced only when the set of versions changes (commit ids per branch, previews, dismissals). Every sync writes its logs, and two Macs differ in details like `metadata` or `bpm`; announcing those made apps wake each other forever. See [the incident](incidents/2026-11-27-sync-loop.md).
+
 
 Shared helpers in `shared/hub-protocol.ts`: `normalizeInviteCode`, `isInviteCode`, `formatInviteCode`, `buildJoinLink(hubUrl, code)` and `parseJoinLink(link)`, which returns `{ hubUrl, code }` with `code` already formatted as `DAWL-XXXX-XXXX-XXXX`.
