@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Users, Headphones, RefreshCw, AlertCircle, Lock } from 'lucide-react';
+import { Users, Headphones, RefreshCw, AlertCircle, Lock, OctagonX } from 'lucide-react';
 import { useSharing, roleLabel, relativeTime, hub, errorText } from '@/components/Sharing';
 import type { SharedFolder } from '@/components/Sharing';
 import { TransferBar } from '@/components/Sharing/TransferBar';
@@ -27,7 +27,11 @@ export function SharedFolderBar({ folderId }: { folderId: string }) {
         {roleLabel[shared.role]}
         {listening ? ' · you can play previews' : ''}
         {' · '}
-        {syncing && st?.transfer ? <TransferBar transfer={st.transfer} /> : syncing ? (st?.message || 'Syncing…') : error ? (
+        {st?.paused ? (
+          <span className="ui-status-error"><OctagonX size={12} aria-hidden /> Syncing stopped. Press Sync now when you want to sync again.</span>
+        ) : st?.looping && !syncing ? (
+          <span className="ui-status-error"><AlertCircle size={12} aria-hidden /> This folder keeps syncing over and over, so DAWLab slowed it down.</span>
+        ) : syncing && st?.transfer ? <TransferBar transfer={st.transfer} /> : syncing ? (st?.message || 'Syncing…') : error ? (
           <span className="ui-status-error"><AlertCircle size={12} aria-hidden /> {error}</span>
         ) : `synced ${relativeTime(st?.lastSync ?? shared.lastSync)}`}
       </span>
@@ -41,6 +45,17 @@ export function SharedFolderBar({ folderId }: { folderId: string }) {
         <RefreshCw size={13} className={syncing ? 'animate-spin' : undefined} aria-hidden />
         {syncing ? 'Syncing…' : 'Sync now'}
       </button>
+      {st?.looping && !st.paused && (
+        <button
+          type="button"
+          className="ui-btn ui-btn-sm ui-btn-danger"
+          onClick={() => { void hub.pauseSync(folderId); }}
+          title="Stop syncing this folder on its own until you press Sync now"
+        >
+          <OctagonX size={13} aria-hidden />
+          Stop syncing
+        </button>
+      )}
       <button type="button" className="ui-btn ui-btn-sm" onClick={() => shareFolder(folderId, shared.name)}>
         {shared.role === 'owner' ? 'Invite & manage' : 'People'}
       </button>

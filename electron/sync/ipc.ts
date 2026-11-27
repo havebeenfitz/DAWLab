@@ -15,7 +15,7 @@ import {
   listInvites, getServerStorage, createInvite, revokeInvite, changeMemberRole, removeMember, leaveSpace, stopSharing,
   deleteProjectFromServer, previewInvite, countIncomingVersions,
 } from './spaces-client'
-import { requestProjectSync, requestSharedProjectSync, requestSpaceSync, startAutoSync, syncAllSpaces, type SyncStatus } from './auto-sync'
+import { pauseSpaceSync, requestManualSpaceSync, requestProjectSync, requestSharedProjectSync, startAutoSync, syncAllSpaces, type SyncStatus } from './auto-sync'
 
 /** Never hand tokens to the renderer: it only needs to know what is shared and how. */
 const publicSpace = (s: ReturnType<typeof getLocalSpace>) => s && {
@@ -88,13 +88,15 @@ export function registerHubIpc(ipcMain: IpcMain, getWindow: () => BrowserWindow 
       throw err
     }
   })
-  ipcMain.handle('hub-sync-space', (_ev, folderId: string) => requestSpaceSync(folderId).then((r) => r && publicSpace(r.space)))
+  ipcMain.handle('hub-sync-space', (_ev, folderId: string) => requestManualSpaceSync(folderId).then((r) => r && publicSpace(r.space)))
   // One project of a shared folder: pull and push now, and how many versions are waiting on the hub.
   ipcMain.handle('hub-sync-project-now', (ev, projectName: string) => requestSharedProjectSync(projectName, progress(ev, projectName)))
   ipcMain.handle('hub-project-incoming', (_ev, projectName: string) => countIncomingVersions(projectName).catch(() => 0))
   // "Sync now": pull and push one shared folder right away; reports what happened.
+  // Shown only while a folder syncs over and over: stop its automatic syncs until "Sync now".
+  ipcMain.handle('hub-pause-sync', (_ev, folderId: string) => { pauseSpaceSync(folderId); return true })
   ipcMain.handle('hub-sync-space-now', async (_ev, folderId: string) => {
-    const r = await requestSpaceSync(folderId)
+    const r = await requestManualSpaceSync(folderId)
     if (!r) return { ok: false, error: getLocalSpace(folderId)?.lastError ?? 'Sync failed.' }
     return {
       ok: r.failed.length === 0,

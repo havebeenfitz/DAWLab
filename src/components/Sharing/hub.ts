@@ -87,6 +87,10 @@ export interface SyncStatus {
   transfer?: TransferProgress
   lastSync?: string
   error?: string
+  /** The folder synced over and over on its own; automatic syncs are slowed down. */
+  looping?: boolean
+  /** Automatic syncs were stopped by hand until "Sync now". */
+  paused?: boolean
   result?: { pushedVersions: number; pulledVersions: number; addedProjects: string[]; uploadedProjects?: string[]; removedProjects?: string[]; renamedProjects?: Array<{ from: string; to: string }>; failed: Array<{ project: string; error: string }> }
 }
 
@@ -112,6 +116,7 @@ export const hub = {
   syncFolder: (folderId: string) => invoke<SharedFolder | null>('hub-sync-space', folderId),
   syncAll: () => invoke<boolean>('hub-sync-all'),
   syncNow: (folderId: string) => invoke<SyncNowResult>('hub-sync-space-now', folderId),
+  pauseSync: (folderId: string) => invoke<boolean>('hub-pause-sync', folderId),
   /** Pull and push one project of a shared folder. */
   syncProjectNow: (projectName: string) => invoke<{ pulledVersions: number; pushedVersions: number }>('hub-sync-project-now', projectName),
   /** Versions others put on the hub that this Mac doesn't have yet. */

@@ -12,7 +12,7 @@ const m = vi.hoisted(() => ({
     getSpaceDetails: vi.fn(), listInvites: vi.fn(), createInvite: vi.fn(), revokeInvite: vi.fn(), changeMemberRole: vi.fn(),
     removeMember: vi.fn(), leaveSpace: vi.fn(), stopSharing: vi.fn(), previewInvite: vi.fn(), countIncomingVersions: vi.fn(),
   },
-  autoSync: { requestProjectSync: vi.fn(), requestSharedProjectSync: vi.fn(), requestSpaceSync: vi.fn(), startAutoSync: vi.fn(), syncAllSpaces: vi.fn() },
+  autoSync: { requestProjectSync: vi.fn(), requestSharedProjectSync: vi.fn(), requestSpaceSync: vi.fn(), requestManualSpaceSync: vi.fn(), pauseSpaceSync: vi.fn(), startAutoSync: vi.fn(), syncAllSpaces: vi.fn() },
   manager: { createFolder: vi.fn(), moveProject: vi.fn(), getProjectFolder: vi.fn(), getFolders: vi.fn() },
   registry: { loadRegistry: vi.fn() },
 }))
@@ -54,7 +54,7 @@ describe('sharing IPC', () => {
     for (const ch of [
       'hub-get-settings', 'hub-save-settings', 'hub-test-connection', 'hub-get-remote', 'hub-unlink-project', 'hub-share-project',
       'hub-sync-project', 'hub-open-shared', 'hub-list-spaces', 'hub-get-space', 'hub-get-project-space', 'hub-space-details',
-      'hub-share-folder', 'hub-sync-space', 'hub-sync-all', 'hub-project-saved', 'hub-project-share-context',
+      'hub-share-folder', 'hub-sync-space', 'hub-pause-sync', 'hub-sync-all', 'hub-project-saved', 'hub-project-share-context',
       'hub-make-folder-for-project', 'hub-default-join-dir', 'hub-preview-invite', 'hub-join-space', 'hub-list-invites',
       'hub-create-invite', 'hub-revoke-invite', 'hub-change-role', 'hub-remove-member', 'hub-leave-space', 'hub-stop-sharing',
     ]) expect(handlers.has(ch), ch).toBe(true)
@@ -77,7 +77,7 @@ describe('sharing IPC', () => {
     m.spaces.shareFolder.mockResolvedValue({ space })
     m.spaces.joinSpace.mockResolvedValue({ folderId: 'f1', space, addedProjects: [], failed: [] })
     m.spaces.getSpaceDetails.mockResolvedValue({ space: {}, me: {}, members: [], projects: [], local: space })
-    m.autoSync.requestSpaceSync.mockResolvedValue({ space })
+    m.autoSync.requestManualSpaceSync.mockResolvedValue({ space })
 
     const outputs = [
       await call('hub-list-spaces'), await call('hub-get-space', 'f1'), await call('hub-get-project-space', 'Snow'),
@@ -170,17 +170,17 @@ describe('sharing IPC', () => {
   })
 
   it('reports what a manual folder sync did, and why it failed', async () => {
-    m.autoSync.requestSpaceSync.mockResolvedValueOnce({
+    m.autoSync.requestManualSpaceSync.mockResolvedValueOnce({
       space, pulledVersions: 3, pushedVersions: 1, addedProjects: ['Lodge'], uploadedProjects: [], failed: [],
     })
     const ok = await call('hub-sync-space-now', 'f1')
     expect(ok).toMatchObject({ ok: true, pulledVersions: 3, pushedVersions: 1, addedProjects: ['Lodge'] })
     expect(JSON.stringify(ok)).not.toContain('SECRET-MEMBER-TOKEN')
 
-    m.autoSync.requestSpaceSync.mockResolvedValueOnce({ space, pulledVersions: 0, pushedVersions: 0, addedProjects: [], uploadedProjects: [], failed: [{ project: 'Snow', error: 'disk full' }] })
+    m.autoSync.requestManualSpaceSync.mockResolvedValueOnce({ space, pulledVersions: 0, pushedVersions: 0, addedProjects: [], uploadedProjects: [], failed: [{ project: 'Snow', error: 'disk full' }] })
     expect(await call('hub-sync-space-now', 'f1')).toMatchObject({ ok: false, error: 'Snow: disk full' })
 
-    m.autoSync.requestSpaceSync.mockResolvedValueOnce(null)
+    m.autoSync.requestManualSpaceSync.mockResolvedValueOnce(null)
     m.spaces.getLocalSpace.mockReturnValueOnce({ ...space, lastError: 'You no longer have access' })
     expect(await call('hub-sync-space-now', 'f1')).toEqual({ ok: false, error: 'You no longer have access' })
   })

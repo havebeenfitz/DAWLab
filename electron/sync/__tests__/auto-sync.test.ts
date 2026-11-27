@@ -9,7 +9,7 @@ const spaces = vi.hoisted(() => ({
 }))
 vi.mock('../spaces-client', () => spaces)
 
-import { requestSpaceSync, requestProjectSync, requestSharedProjectSync, syncAllSpaces, startAutoSync, stopAutoSync, type SyncStatus } from '../auto-sync'
+import { requestSpaceSync, requestManualSpaceSync, pauseSpaceSync, LOOP_LIMIT, SLOW_MS, requestProjectSync, requestSharedProjectSync, syncAllSpaces, startAutoSync, stopAutoSync, type SyncStatus } from '../auto-sync'
 
 const okResult = (folderId: string, extra: Record<string, unknown> = {}) => ({
   folderId, pushedVersions: 1, pulledVersions: 2, addedProjects: ['Lodge'], uploadedProjects: [], failed: [],
@@ -145,5 +145,42 @@ describe('auto-sync', () => {
     await requestSpaceSync('f1')
     await vi.advanceTimersByTimeAsync(60 * 60_000)
     expect(spaces.syncSpace).toHaveBeenCalledTimes(1)
+  })
+
+  it('slows a folder that is asked to sync over and over, and says so', async () => {
+    spaces.syncSpace.mockImplementation(async (folderId: string) => okResult(folderId))
+    for (let i = 0; i <= LOOP_LIMIT; i++) {
+      await requestSpaceSync('f1')
+      await vi.advanceTimersByTimeAsync(2_000)
+    }
+    // The ask that tips it over already waits.
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(LOOP_LIMIT)
+    expect(statuses.at(-1)).toMatchObject({ folderId: 'f1', looping: true })
+    // More asks while looping: nothing now, one sync after the slow interval.
+    for (let i = 0; i < 10; i++) await requestSpaceSync('f1')
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(LOOP_LIMIT)
+    await vi.advanceTimersByTimeAsync(SLOW_MS)
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(LOOP_LIMIT + 1)
+  })
+
+  it('Stop syncing holds automatic syncs until Sync now', async () => {
+    spaces.syncSpace.mockImplementation(async (folderId: string) => okResult(folderId))
+    for (let i = 0; i <= LOOP_LIMIT; i++) await requestSpaceSync('f1')
+    const before = spaces.syncSpace.mock.calls.length
+    pauseSpaceSync('f1')
+    expect(statuses.at(-1)).toMatchObject({ paused: true, looping: true })
+    await requestSpaceSync('f1')
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(before)
+    await requestManualSpaceSync('f1')
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(before + 1)
+    expect(statuses.at(-1)?.paused).toBeUndefined()
+    expect(statuses.at(-1)?.looping).toBeUndefined()
+  })
+
+  it('a few syncs a minute are normal', async () => {
+    spaces.syncSpace.mockImplementation(async (folderId: string) => okResult(folderId))
+    for (let i = 0; i < LOOP_LIMIT; i++) await requestSpaceSync('f1')
+    expect(statuses.some((s) => s.looping)).toBe(false)
   })
 })
