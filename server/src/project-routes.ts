@@ -20,6 +20,9 @@ import { placeIncoming } from '../../shared/forks.ts'
 import { HIDDEN, HttpError, nowIso, readJson, send, withLock } from './http-util.ts'
 import { keys, type ProjectMeta } from './keys.ts'
 
+/** Responses of PUT log that changed nothing: no change event goes out for them. */
+export const unchangedLogWrites = new WeakSet<http.ServerResponse>()
+
 export interface ProjectAccess {
   projectId: string
   /** What the caller may do with the project: `edit` reads and writes, `listen` gets previews. */
@@ -52,6 +55,12 @@ export function createProjectRoutes(storage: Storage, maxUpload: number) {
       }
       // Two people saving on top of the same version: the later one goes into its own alternative.
       const next = mergeLogs(current, placeIncoming(current, { ...incoming, id: current.id, name: current.name }))
+      // Every sync sends its log, most of the time with nothing new: then nothing is written
+      // and nobody is told, or two members' apps would keep waking each other up.
+      if (JSON.stringify(next) === JSON.stringify(current)) {
+        unchangedLogWrites.add(res)
+        return current
+      }
       await storage.putJson(keys.log(access.projectId), next)
       const meta = await storage.getJson<ProjectMeta>(keys.meta(access.projectId))
       if (meta) await storage.putJson(keys.meta(access.projectId), { ...meta, updatedAt: nowIso() })

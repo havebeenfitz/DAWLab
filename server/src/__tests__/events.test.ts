@@ -130,6 +130,15 @@ describe('space events', () => {
     // Uploading files and filemaps is not an event; only the log write is.
     expect(ownerStream.changes()[1]).toEqual({ kind: 'versions', projectId, by: editor.me.id })
 
+    // Syncs send their log every time; one that brings nothing new is not an event, or apps would wake each other forever.
+    expect((await call('PUT', `${p}/log`, editor.token, log)).status).toBe(200)
+    const meta = (await call('GET', '/api/space', owner.token)).json.projects.find((x: any) => x.id === projectId)
+    expect((await call('PUT', `${p}/log`, owner.token, (await call('GET', p, owner.token)).json.log)).status).toBe(200)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(ownerStream.changes()).toHaveLength(2)
+    expect(editorStream.changes()).toHaveLength(0)
+    expect((await call('GET', '/api/space', owner.token)).json.projects.find((x: any) => x.id === projectId).updatedAt).toBe(meta.updatedAt)
+
     expect((await call('PATCH', '/api/space', owner.token, { name: 'Band 2' })).status).toBe(200)
     await editorStream.until(() => editorStream.changes().length === 1)
     expect(editorStream.changes()[0]).toEqual({ kind: 'space', by: owner.me.id })

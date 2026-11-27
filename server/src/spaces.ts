@@ -16,7 +16,7 @@ import {
 import { isMemberToken, keys, type MemberRecord, type SpaceMetaRecord, type TokenRecord } from './keys.ts'
 import { createInviteStore } from './invites.ts'
 import { createSpaceStore, toMe, toMember, toSpaceInfo, toSpaceProject } from './space-store.ts'
-import { parseLog, type Authorize, type createProjectRoutes } from './project-routes.ts'
+import { parseLog, unchangedLogWrites, type Authorize, type createProjectRoutes } from './project-routes.ts'
 import type { EventBus } from './events.ts'
 
 interface SpaceOptions {
@@ -219,7 +219,7 @@ export function createSpaceRoutes(opts: SpaceOptions) {
     await routeSpaceWrite(c, rest, req, res)
     if (res.statusCode >= 400) return
     const change = changeOf(rest, method)
-    if (change) events.publish(c.space.id, { ...change, by: c.member.id })
+    if (change && !(change.kind === 'versions' && unchangedLogWrites.has(res))) events.publish(c.space.id, { ...change, by: c.member.id })
     if (rest.length === 0 && method === 'DELETE') events.close(c.space.id)
     if (rest[0] === 'members' && method === 'DELETE') events.close(c.space.id, rest[1])
   }
