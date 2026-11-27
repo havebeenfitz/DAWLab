@@ -125,7 +125,6 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           editingProject.id,
           updates,
         );
-        console.log("Project details updated successfully");
         setStatusMessage({ type: 'success', text: 'Settings saved!' });
       }
     } catch (error) {
@@ -144,13 +143,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
     try {
       setDeleting(true);
-      console.log("[ProjectSettings] Deleting project:", projectName);
 
-      const result = await window.ipcRenderer.invoke(
+      await window.ipcRenderer.invoke(
         "delete-project",
         projectName,
       );
-      console.log("[ProjectSettings] Delete result:", result);
 
       setShowDeleteModal(false);
       navigate("/");

@@ -150,12 +150,3 @@ export function getInstalledPlugins(): InstalledPlugin[] {
   writeCache(plugins);
   return plugins;
 }
-
-/**
- * Force a fresh scan (ignoring cache).
- */
-export function rescanPlugins(): InstalledPlugin[] {
-  const plugins = scanPluginDirectories();
-  writeCache(plugins);
-  return plugins;
-}

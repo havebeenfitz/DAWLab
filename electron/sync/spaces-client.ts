@@ -604,12 +604,6 @@ export async function countIncomingVersions(projectName: string): Promise<number
   return allCommits(log).filter((c) => !commitExists(projectName, c.commit_id, commitsDir)).length
 }
 
-/** Syncs the shared folder a project is in, if it is in one. Used after saving a version. */
-export async function syncProjectIfShared(projectName: string, onProgress: SyncProgress = () => {}) {
-  const space = getSpaceForProject(projectName)
-  return space ? syncSpace(space.folderId, onProgress) : null
-}
-
 /**
  * Accepts the full invite (code + server, what Share produces), a
  * `dawlab://join?...` link, or a bare `DAWL-XXXX-XXXX-XXXX`, which uses the

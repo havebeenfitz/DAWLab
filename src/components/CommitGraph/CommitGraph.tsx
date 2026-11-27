@@ -147,7 +147,6 @@ const getDayWithSuffix = (day: number): string => {
   }
 };
 
-
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -185,7 +184,6 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   forkMenu,
 }) => {
   const [selectedCommitId, setSelectedCommitId] = useState<string | null>(null);
-  const [_currentPage, _setCurrentPage] = useState<number>(0); // Keeping state for now but layout is horizontal
   const [newCommitMessage, setNewCommitMessage] = useState("");
   const [isExiting] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -227,7 +225,6 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   const [isCreatingBranch, setIsCreatingBranch] = useState(false);
 
   // Preview state
-  const [_previewStatus, setPreviewStatus] = useState<string | null>(null);
   const [previewingCommitId, setPreviewingCommitId] = useState<string | null>(
     null,
   );
@@ -270,22 +267,6 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
     }
     // Also update local state for internal tracking/fallback
     setSelectedCommitId(commitId);
-
-    // Find which page this commit is on and navigate there
-    const sortedCommits = [...commits].sort((a, b) =>
-      b.timestamp.localeCompare(a.timestamp),
-    );
-    // Find which page this commit is on (keeping logic if pagination is ever restored)
-    const commitIndex = sortedCommits.findIndex(
-      (c) => String(c.commit_id) === String(commitId),
-    );
-
-    if (commitIndex !== -1) {
-      const pageIndex = Math.floor(commitIndex / 10);
-      if (pageIndex !== _currentPage) {
-        _setCurrentPage(pageIndex);
-      }
-    }
   };
 
   const handleCheckoutClick = (e: React.MouseEvent, commitId: string) => {
@@ -296,7 +277,6 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
   // Listen for preview status updates from main process
   useEffect(() => {
     const handleStatusUpdate = (_event: any, status: string) => {
-      setPreviewStatus(status);
       // Forward to notification component via custom event
       window.dispatchEvent(
         new CustomEvent("preview-status-update", {
@@ -357,12 +337,10 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
 
     // Prevent multiple simultaneous previews
     if (previewingCommitId) {
-      console.log("[CommitGraph] Preview already in progress");
       return;
     }
 
     setPreviewingCommitId(commitId);
-    setPreviewStatus("Preparing...");
 
     // Dispatch event to show notification
     window.dispatchEvent(
@@ -372,19 +350,12 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
     );
 
     try {
-      console.log(
-        "[CommitGraph] Previewing commit:",
-        commitId,
-        "from branch:",
-        currentBranch,
-      );
       await window.ipcRenderer.invoke(
         "preview-project",
         projectName,
         commitId,
         currentBranch,
       );
-      console.log("[CommitGraph] Preview opened successfully");
 
       // Dispatch completion event
       window.dispatchEvent(
@@ -400,7 +371,6 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
       window.dispatchEvent(new CustomEvent("preview-complete"));
     } finally {
       setPreviewingCommitId(null);
-      setPreviewStatus(null);
     }
   };
 
@@ -425,11 +395,6 @@ export const CommitGraph: React.FC<CommitGraphProps> = ({
 
     setIsCreatingBranch(true);
     try {
-      console.log("[CommitGraph] Creating branch:", {
-        branchName: branchName.trim(),
-        fromCommitId: branchFromCommitId,
-      });
-
       if (onBranchCreate) {
         await onBranchCreate(branchName.trim(), branchFromCommitId);
       }

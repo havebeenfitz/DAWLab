@@ -218,23 +218,14 @@ export const NewProject: React.FC<NewProjectProps> = ({ isOpen, onClose, onSucce
   if (!isOpen) return null;
 
   const handleBrowse = async () => {
-    console.log('[NewProject] Browse button clicked');
     try {
-      console.log('[NewProject] Checking for electronAPI...', {
-        hasWindow: typeof window !== 'undefined',
-        hasElectronAPI: typeof window !== 'undefined' && 'electronAPI' in window,
-        electronAPI: window.electronAPI
-      });
-
       if (!window.electronAPI || !window.electronAPI.pickFolder) {
         console.error('[NewProject] electronAPI.pickFolder not available');
         setError('Folder picker not available. Running in web mode?');
         return;
       }
 
-      console.log('[NewProject] Calling pickFolder...');
       const path = await window.electronAPI.pickFolder();
-      console.log('[NewProject] Folder picked:', path);
 
       if (path) {
         setProjectPath(path);
@@ -246,8 +237,6 @@ export const NewProject: React.FC<NewProjectProps> = ({ isOpen, onClose, onSucce
         setFileCandidates([]);
         setSelectedPrimaryFile(null);
         await checkFileCandidates(path);
-      } else {
-        console.log('[NewProject] No folder selected (user cancelled)');
       }
     } catch (err) {
       console.error('[NewProject] Error picking folder:', err);
@@ -261,11 +250,6 @@ export const NewProject: React.FC<NewProjectProps> = ({ isOpen, onClose, onSucce
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('[NewProject] Submit button clicked');
-    console.log('[NewProject] Form data:', {
-      projectName,
-      projectPath,
-    });
 
     if (!projectName.trim()) {
       console.warn('[NewProject] Validation failed: No project name');
@@ -284,20 +268,10 @@ export const NewProject: React.FC<NewProjectProps> = ({ isOpen, onClose, onSucce
       return;
     }
 
-    console.log('[NewProject] Validation passed');
-
     setIsLoading(true);
     setError(null);
 
     try {
-
-      console.log('[NewProject] Invoking init-project with params:', {
-        command: 'init-project',
-        projectName: projectName.trim(),
-        projectPath: projectPath,
-        metadata: {},
-        autoOpen: true
-      });
       const ignoredFiles = selectedPrimaryFile
         ? fileCandidates.filter((f) => f !== selectedPrimaryFile)
         : [];
@@ -314,15 +288,10 @@ export const NewProject: React.FC<NewProjectProps> = ({ isOpen, onClose, onSucce
         }
       );
 
-      console.log('[NewProject] Project created successfully!', result);
-      console.log('[NewProject] Result type:', typeof result);
-      console.log('[NewProject] Result details:', JSON.stringify(result, null, 2));
-
       // Close modal first, then trigger success callback to refresh the list
       onClose();
 
       if (onSuccess) {
-        console.log('[NewProject] Calling onSuccess callback');
         onSuccess(result?.projectId);
       }
     } catch (err) {
@@ -349,7 +318,6 @@ export const NewProject: React.FC<NewProjectProps> = ({ isOpen, onClose, onSucce
   };
 
   const handleCancel = () => {
-    console.log('[NewProject] Cancel clicked, closing modal');
     // Reset state
     setStep('daw-select');
     setSelectedDaw('logic');

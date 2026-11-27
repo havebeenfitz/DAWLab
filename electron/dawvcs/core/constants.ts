@@ -160,6 +160,5 @@ export const getLogsDir = (username?: string) => path.join(getUserDir(username),
 export const getUserMediaDir = (username?: string) => path.join(getUserDir(username), 'media');
 
 // DEPRECATED: These will be removed once refactoring is complete
-export const REGISTRY_FILE = path.join(VCS_DIR, 'registry.json');
 export const COMMITS_DIR = path.join(VCS_DIR, 'commits');
 export const LOGS_DIR = path.join(VCS_DIR, 'logs');

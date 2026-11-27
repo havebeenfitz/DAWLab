@@ -2,7 +2,6 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { useLocation } from 'react-router-dom';
 import './Layout.css';
-// import { Header } from '../Header';
 import { ActivityPanel } from '../ActivityPanel';
 import { PreviewNotification } from '../PreviewNotification';
 import { Toaster } from '../ui/Toaster';
@@ -17,23 +16,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const isLibraryPage = location.pathname === '/';
 
-  /* Sidebar logic commented out for now
-  const [isSidebarVisible, setIsSidebarVisible] = useState(window.innerWidth > 1000);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsSidebarVisible(window.innerWidth > 600);
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-  */
-
   return (
     <div className="app-layout">
-      {/* Sidebar hidden for now */}
-      {/* <Header isVisible={isSidebarVisible} /> */}
       <motion.div
         className="main-content-wrapper"
         initial={false}

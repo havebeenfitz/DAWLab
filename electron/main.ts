@@ -26,11 +26,9 @@ import {
   modifyProjectDetails,
   getProjectDetails,
   loadLocalProjectLog,
-  clearUsername,
   persistUsername,
   initializeUsername,
   getUserConfigManager,
-  clearUserConfigCache,
   loadRegistry,
   addPreviewToCommit,
   previewProject,
@@ -44,8 +42,6 @@ import {
   getUserMediaDir,
   HOME,
   getSuggestedUsername,
-  hasCompletedOnboarding,
-  listUsers,
   listUsersWithCounts,
   deleteUser,
   clearPersistedUser,
@@ -59,7 +55,7 @@ import { getProjectStorageDirs, allCasDirs } from "./dawvcs/core/storage-locatio
 import { detectDAW, getProjectFileCandidates } from "./dawvcs/core/daw-detection";
 import { getCleanableFiles, cleanCasFiles } from "./dawvcs/operations/clean";
 import { scanForProjects, getDefaultScanRoots, isPreviewFolder } from "./dawvcs/operations/scan";
-import { getInstalledPlugins, rescanPlugins } from "./workers/pluginScanner";
+import { getInstalledPlugins } from "./workers/pluginScanner";
 import { startDraftWatch, stopDraftWatch, stopAllDraftWatches } from "./watchers/draftWatcher";
 import { registerHubIpc } from "./sync/ipc";
 import { registerNotificationIpc } from "./notify/ipc";
@@ -250,11 +246,6 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
-  });
-
-  // Test active push message to Renderer-process.
-  win.webContents.on("did-finish-load", () => {
-    win?.webContents.send("main-process-message", new Date().toLocaleString());
   });
 
   if (VITE_DEV_SERVER_URL) {
@@ -449,22 +440,9 @@ ipcMain.handle("get-username", () => {
   return tryGetUsername();
 });
 
-ipcMain.handle("clear-username", () => {
-  clearUsername();
-  return { success: true };
-});
-
 // Onboarding / users
 ipcMain.handle("get-suggested-username", () => {
   return getSuggestedUsername();
-});
-
-ipcMain.handle("has-completed-onboarding", () => {
-  return hasCompletedOnboarding();
-});
-
-ipcMain.handle("list-users", () => {
-  return listUsers();
 });
 
 ipcMain.handle("list-users-with-counts", () => {
@@ -633,16 +611,6 @@ ipcMain.handle("remove-watched-directory", async (_ev, dirPath: string) => {
   }
 });
 
-ipcMain.handle("clear-ignored-project-paths", async () => {
-  try {
-    getUserConfigManager(getUsername()).clearIgnoredProjectPaths();
-    return { success: true };
-  } catch (err: any) {
-    console.error("[main.ts] Error clearing ignored project paths:", err);
-    throw err;
-  }
-});
-
 ipcMain.handle(
   "commit-project",
   async (_ev, projectName: string, message = "No message", branch_name: string, author: string) => {
@@ -721,12 +689,6 @@ ipcMain.handle(
     return { playUrl: await getMediaUrl(fullPath), fetchUrl: toDawpreviewUrl(fullPath) };
   },
 );
-
-// Returns a dawpreview:// URL for a CAS hash so the renderer can fetch audio bytes for peak computation
-ipcMain.handle("get-cas-preview-url", (_ev, hash: string) => {
-  const localPath = getCasPath(hash);
-  return `dawpreview://active${localPath.startsWith("/") ? "" : "/"}${localPath}`;
-});
 
 // What a version changed compared with the one before it: files and plugins, git-diff style.
 ipcMain.handle('get-version-changes', async (_ev, projectName: string, commitId: string, baseId?: string) => {
@@ -812,11 +774,6 @@ ipcMain.handle("rename-project", async (_ev, projectName: string, newName: strin
   return renameAnyProject(projectName, newName);
 });
 // Whether this Mac may rename the project: anyone for their own, only the owner in a shared folder.
-ipcMain.handle("can-rename-project", (_ev, projectName: string) => {
-  const shared = findSharedProject(projectName);
-  return !shared || shared.space.role === "owner";
-});
-
 // Before saving: what the new version would no longer have that its parent had.
 ipcMain.handle("check-save-losses", async (_ev, projectName: string, branch?: string) => {
   try { return lossesBeforeSave(projectName, branch); } catch { return { parentId: null, parentMessage: null, lost: [] }; }
@@ -1380,10 +1337,6 @@ ipcMain.handle("get-installed-plugins", async () => {
   return getInstalledPlugins();
 });
 
-ipcMain.handle("rescan-plugins", async () => {
-  return rescanPlugins();
-});
-
 // Update project path and reset checkout state
 ipcMain.handle(
   "update-project-path",
@@ -1694,11 +1647,6 @@ ipcMain.handle("remove-projects-from-library", async (_ev, targets: RemoveTarget
 });
 
 // Clear folder manager cache (on logout)
-ipcMain.handle("clear-folder-cache", () => {
-  clearUserConfigCache();
-  return { success: true };
-});
-
 // =======================
 // Audio Library (bounces / references)
 // =======================
@@ -1846,28 +1794,3 @@ ipcMain.handle(
   },
 );
 
-// Reset a specific warning preference
-ipcMain.handle("reset-warning-preference", async (_ev, warningType: string) => {
-  try {
-    const username = getUsername();
-    const manager = getUserConfigManager(username);
-    manager.resetWarningPreference(warningType);
-    return { success: true };
-  } catch (err: any) {
-    console.error("[main.ts] Error resetting warning preference:", err);
-    throw err;
-  }
-});
-
-// Reset all warning preferences
-ipcMain.handle("reset-all-warning-preferences", async () => {
-  try {
-    const username = getUsername();
-    const manager = getUserConfigManager(username);
-    manager.resetAllWarningPreferences();
-    return { success: true };
-  } catch (err: any) {
-    console.error("[main.ts] Error resetting all warning preferences:", err);
-    throw err;
-  }
-});

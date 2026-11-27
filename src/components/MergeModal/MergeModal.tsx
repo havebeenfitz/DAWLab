@@ -220,7 +220,6 @@ export const MergeModal: React.FC<MergeModalProps> = ({
           className="version-btn version-btn-secondary"
           onClick={(e) => {
             e.stopPropagation();
-            console.log('Rollback clicked for', branch.name);
 
             // switch to the branch and rollback
             void ensureClosedInDaw(projectName, 'restore it').then((go) => {
@@ -229,21 +228,9 @@ export const MergeModal: React.FC<MergeModalProps> = ({
                 window.ipcRenderer.invoke('rollback-project-latest', projectName, branch.name);
               });
             });
-
-            console.log('Switched to branch and rolled back to latest commit of', branch.name);
-
           }}
         >
           Restore this version
-        </button>
-        <button
-          className="version-btn version-btn-secondary"
-          onClick={(e) => {
-            e.stopPropagation();
-            console.log('[NOT IMPLEMENTED] Clone clicked for', branch.name);
-          }}
-        >
-          Clone this version
         </button>
       </div>
     </div>

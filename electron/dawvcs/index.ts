@@ -12,7 +12,4 @@ export { openProject, checkProjectModified, getProjectLastSaveTime } from './cor
 export { loadRegistry, getAllProjects } from './core/registry.ts'
 export { loadLocalProjectLog } from './core/log'
 export { clearUsername, persistUsername, initializeUsername } from './core/constants'
-export {
-  getUserConfigManager,
-  clearUserConfigCache,
-} from './core/config'
+export { getUserConfigManager } from './core/config'

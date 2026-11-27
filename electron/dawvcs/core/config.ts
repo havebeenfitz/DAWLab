@@ -312,20 +312,6 @@ export class UserConfigManager {
     this.save();
   }
 
-  /** Reset a specific warning preference */
-  resetWarningPreference(warningType: string): void {
-    if (this.data.warningPreferences) {
-      delete this.data.warningPreferences[warningType];
-      this.save();
-    }
-  }
-
-  /** Reset all warning preferences */
-  resetAllWarningPreferences(): void {
-    this.data.warningPreferences = {};
-    this.save();
-  }
-
   /** Get all warning preferences */
   getWarningPreferences(): Record<string, boolean> {
     return { ...(this.data.warningPreferences || {}) };
@@ -438,10 +424,4 @@ export function getUserConfigManager(username: string): UserConfigManager {
   cachedManager = new UserConfigManager(username);
   cachedUsername = username;
   return cachedManager;
-}
-
-/** Clear the cached manager (call on logout) */
-export function clearUserConfigCache(): void {
-  cachedManager = null;
-  cachedUsername = null;
 }

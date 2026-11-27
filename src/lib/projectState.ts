@@ -37,11 +37,3 @@ export function getStage(id: string | null | undefined): ProjectStage | null {
 export function openTaskCount(tasks: ProjectTask[] | null | undefined): number {
   return (tasks ?? []).filter(t => !t.done).length;
 }
-
-export function createTask(text: string): ProjectTask {
-  return {
-    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    text: text.trim(),
-    done: false,
-  };
-}
