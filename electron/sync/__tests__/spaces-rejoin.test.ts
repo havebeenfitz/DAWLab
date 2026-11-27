@@ -57,7 +57,6 @@ import { saveHubSettings, shareProject, getProjectRemote, onParallelPlacement } 
 import { rollbackProject } from '../../dawvcs/operations/rollback'
 import { dismissParallelVersion } from '../../dawvcs/operations/parallel'
 import { startParallelPreview, endParallelPreview } from '../../dawvcs/operations/parallel-preview'
-import { getProjectStorageDirs } from '../../dawvcs/core/storage-location'
 import { openParallelVersions, dismissalOf } from '../../../shared/forks'
 import {
   shareFolder, syncSpace, joinSpace, createInvite, getSpaceDetails, listLocalSpaces, getLocalSpace,
