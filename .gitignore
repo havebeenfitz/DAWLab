@@ -33,3 +33,4 @@ dist-electron/main.js
 .orchestrator.json
 .designchord-worktrees/
 docs/research
+*.tsbuildinfo
