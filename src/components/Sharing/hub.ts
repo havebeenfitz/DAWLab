@@ -78,7 +78,7 @@ export function describeSync(r: SyncNowResult): string {
   return parts.length ? parts.join(', ') : 'Up to date'
 }
 
-export type SyncState = 'syncing' | 'synced' | 'error'
+export type SyncState = 'syncing' | 'synced' | 'error' | 'paused'
 export interface SyncStatus {
   folderId: string
   state: SyncState
@@ -87,6 +87,8 @@ export interface SyncStatus {
   transfer?: TransferProgress
   lastSync?: string
   error?: string
+  /** Syncs keep restarting (`looping`) or one stopped moving (`stuck`): offer Force stop. */
+  trouble?: 'looping' | 'stuck'
   result?: { pushedVersions: number; pulledVersions: number; addedProjects: string[]; uploadedProjects?: string[]; removedProjects?: string[]; renamedProjects?: Array<{ from: string; to: string }>; failed: Array<{ project: string; error: string }> }
 }
 
@@ -112,6 +114,8 @@ export const hub = {
   syncFolder: (folderId: string) => invoke<SharedFolder | null>('hub-sync-space', folderId),
   syncAll: () => invoke<boolean>('hub-sync-all'),
   syncNow: (folderId: string) => invoke<SyncNowResult>('hub-sync-space-now', folderId),
+  /** Stops a looping or hung folder until it is synced by hand. */
+  forceStopSync: (folderId: string) => invoke<boolean>('hub-force-stop-sync', folderId),
   /** Pull and push one project of a shared folder. */
   syncProjectNow: (projectName: string) => invoke<{ pulledVersions: number; pushedVersions: number }>('hub-sync-project-now', projectName),
   /** Versions others put on the hub that this Mac doesn't have yet. */

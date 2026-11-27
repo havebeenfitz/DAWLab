@@ -18,6 +18,8 @@ interface SharingContextValue {
   join: (prefill?: string) => void;
   /** Pull and push a shared folder now; reports the outcome as a notice. */
   syncNow: (folderId: string) => Promise<void>;
+  /** Only offered while a folder's syncs loop or hang. */
+  forceStopSync: (folderId: string) => Promise<void>;
 }
 
 const SharingContext = createContext<SharingContextValue | null>(null);
@@ -103,6 +105,16 @@ export function SharingProvider({ children }: { children: ReactNode }) {
     }
   }, [folders, refresh]);
 
+  const forceStopSync = useCallback(async (folderId: string) => {
+    const name = folders[folderId]?.name ?? 'Shared folder';
+    try {
+      await hub.forceStopSync(folderId);
+      notify.info(`Stopped syncing “${name}”`, 'Nothing was deleted. Press Sync now when you want to try again.');
+    } catch (err) {
+      notify.error(`Couldn’t stop syncing “${name}”`, err);
+    }
+  }, [folders]);
+
   const value = useMemo<SharingContextValue>(() => ({
     folders,
     status,
@@ -111,7 +123,8 @@ export function SharingProvider({ children }: { children: ReactNode }) {
     shareProject: (projectName) => setProjectTarget(projectName),
     join: (prefill) => setJoinPrefill(prefill ?? ''),
     syncNow,
-  }), [folders, status, refresh, syncNow]);
+    forceStopSync,
+  }), [folders, status, refresh, syncNow, forceStopSync]);
 
   return (
     <SharingContext.Provider value={value}>

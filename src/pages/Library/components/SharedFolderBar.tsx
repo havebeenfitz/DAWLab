@@ -1,19 +1,27 @@
 import { useState } from 'react';
-import { Users, Headphones, RefreshCw, AlertCircle, Lock } from 'lucide-react';
+import { Users, Headphones, RefreshCw, AlertCircle, Lock, OctagonX, PauseCircle } from 'lucide-react';
 import { useSharing, roleLabel, relativeTime, hub, errorText } from '@/components/Sharing';
 import type { SharedFolder } from '@/components/Sharing';
 import { TransferBar } from '@/components/Sharing/TransferBar';
 import './LibrarySidebar.css';
 
+/** Why the folder offers Force stop, in a few words. */
+const troubleText = {
+  looping: 'Syncing keeps starting over',
+  stuck: 'Syncing hasn’t moved for 2 minutes',
+} as const;
+
 /** Shown at the top of a shared folder: who's in it, how you take part, and whether it's up to date. */
 export function SharedFolderBar({ folderId }: { folderId: string }) {
-  const { folders, status, shareFolder, syncNow } = useSharing();
+  const { folders, status, shareFolder, syncNow, forceStopSync } = useSharing();
   const shared = folders[folderId];
   if (!shared) return null;
   if (shared.accessClosed) return <ClosedFolderBar shared={shared} />;
   const st = status[folderId];
   const listening = shared.role === 'listen';
   const syncing = st?.state === 'syncing';
+  const paused = st?.state === 'paused';
+  const trouble = !paused ? st?.trouble : undefined;
   const error = st?.state === 'error' ? st.error : !st ? shared.lastError : undefined;
 
   return (
@@ -27,10 +35,25 @@ export function SharedFolderBar({ folderId }: { folderId: string }) {
         {roleLabel[shared.role]}
         {listening ? ' · you can play previews' : ''}
         {' · '}
-        {syncing && st?.transfer ? <TransferBar transfer={st.transfer} /> : syncing ? (st?.message || 'Syncing…') : error ? (
+        {trouble ? (
+          <span className="ui-status-error" role="alert"><AlertCircle size={12} aria-hidden /> {troubleText[trouble]}</span>
+        ) : paused ? (
+          <span><PauseCircle size={12} aria-hidden /> Sync stopped. Press Sync now to try again.</span>
+        ) : syncing && st?.transfer ? <TransferBar transfer={st.transfer} /> : syncing ? (st?.message || 'Syncing…') : error ? (
           <span className="ui-status-error"><AlertCircle size={12} aria-hidden /> {error}</span>
         ) : `synced ${relativeTime(st?.lastSync ?? shared.lastSync)}`}
       </span>
+      {trouble && (
+        <button
+          type="button"
+          className="ui-btn ui-btn-sm ui-btn-danger"
+          onClick={() => { void forceStopSync(folderId); }}
+          title="Stop syncing this folder until you press Sync now. Nothing on this Mac or the server is deleted."
+        >
+          <OctagonX size={13} aria-hidden />
+          Force stop
+        </button>
+      )}
       <button
         type="button"
         className="ui-btn ui-btn-sm"

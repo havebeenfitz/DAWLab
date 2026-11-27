@@ -15,6 +15,7 @@ const sharing = vi.hoisted(() => ({
     shareProject: vi.fn(),
     join: vi.fn(),
     syncNow: vi.fn(),
+    forceStopSync: vi.fn(),
   },
 }));
 

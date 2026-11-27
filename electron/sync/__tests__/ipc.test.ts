@@ -12,7 +12,7 @@ const m = vi.hoisted(() => ({
     getSpaceDetails: vi.fn(), listInvites: vi.fn(), createInvite: vi.fn(), revokeInvite: vi.fn(), changeMemberRole: vi.fn(),
     removeMember: vi.fn(), leaveSpace: vi.fn(), stopSharing: vi.fn(), previewInvite: vi.fn(), countIncomingVersions: vi.fn(),
   },
-  autoSync: { requestProjectSync: vi.fn(), requestSharedProjectSync: vi.fn(), requestSpaceSync: vi.fn(), startAutoSync: vi.fn(), syncAllSpaces: vi.fn() },
+  autoSync: { forceStopSync: vi.fn(), requestProjectSync: vi.fn(), requestSharedProjectSync: vi.fn(), requestSpaceSync: vi.fn(), startAutoSync: vi.fn(), syncAllSpaces: vi.fn() },
   manager: { createFolder: vi.fn(), moveProject: vi.fn(), getProjectFolder: vi.fn(), getFolders: vi.fn() },
   registry: { loadRegistry: vi.fn() },
 }))
@@ -54,7 +54,7 @@ describe('sharing IPC', () => {
     for (const ch of [
       'hub-get-settings', 'hub-save-settings', 'hub-test-connection', 'hub-get-remote', 'hub-unlink-project', 'hub-share-project',
       'hub-sync-project', 'hub-open-shared', 'hub-list-spaces', 'hub-get-space', 'hub-get-project-space', 'hub-space-details',
-      'hub-share-folder', 'hub-sync-space', 'hub-sync-all', 'hub-project-saved', 'hub-project-share-context',
+      'hub-share-folder', 'hub-sync-space', 'hub-force-stop-sync', 'hub-sync-all', 'hub-project-saved', 'hub-project-share-context',
       'hub-make-folder-for-project', 'hub-default-join-dir', 'hub-preview-invite', 'hub-join-space', 'hub-list-invites',
       'hub-create-invite', 'hub-revoke-invite', 'hub-change-role', 'hub-remove-member', 'hub-leave-space', 'hub-stop-sharing',
     ]) expect(handlers.has(ch), ch).toBe(true)
@@ -167,6 +167,14 @@ describe('sharing IPC', () => {
     await call('hub-project-saved', 'Snow')
     expect(m.autoSync.requestProjectSync).toHaveBeenCalledWith('Snow')
     expect(await call('hub-default-join-dir')).toMatch(/Music[\\/]DAWLab$/)
+  })
+
+  it('syncs by hand, and force-stops a folder', async () => {
+    m.autoSync.requestSpaceSync.mockResolvedValueOnce(null)
+    await call('hub-sync-space-now', 'f1')
+    expect(m.autoSync.requestSpaceSync).toHaveBeenLastCalledWith('f1', { byHand: true })
+    expect(await call('hub-force-stop-sync', 'f1')).toBe(true)
+    expect(m.autoSync.forceStopSync).toHaveBeenCalledWith('f1')
   })
 
   it('reports what a manual folder sync did, and why it failed', async () => {

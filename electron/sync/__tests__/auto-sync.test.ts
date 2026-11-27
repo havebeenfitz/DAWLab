@@ -9,7 +9,8 @@ const spaces = vi.hoisted(() => ({
 }))
 vi.mock('../spaces-client', () => spaces)
 
-import { requestSpaceSync, requestProjectSync, requestSharedProjectSync, syncAllSpaces, startAutoSync, stopAutoSync, type SyncStatus } from '../auto-sync'
+import { requestSpaceSync, requestProjectSync, requestSharedProjectSync, syncAllSpaces, startAutoSync, stopAutoSync, forceStopSync, isSyncPaused, type SyncStatus } from '../auto-sync'
+import { LOOP_MIN_SYNCS, STUCK_MS } from '../sync-guard'
 
 const okResult = (folderId: string, extra: Record<string, unknown> = {}) => ({
   folderId, pushedVersions: 1, pulledVersions: 2, addedProjects: ['Lodge'], uploadedProjects: [], failed: [],
@@ -145,5 +146,46 @@ describe('auto-sync', () => {
     await requestSpaceSync('f1')
     await vi.advanceTimersByTimeAsync(60 * 60_000)
     expect(spaces.syncSpace).toHaveBeenCalledTimes(1)
+  })
+
+  it('flags syncs that keep starting back to back as looping', async () => {
+    spaces.syncSpace.mockImplementation(async (folderId: string) => okResult(folderId))
+    for (let i = 0; i < LOOP_MIN_SYNCS - 1; i++) await requestSpaceSync('f1')
+    expect(statuses.some((s) => s.trouble)).toBe(false)
+    await requestSpaceSync('f1')
+    expect(statuses.at(-1)).toMatchObject({ state: 'synced', trouble: 'looping' })
+  })
+
+  it('flags a sync that stops moving as stuck', async () => {
+    const run = deferred<ReturnType<typeof okResult>>()
+    spaces.syncSpace.mockImplementation(() => run.promise)
+    void requestSpaceSync('f1')
+    await vi.advanceTimersByTimeAsync(STUCK_MS + 15_000)
+    expect(statuses.at(-1)).toMatchObject({ state: 'syncing', trouble: 'stuck' })
+    run.resolve(okResult('f1'))
+    await vi.advanceTimersByTimeAsync(0)
+  })
+
+  it('force stop pauses the folder until a sync by hand, and ignores the run it cut off', async () => {
+    const hung = deferred<ReturnType<typeof okResult>>()
+    spaces.syncSpace.mockImplementationOnce(() => hung.promise).mockImplementation(async (folderId: string) => okResult(folderId))
+    void requestSpaceSync('f1')
+    void requestSpaceSync('f1') // queued behind the hung one
+    forceStopSync('f1')
+    expect(isSyncPaused('f1')).toBe(true)
+    expect(statuses.at(-1)).toEqual({ folderId: 'f1', state: 'paused' })
+
+    // Nothing automatic syncs it: not the queued run, not events or saves, not the old run finishing.
+    expect(await requestSpaceSync('f1')).toBeNull()
+    hung.resolve(okResult('f1'))
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(spaces.syncSpace).toHaveBeenCalledTimes(1)
+    expect(statuses.at(-1)).toEqual({ folderId: 'f1', state: 'paused' })
+
+    // Sync now resumes it.
+    const r = await requestSpaceSync('f1', { byHand: true })
+    expect(r?.folderId).toBe('f1')
+    expect(isSyncPaused('f1')).toBe(false)
+    expect(statuses.at(-1)).toMatchObject({ state: 'synced' })
   })
 })

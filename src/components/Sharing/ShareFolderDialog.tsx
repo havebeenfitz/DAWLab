@@ -240,6 +240,7 @@ export function ShareFolderDialog({ target, shared, syncStatus, onClose, onChang
 }
 
 function syncLine(shared: SharedFolder, s?: SyncStatus): string {
+  if (s?.state === 'paused') return 'Sync stopped. Press Sync now to try again.';
   if (s?.state === 'syncing') return s.message || 'Syncing…';
   if (s?.state === 'error' || (!s && shared.lastError)) return `Last sync had a problem: ${s?.error ?? shared.lastError}`;
   return `Synced ${relativeTime(s?.lastSync ?? shared.lastSync)}. DAWLab syncs on its own every few minutes and after you save a version.`;

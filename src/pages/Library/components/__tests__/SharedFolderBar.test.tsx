@@ -14,6 +14,7 @@ const sharing = vi.hoisted(() => ({
     shareProject: vi.fn(),
     join: vi.fn(),
     syncNow: vi.fn(),
+    forceStopSync: vi.fn(),
   },
 }));
 
@@ -50,6 +51,31 @@ describe('SharedFolderBar', () => {
     sharing.value.folders = { f1: sharedFolder({ members: many }) };
     render(<SharedFolderBar folderId="f1" />);
     expect(screen.getByLabelText('7 people').children).toHaveLength(5);
+  });
+
+  it('offers Force stop only while syncs loop or hang', () => {
+    sharing.value.status = { f1: { folderId: 'f1', state: 'syncing', message: 'Syncing Snow...' } };
+    const { rerender } = render(<SharedFolderBar folderId="f1" />);
+    expect(screen.queryByRole('button', { name: 'Force stop' })).toBeNull();
+
+    sharing.value.status = { f1: { folderId: 'f1', state: 'synced', trouble: 'looping' } };
+    rerender(<SharedFolderBar folderId="f1" />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Syncing keeps starting over');
+    fireEvent.click(screen.getByRole('button', { name: 'Force stop' }));
+    expect(sharing.value.forceStopSync).toHaveBeenCalledWith('f1');
+
+    sharing.value.status = { f1: { folderId: 'f1', state: 'syncing', trouble: 'stuck' } };
+    rerender(<SharedFolderBar folderId="f1" />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Syncing hasn’t moved for 2 minutes');
+    expect(screen.getByRole('button', { name: 'Force stop' })).toBeInTheDocument();
+  });
+
+  it('says a stopped folder waits for Sync now', () => {
+    sharing.value.status = { f1: { folderId: 'f1', state: 'paused' } };
+    render(<SharedFolderBar folderId="f1" />);
+    expect(bar()).toHaveTextContent('Sync stopped. Press Sync now to try again.');
+    expect(screen.queryByRole('button', { name: 'Force stop' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Sync now' })).toBeEnabled();
   });
 
   it('owners get "Invite & manage", which opens the folder dialog', () => {
