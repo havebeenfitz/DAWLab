@@ -169,7 +169,6 @@ export function createSpaceRoutes(opts: SpaceOptions) {
       return {
         projectId,
         role: c.member.role === 'listen' ? 'listen' : 'edit',
-        member: { id: c.member.id, isOwner: c.member.role === 'owner' },
       }
     }
   }

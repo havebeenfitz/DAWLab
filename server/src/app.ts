@@ -5,8 +5,8 @@
  *  - Shared folders (spaces, see spaces.ts and docs/hub-spaces.md): each
  *    member has their own token; roles owner / edit / listen.
  *  - Legacy per-project links: creating a project returns an "edit" token
- *    (collaborators: push, pull, comment) and a "listen" token (play previews,
- *    read and add comments), shared as `<hub>/s/<token>` links.
+ *    (collaborators: push and pull) and a "listen" token (play previews),
+ *    shared as `<hub>/s/<token>` links.
  * Only token hashes are stored. Creating projects and spaces can be limited
  * with HUB_CREATE_KEY.
  */

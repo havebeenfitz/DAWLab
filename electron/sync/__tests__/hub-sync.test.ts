@@ -105,7 +105,7 @@ describe('DAWLab Hub sharing', () => {
     await expect(shareProject(name)).rejects.toThrow(/did not accept the password/)
   })
 
-  it('shares a project and its comments', async () => {
+  it('shares a project', async () => {
     setUsername('alice')
     saveHubSettings({ hubUrl, hubKey })
     const result = await shareProject(name)
@@ -115,27 +115,17 @@ describe('DAWLab Hub sharing', () => {
     listenUrl = result.remote.listenUrl!
     expect(editUrl).toMatch(/\/s\/[A-Za-z0-9_-]{20,}$/)
 
-    const [first] = commitIds(name)
-    const { commitsDir } = getProjectStorageDirs(name)
-    fs.writeFileSync(path.join(getCommitPath(name, first, commitsDir), 'comments.json'), JSON.stringify({
-      version: 1, comments: [{ id: 'c1', username: 'alice', comment: 'kick too loud', timestamp: 12 }],
-    }))
     const again = await syncProject(name)
     expect(again.pushed).toBe(0)
     expect(again.uploadedFiles).toBe(0)
   })
 
-  it('lets a collaborator open the project by link, with files and comments', async () => {
+  it('lets a collaborator open the project by link, with its files', async () => {
     setUsername('bob')
     const { projectName, projectPath } = await openSharedProject(editUrl, bobParent)
     expect(projectName).toBe(name)
     expect(fs.readFileSync(path.join(projectPath, 'Song.als'), 'utf8')).toBe('ableton v1')
     expect(fs.readFileSync(path.join(projectPath, 'Samples', 'kick.wav'), 'utf8')).toBe('fake wav: kick')
-
-    const [first] = commitIds(name)
-    const { commitsDir } = getProjectStorageDirs(name)
-    const comments = JSON.parse(fs.readFileSync(path.join(getCommitPath(name, first, commitsDir), 'comments.json'), 'utf8'))
-    expect(comments.comments[0].comment).toBe('kick too loud')
     expect(getProjectRemote(name)?.token).toBeTruthy()
   })
 
@@ -156,7 +146,7 @@ describe('DAWLab Hub sharing', () => {
     expect(log.branches[0].commits.map((c: any) => c.message)).toEqual(['Initial Commit', 'bob idea'])
   })
 
-  it('opens a listener link in the app with previews and comments only', async () => {
+  it('opens a listener link in the app with previews only', async () => {
     setUsername('alice')
     const preview = path.join(work, 'mix.wav')
     fs.writeFileSync(preview, 'RIFF....WAVEmix')
@@ -175,21 +165,6 @@ describe('DAWLab Hub sharing', () => {
     expect(getCommitFileMap(projectName, first, commitsDir)).toEqual([])
     const previewHash = log.branches[0].commits[0].preview_file
     expect(fs.readFileSync(getCasPath(previewHash, casDir), 'utf8')).toBe('RIFF....WAVEmix')
-
-    // A listener's comment reaches the owner.
-    const file = path.join(getCommitPath(projectName, first, commitsDir), 'comments.json')
-    const mine = JSON.parse(fs.readFileSync(file, 'utf8'))
-    mine.comments[0].comment = 'rewritten by a listener' // must not reach anyone
-    mine.comments.push({ id: 'w1', username: 'carol', comment: 'love it', timestamp: 3 })
-    fs.writeFileSync(file, JSON.stringify(mine))
-    expect((await syncProject(projectName)).pushed).toBe(0)
-
-    setUsername('alice')
-    await syncProject(name)
-    const aliceDirs = getProjectStorageDirs(name)
-    const aliceComments = JSON.parse(fs.readFileSync(path.join(getCommitPath(name, first, aliceDirs.commitsDir), 'comments.json'), 'utf8'))
-    expect(aliceComments.comments.map((c: any) => c.id)).toEqual(['c1', 'w1'])
-    expect(aliceComments.comments[0].comment).toBe('kick too loud')
 
     // And the listener token can't read project files or change history.
     const token = listenUrl.split('/s/')[1]

@@ -4,12 +4,8 @@
  * line simply continues with it. Nothing is rewritten: the other person's
  * version stays where it is, and every Mac gets the change by syncing.
  */
-import fs from 'fs'
-import path from 'path'
 import { loadLocalProjectLog, saveProjectLog, addCommitToLog } from '../core/log'
-import { getCommitFileMap, saveCommit, getCommitPath } from '../core/commits'
-import { writeJsonSync } from '../core/fs-utils'
-import { parseCommentsFile, serializeComments } from '../../feedback/comments-file'
+import { getCommitFileMap, saveCommit } from '../core/commits'
 import { cleanDismissals } from '../../../shared/hub-protocol'
 import { getProjectStorageDirs } from '../core/storage-location'
 import { newVersionId } from '../core/version-id'
@@ -56,8 +52,8 @@ export async function makeParallelVersionMain(projectName: string, forkBranch: s
 
 /**
  * Hides the "parallel version" notice for the fork's current version, for you,
- * with a reason. The alternative stays (for everyone), and the reason is added
- * as a comment on that version so its author sees it.
+ * with a reason. The alternative stays (for everyone); the reason syncs with
+ * the log, and its author sees it on the version's parallel-version notice.
  */
 export function dismissParallelVersion(projectName: string, forkBranch: string, by: string, comment: string) {
   const text = String(comment ?? '').trim()
@@ -77,15 +73,6 @@ export function dismissParallelVersion(projectName: string, forkBranch: string, 
   fork.dismissed = cleanDismissals([...(fork.dismissed ?? []), { by: who, tip: String(tip.commit_id), at, comment: text }])
   saveProjectLog(projectName, log)
 
-  // The reason, as a regular comment on that version: synced like any other.
-  const { commitsDir } = getProjectStorageDirs(projectName)
-  const file = path.join(getCommitPath(projectName, String(tip.commit_id), commitsDir), 'comments.json')
-  if (fs.existsSync(path.dirname(file))) {
-    const existing = fs.existsSync(file) ? parseCommentsFile(fs.readFileSync(file, 'utf8')) : []
-    const note = { id: `dismiss-${Date.now().toString(36)}`, username: who, comment: `${DISMISS_PREFIX} ${text}`, timestamp: 0 }
-    writeJsonSync(file, serializeComments([...existing, note]))
-  }
   return { tip: String(tip.commit_id) }
 }
 
-export const DISMISS_PREFIX = 'Dismissed this parallel version:'

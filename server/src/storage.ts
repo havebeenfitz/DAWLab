@@ -8,7 +8,6 @@
  *   projects/<id>/meta.json                  -> { id, name, createdAt, updatedAt?, spaceId? }
  *   projects/<id>/log.json                   -> SharedLog
  *   projects/<id>/commits/<cid>/filemap.json -> FileMapEntry[]
- *   projects/<id>/commits/<cid>/comments.json
  *   projects/<id>/objects/<sha256>           -> file contents
  *   spaces/<id>/{meta,members,invites,projects}.json, invites/<sha256(code)>.json
  *                                            -> see docs/hub-spaces.md

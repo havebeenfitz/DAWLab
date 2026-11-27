@@ -1,5 +1,5 @@
 /**
- * The per-project API: version history, files, filemaps, previews and comments.
+ * The per-project API: version history, files, filemaps and previews.
  * Served both at /api/project/... (legacy project token) and at
  * /api/space/projects/:projectId/... (space member token). The caller passes
  * an `authorize(need)` that resolves who may touch which project.
@@ -13,28 +13,23 @@ import { pipeline } from 'node:stream/promises'
 import type { Storage } from './storage.ts'
 import { resolveRange } from '../../electron/media/range.ts'
 import {
-  allCommits, isCommitId, isHash, mergeComments, mergeLogs, toSharedLog,
-  type HubRole, type SharedComment, type SharedLog,
+  allCommits, isCommitId, isHash, mergeLogs, toSharedLog,
+  type HubRole, type SharedLog,
 } from '../../shared/hub-protocol.ts'
 import { placeIncoming } from '../../shared/forks.ts'
 import { HIDDEN, HttpError, nowIso, readJson, send, withLock } from './http-util.ts'
 import { keys, type ProjectMeta } from './keys.ts'
-import { filterListenerComments, filterMemberComments } from './comment-rules.ts'
 
 export interface ProjectAccess {
   projectId: string
-  /** What the caller may do with the project: `edit` reads and writes, `listen` gets previews and comments. */
+  /** What the caller may do with the project: `edit` reads and writes, `listen` gets previews. */
   role: HubRole
-  /** Set for space members: comments are then stamped with and limited to their author. */
-  member?: { id: string; isOwner: boolean }
 }
 
 /** Resolves access for one request; throws HIDDEN or a 403 when `need` isn't met. */
 export type Authorize = (need: HubRole) => Promise<ProjectAccess>
 
-const MAX_COMMENTS = 5000
 const MAX_HASHES_PER_QUERY = 20000
-const MAX_COMMENT_BYTES = 64 * 1024
 
 export function createProjectRoutes(storage: Storage, maxUpload: number) {
   async function loadLog(projectId: string): Promise<SharedLog> {
@@ -160,32 +155,6 @@ export function createProjectRoutes(storage: Storage, maxUpload: number) {
     send(res, 200, filemap)
   }
 
-  async function getComments(access: ProjectAccess, commitId: string, res: http.ServerResponse) {
-    const doc = await storage.getJson<{ comments: unknown[] }>(keys.comments(access.projectId, commitId))
-    send(res, 200, doc?.comments ?? [])
-  }
-
-  async function postComments(access: ProjectAccess, commitId: string, req: http.IncomingMessage, res: http.ServerResponse) {
-    const body = await readJson(req)
-    const incoming: SharedComment[] = (Array.isArray(body) ? body : body?.comments ?? []).filter(
-      (c: any) => c && typeof c.id === 'string' && c.id.length <= 64 && JSON.stringify(c).length <= MAX_COMMENT_BYTES,
-    )
-    const log = await loadLog(access.projectId)
-    if (!allCommits(log).some((c) => c.commit_id === commitId)) throw new HttpError(404, 'No such version')
-    const key = keys.comments(access.projectId, commitId)
-    const merged = await withLock(key, async () => {
-      const current = (await storage.getJson<{ comments: SharedComment[] }>(key))?.comments ?? []
-      const allowed = access.member
-        ? filterMemberComments(current, incoming, access.member.id, access.member.isOwner)
-        : access.role === 'edit' ? incoming : filterListenerComments(current, incoming)
-      const next = mergeComments(current, allowed)
-      if (next.length > MAX_COMMENTS) throw new HttpError(413, 'Too many comments on this version')
-      await storage.putJson(key, { version: 1, comments: next })
-      return next
-    })
-    send(res, 200, merged)
-  }
-
   /**
    * Routes `rest` (the path after the project prefix). Unknown routes are the
    * hidden 404 before any auth, exactly as before.
@@ -211,8 +180,12 @@ export function createProjectRoutes(storage: Storage, maxUpload: number) {
       const commitId = rest[1]
       if (rest[2] === 'filemap' && method === 'PUT') return putFilemap(await authorize('edit'), commitId, req, res)
       if (rest[2] === 'filemap' && method === 'GET') return getFilemap(await authorize('edit'), commitId, res)
-      if (rest[2] === 'comments' && method === 'GET') return getComments(await authorize('listen'), commitId, res)
-      if (rest[2] === 'comments' && method === 'POST') return postComments(await authorize('listen'), commitId, req, res)
+      // Comments are gone, but apps before 1.8 still call this on every sync:
+      // answer with no comments so their sync keeps working.
+      if (rest[2] === 'comments' && (method === 'GET' || method === 'POST')) {
+        await authorize('listen')
+        return send(res, 200, [])
+      }
     }
     throw HIDDEN
   }

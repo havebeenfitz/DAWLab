@@ -268,7 +268,7 @@ describe('invites', () => {
 })
 
 describe('roles', () => {
-  it('listeners read previews and comments only', async () => {
+  it('listeners read previews only', async () => {
     const { listener, p, fileHash, previewHash, log } = await setup()
     const t = listener.token
     const got = await call('GET', p, { token: t })
@@ -388,43 +388,17 @@ describe('projects in spaces', () => {
   })
 })
 
-describe('comment authorship', () => {
-  const c = (id: string, text: string, extra: Record<string, unknown> = {}) => ({ id, comment: text, ...extra })
-
-  it('stamps the author, ignores a forged author, and limits edits to the author or owner', async () => {
-    const { owner, editor, listener, p } = await setup()
+describe('comments endpoint for apps before 1.8', () => {
+  it('answers with no comments and stores nothing', async () => {
+    const { listener, editor, p, projectId } = await setup()
     const url = `${p}/commits/c1/comments`
-    const post = (t: string, body: unknown) => call('POST', url, { token: t, body })
-
-    let r = await post(listener.token, [c('a', 'listener says', { authorMemberId: owner.me.id })])
-    expect(r.status).toBe(200)
-    expect(r.json).toEqual([c('a', 'listener says', { authorMemberId: listener.me.id })])
-
-    await post(editor.token, [c('b', 'editor says')])
-    // editor tries to edit listener's comment and reply to it
-    r = await post(editor.token, [c('a', 'hacked', { replies: [{ id: 'r1', text: 'reply', authorMemberId: listener.me.id }] })])
-    const a = r.json.find((x: any) => x.id === 'a')
-    expect(a.comment).toBe('listener says')
-    expect(a.authorMemberId).toBe(listener.me.id)
-    expect(a.replies).toEqual([{ id: 'r1', text: 'reply', authorMemberId: editor.me.id }])
-
-    // listener edits own comment, can't edit editor's reply
-    r = await post(listener.token, [c('a', 'edited by me', { replies: [{ id: 'r1', text: 'changed' }] })])
-    const a2 = r.json.find((x: any) => x.id === 'a')
-    expect(a2.comment).toBe('edited by me')
-    expect(a2.replies[0].text).toBe('reply')
-
-    // editor edits own reply and can't take over the comment's authorship
-    r = await post(editor.token, [c('b', 'editor edited', { authorMemberId: listener.me.id })])
-    expect(r.json.find((x: any) => x.id === 'b')).toEqual(c('b', 'editor edited', { authorMemberId: editor.me.id }))
-
-    // owner may change any comment and reply; authorship is kept
-    r = await post(owner.token, [c('b', 'owner fixed', { deleted: true, replies: [] }), c('a', 'owner fixed a', { replies: [{ id: 'r1', text: 'owner fixed reply' }] })])
-    const b = r.json.find((x: any) => x.id === 'b')
-    expect(b).toMatchObject({ comment: 'owner fixed', deleted: true, authorMemberId: editor.me.id })
-    const a3 = r.json.find((x: any) => x.id === 'a')
-    expect(a3).toMatchObject({ comment: 'owner fixed a', authorMemberId: listener.me.id })
-    expect(a3.replies).toEqual([{ id: 'r1', text: 'owner fixed reply', authorMemberId: editor.me.id }])
+    const posted = await call('POST', url, { token: editor.token, body: [{ id: 'a', comment: 'hi' }] })
+    expect(posted.status).toBe(200)
+    expect(posted.json).toEqual([])
+    const got = await call('GET', url, { token: listener.token })
+    expect(got.status).toBe(200)
+    expect(got.json).toEqual([])
+    expect(fs.existsSync(path.join(dataDir, 'projects', projectId, 'commits', 'c1', 'comments.json'))).toBe(false)
   })
 })
 

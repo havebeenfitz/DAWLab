@@ -187,7 +187,7 @@ export async function shareFolder(folderId: string, onProgress: SyncProgress = (
 /**
  * Brings a shared folder up to date in both directions: uploads projects that
  * were added to the folder here, downloads projects others added, and syncs
- * versions and comments of every project.
+ * versions of every project.
  */
 export async function syncSpace(folderId: string, onProgress: SyncProgress = () => {}): Promise<SpaceSyncResult> {
   const start = getLocalSpace(folderId)
@@ -579,7 +579,7 @@ export interface ProjectSyncResult {
 }
 
 /**
- * Pulls one project's new versions, alternatives and comments from the hub and
+ * Pulls one project's new versions and alternatives from the hub and
  * sends this Mac's new ones. A project not yet uploaded to its shared folder
  * goes through a folder sync, which uploads it first.
  */

@@ -184,7 +184,7 @@ export function CompareDialog({ projectName, version, baseId, onClose }: {
   );
 }
 
-/** Dismissing needs a reason: it becomes a comment on their version, so they know. */
+/** Dismissing needs a reason: they see it on their parallel version, so they know. */
 export function DismissDialog({ projectName, version, username, onClose, onDone }: {
   projectName: string; version: ParallelVersion | null; username: string; onClose: () => void; onDone: () => Promise<void>;
 }) {
@@ -198,7 +198,7 @@ export function DismissDialog({ projectName, version, username, onClose, onDone 
     setBusy(true); setError('');
     try {
       await window.ipcRenderer.invoke('dismiss-parallel-version', projectName, version.branch, username, text.trim());
-      notify.success('Parallel version dismissed', `The alternative “${version.branch}” stays; ${version.author} sees your reason as a comment.`);
+      notify.success('Parallel version dismissed', `The alternative “${version.branch}” stays; ${version.author} sees your reason on it.`);
       await onDone();
     } catch (err) {
       setError(errorMessage(err));
@@ -224,7 +224,7 @@ export function DismissDialog({ projectName, version, username, onClose, onDone 
       }
     >
       <div className="ui-field">
-        <label htmlFor="dismiss-reason">Why? {version ? `${version.author} sees this as a comment on “${version.tip.message}”.` : ''}</label>
+        <label htmlFor="dismiss-reason">Why? {version ? `${version.author} sees this on “${version.tip.message}”.` : ''}</label>
         <textarea
           id="dismiss-reason"
           className="ui-input"

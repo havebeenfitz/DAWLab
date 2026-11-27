@@ -4,9 +4,9 @@
  * The hub is a "remote" for a DAWLab project, the way GitHub is a remote for
  * a git repo. Files travel as content-addressed blobs (SHA-256, the same
  * hashes the local CAS already uses), so either side only ever sends what the
- * other is missing. Version history (the project log) and per-version feedback
- * comments are small JSON documents that both sides merge instead of
- * overwriting, so two people can work offline and sync later.
+ * other is missing. Version history (the project log) is a small JSON
+ * document that both sides merge instead of overwriting, so two people can
+ * work offline and sync later.
  *
  * Keep this file dependency-free: it is imported by the Electron main process
  * and run directly by Node (type stripping) on the server.
@@ -80,12 +80,6 @@ export interface SharedLog {
   primaryFile?: string | null
   ignoredFiles?: string[]
   branches: SharedBranch[]
-}
-
-export interface SharedComment {
-  id: string
-  replies?: Array<{ id: string } & Record<string, unknown>>
-  [key: string]: unknown
 }
 
 export interface ProjectResponse {
@@ -194,27 +188,6 @@ export function mergeLogs<T extends { branches?: any[] }>(base: T, incoming: Sha
   }
   merged.branches = branches
   return merged as T
-}
-
-/** Union of two comment lists by id (and of each comment's replies by id); `incoming` wins on conflicts. */
-export function mergeComments(base: SharedComment[], incoming: SharedComment[]): SharedComment[] {
-  const out = base.map((c) => ({ ...c }))
-  for (const inc of incoming) {
-    if (!inc || typeof inc.id !== 'string') continue
-    const idx = out.findIndex((c) => c.id === inc.id)
-    if (idx === -1) {
-      out.push({ ...inc })
-      continue
-    }
-    const replies = [...(out[idx].replies ?? [])]
-    for (const r of inc.replies ?? []) {
-      const ri = replies.findIndex((x) => x.id === r.id)
-      if (ri === -1) replies.push(r)
-      else replies[ri] = { ...replies[ri], ...r }
-    }
-    out[idx] = { ...out[idx], ...inc, ...(replies.length ? { replies } : {}) }
-  }
-  return out
 }
 
 /** Every blob a set of commits needs: their files plus their audio previews. */

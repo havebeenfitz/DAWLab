@@ -167,7 +167,7 @@ describe('Shared folders', () => {
     }
   })
 
-  it('lets a listener join with previews and comments only', async () => {
+  it('lets a listener join with previews only', async () => {
     setUsername('carol')
     const result = await joinSpace(listenInvite, path.join(work, 'carol'))
     carolFolder = result.folderId

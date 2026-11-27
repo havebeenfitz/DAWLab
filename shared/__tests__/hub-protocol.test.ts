@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
 import {
-  mergeLogs, mergeComments, parseShareLink, toSharedLog,
+  mergeLogs, parseShareLink, toSharedLog,
   normalizeInviteCode, formatInviteCode, isInviteCode, parseJoinLink, buildJoinLink,
 } from '../hub-protocol'
 
@@ -24,17 +24,6 @@ describe('hub protocol', () => {
   it('never shares local-only state', () => {
     const shared: any = toSharedLog({ ...log([]), lastCheckout: {}, draft: {}, current_branch: 'x', collaborators: [] })
     expect(Object.keys(shared).sort()).toEqual(['branches', 'daw', 'id', 'name'])
-  })
-
-  it('merges comments and replies by id', () => {
-    const merged = mergeComments(
-      [{ id: 'a', comment: 'old', replies: [{ id: 'r1' }] }],
-      [{ id: 'a', comment: 'edited', replies: [{ id: 'r2' }] }, { id: 'b', comment: 'new' }],
-    )
-    expect(merged).toEqual([
-      { id: 'a', comment: 'edited', replies: [{ id: 'r1' }, { id: 'r2' }] },
-      { id: 'b', comment: 'new' },
-    ])
   })
 
   it('parses share links, including hubs under a path', () => {

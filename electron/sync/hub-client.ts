@@ -19,10 +19,9 @@ import { commitExists, getCommitFileMap, getCommitPath, saveCommit } from '../da
 import { ensureCasDir, getCasPath } from '../dawvcs/core/cas'
 import { writeJsonSync } from '../dawvcs/core/fs-utils'
 import { rollbackProject } from '../dawvcs/operations/rollback'
-import { parseCommentsFile, serializeComments } from '../feedback/comments-file'
 import {
-  allCommits, isCommitId, isHash, mergeComments, mergeLogs, parseShareLink, toSharedLog, privateSnapshotIds,
-  type CreateProjectResponse, type HubRole, type ProjectResponse, type SharedComment, type SharedLog,
+  allCommits, isCommitId, isHash, mergeLogs, parseShareLink, toSharedLog, privateSnapshotIds,
+  type CreateProjectResponse, type HubRole, type ProjectResponse, type SharedLog,
 } from '../../shared/hub-protocol'
 import { adoptHubPlacement, placementMoves, type ParallelPlacement } from '../../shared/forks'
 import { createTransferTracker, describeTransfer, type TransferProgress } from '../../shared/transfer-progress'
@@ -34,7 +33,7 @@ export interface HubSettings {
 
 export interface ProjectRemote {
   hubUrl: string
-  /** The link's token: an edit token lets this machine push and pull, a listen token only fetches previews and comments. */
+  /** The link's token: an edit token lets this machine push and pull, a listen token only fetches previews. */
   token: string
   /** Missing on remotes saved before listen links opened in the app: those are edit links. */
   role?: HubRole
@@ -158,9 +157,6 @@ export class HubClient {
   missing = (hashes: string[]) => this.json<{ missing: string[] }>(`${this.base}/objects/missing`, 'POST', { hashes })
   putFilemap = (commitId: string, filemap: unknown) => this.json(`${this.base}/commits/${commitId}/filemap`, 'PUT', filemap)
   getFilemap = (commitId: string) => this.json<Array<{ path: string; hash: string }>>(`${this.base}/commits/${commitId}/filemap`)
-  getComments = (commitId: string) => this.json<SharedComment[]>(`${this.base}/commits/${commitId}/comments`)
-  postComments = (commitId: string, comments: SharedComment[]) =>
-    this.json<SharedComment[]>(`${this.base}/commits/${commitId}/comments`, 'POST', comments)
 
   /** Sizes of files on the hub; empty when the hub is too old to say. */
   async sizes(hashes: string[]): Promise<Record<string, number | null>> {
@@ -238,7 +234,7 @@ export async function shareProject(projectName: string, onProgress: SyncProgress
   return syncProject(projectName, onProgress)
 }
 
-/** Pushes local versions the hub lacks, then pulls versions and comments others added. */
+/** Pushes local versions the hub lacks, then pulls versions others added. */
 export async function syncProject(projectName: string, onProgress: SyncProgress = () => {}): Promise<SyncResult> {
   const remote = getProjectRemote(projectName)
   if (!remote) throw new Error(`'${projectName}' is not shared yet.`)
@@ -259,7 +255,7 @@ export interface SyncCounts {
 /**
  * One sync of a local project against one hub project, through `client`.
  * An `edit` role pushes local versions and pulls everyone else's; a `listen`
- * role pulls the version list, previews and comments only.
+ * role pulls the version list and previews only.
  */
 export async function syncProjectWith(
   projectName: string,
@@ -274,8 +270,6 @@ export async function syncProjectWith(
   if (role === 'listen') {
     const { log: remoteLog } = await client.getProject()
     const pulled = await pullInto(projectName, client, remoteLog, onProgress, { previewsOnly: true })
-    onProgress('Syncing comments...')
-    for (const c of allCommits(remoteLog)) await syncComments(projectName, c.commit_id, client, commitsDir)
     return { pushed: 0, pulled: pulled.versions, uploadedFiles: 0, downloadedFiles: pulled.files }
   }
 
@@ -331,10 +325,6 @@ export async function syncProjectWith(
 
   // ---- pull
   const pulled = await pullInto(projectName, client, after.log, onProgress)
-
-  // ---- comments, both ways
-  onProgress('Syncing comments...')
-  for (const c of allCommits(after.log)) await syncComments(projectName, c.commit_id, client, commitsDir)
 
   return { pushed: toPush.length, pulled: pulled.versions, uploadedFiles: missing.length, downloadedFiles: pulled.files }
 }
@@ -435,7 +425,7 @@ async function pullInto(
   const need = new Set<string>()
   const filemaps = new Map<string, Array<{ path: string; hash: string }>>()
   for (const c of newCommits) {
-    // A listen link can't read filemaps: its versions are kept with no files, just previews and comments.
+    // A listen link can't read filemaps: its versions are kept with no files, just previews.
     const filemap = opts.previewsOnly ? [] : await client.getFilemap(c.commit_id)
     assertSafeFilemap(filemap)
     filemaps.set(c.commit_id, filemap)
@@ -465,23 +455,6 @@ async function pullInto(
   if (moves.length) placementListener(projectName, moves)
   saveProjectLog(projectName, mergeLogs(local, remoteLog))
   return { versions: reallyNew, files: need.size }
-}
-
-async function syncComments(projectName: string, commitId: string, client: HubClient, commitsDir: string) {
-  const dir = getCommitPath(projectName, commitId, commitsDir)
-  if (!fs.existsSync(dir)) return
-  const file = path.join(dir, 'comments.json')
-  let local: SharedComment[] = []
-  if (fs.existsSync(file)) {
-    try {
-      local = parseCommentsFile(fs.readFileSync(file, 'utf8')) as SharedComment[]
-    } catch {
-      return // never overwrite a comments file we can't read
-    }
-  }
-  const merged = local.length ? await client.postComments(commitId, local) : await client.getComments(commitId)
-  const result = mergeComments(local, merged)
-  if (JSON.stringify(result) !== JSON.stringify(local)) writeJsonSync(file, serializeComments(result))
 }
 
 /** A hub answers an unknown key or token with an empty 404 and nothing else, so say what that usually means. */

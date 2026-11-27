@@ -556,15 +556,12 @@ describe('dismissing a parallel version, between two Macs', () => {
     expect(openParallelVersions(loadLocalProjectLog('Snow'), 'main', w.owner)).toEqual([])
     await syncSpace(w.folderId)
 
-    // Bob: the alternative is still his, he sees the dismissal and the comment on his version.
+    // Bob: the alternative is still his, he sees the dismissal and its reason.
     as(bob)
     await syncSpace(joined.folderId)
     const fork = loadLocalProjectLog('Snow').branches.find((b: any) => b.name === p.branch)
     expect(fork.commits.map((c: any) => c.message)).toEqual(['bob take'])
     expect(dismissalOf(fork, String(p.tip.commit_id))).toMatchObject({ by: w.owner, comment: 'Keeping my take' })
-    const commentsFile = path.join(getProjectStorageDirs('Snow').commitsDir, 'Snow', String(p.tip.commit_id), 'comments.json')
-    expect(JSON.parse(fs.readFileSync(commentsFile, 'utf8')).comments.map((c: any) => `${c.username}: ${c.comment}`))
-      .toContain(`${w.owner}: Dismissed this parallel version: Keeping my take`)
 
     // Bob keeps working in it: the notice comes back for the owner.
     fs.writeFileSync(path.join(getProjectPath('Snow'), 'Snow.als'), 'bob take 2')

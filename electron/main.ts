@@ -55,8 +55,6 @@ import { getCasPath, calculateCasSize } from "./dawvcs/core/cas";
 import { getProjectPath } from "./dawvcs/core/registry";
 import { saveProjectLog } from "./dawvcs/core/log";
 import { getCommitPath, getCommitFileMap } from "./dawvcs/core/commits";
-import { writeJsonSync } from "./dawvcs/core/fs-utils";
-import { parseCommentsFile, serializeComments } from "./feedback/comments-file";
 import { getProjectStorageDirs, allCasDirs } from "./dawvcs/core/storage-location";
 import { detectDAW, getProjectFileCandidates } from "./dawvcs/core/daw-detection";
 import { getCleanableFiles, cleanCasFiles } from "./dawvcs/operations/clean";
@@ -721,45 +719,6 @@ ipcMain.handle(
     const fullPath = resolvePreviewPath(projectName, commitId, fileName);
     if (!fullPath) return null;
     return { playUrl: await getMediaUrl(fullPath), fetchUrl: toDawpreviewUrl(fullPath) };
-  },
-);
-
-// Feedback comments are stored per version, next to the version's filemap.
-const COMMENTS_FILE = "comments.json";
-
-function commentsPath(projectName: string, commitId: string): string {
-  // commitId names a directory; refuse anything that could escape it.
-  if (!commitId || path.basename(commitId) !== commitId || commitId === "..") {
-    throw new Error(`Invalid commit id: ${commitId}`);
-  }
-  const { commitsDir } = getProjectStorageDirs(projectName);
-  return path.join(getCommitPath(projectName, commitId, commitsDir), COMMENTS_FILE);
-}
-
-// Throws when the file can't be read safely (corrupt, or from a newer DAWLab);
-// the renderer then shows no comments and won't save over it.
-ipcMain.handle("get-commit-comments", async (_ev, projectName: string, commitId: string) => {
-  const file = commentsPath(projectName, commitId);
-  if (!fs.existsSync(file)) return [];
-  try {
-    return parseCommentsFile(await fs.promises.readFile(file, "utf8"));
-  } catch (err) {
-    console.error(`[main.ts] Unreadable comments for commit ${commitId}:`, err);
-    throw err;
-  }
-});
-
-ipcMain.handle(
-  "save-commit-comments",
-  async (_ev, projectName: string, commitId: string, comments: unknown) => {
-    if (!Array.isArray(comments)) throw new Error("comments must be an array");
-    const file = commentsPath(projectName, commitId);
-    // Only write into a version that exists; never create stray commit dirs.
-    if (!fs.existsSync(path.dirname(file))) throw new Error(`Unknown commit ${commitId}`);
-    // Never overwrite a file we can't read (e.g. written by a newer DAWLab).
-    if (fs.existsSync(file)) parseCommentsFile(fs.readFileSync(file, "utf8"));
-    writeJsonSync(file, serializeComments(comments));
-    return { success: true };
   },
 );
 
