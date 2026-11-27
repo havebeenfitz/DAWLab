@@ -49,7 +49,7 @@ For Logic Pro projects DAWLab reads the project itself, so a version says what c
 
 1. Connect your hub once in **Settings > DAWLab server** (address and hub key).
 2. Right-click a Library folder and choose **Share**. Every project in it is uploaded with its versions.
-3. Create an invite as **Collaborator** (opens projects, saves versions, comments) or **Listener** (plays previews and comments). Send the code privately.
+3. Create an invite as **Collaborator** (opens projects, saves versions) or **Listener** (plays previews). Send the code privately.
 4. The folder owner always sees the open invite codes in the Share dialog. **Revoke** cancels a code; people who already joined stay. To remove someone, use the button next to their name.
 
 ### Joining with a code
@@ -76,7 +76,7 @@ When two people save on top of the same version, nothing is overwritten. The sec
 - **Preview** lays the whole project out in a folder of its own next to yours and opens it in your DAW. Your folder is not touched. **Back to mine** moves the preview folder to the Trash.
 - **Compare** shows how their version differs from yours. For Logic projects it also lists what to bring over from theirs into yours (File > Import > Logic Projects in Logic), marks the things you both changed differently, and **Check my folder again** ticks off what your folder already has after you saved in Logic.
 - **Make main** continues your line with their version. Your version stays in the history.
-- **Dismiss** hides the notice for you, with a short reason that the author sees as a comment. The alternative stays for everyone. A newer version in it brings the notice back.
+- **Dismiss** hides the notice for you, with a short reason that the author sees on the parallel version. The alternative stays for everyone. A newer version in it brings the notice back.
 
 ## Run your own hub
 
